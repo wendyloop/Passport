@@ -1,0 +1,2 @@
+-- Seed data is intentionally minimal because Passport records depend on auth.users IDs.
+-- Use Supabase Studio or the mobile app onboarding flow to create local test accounts.

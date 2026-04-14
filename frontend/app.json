@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Passport",
+    "slug": "passport",
+    "scheme": "passport",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0b1020"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.passport.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Passport uses the camera so job seekers can upload their intro videos.",
+        "NSPhotoLibraryUsageDescription": "Passport uses your photo library so you can select intro videos.",
+        "NSCalendarsUsageDescription": "Passport uses calendar access to sync employer interview availability."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
