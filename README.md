@@ -7,6 +7,7 @@ Passport is an iOS-first mobile app for job discovery and candidate screening. J
 ```text
 Passport/
 ├── frontend/
+├── ios-native/
 ├── supabase/
 ├── README.md
 ├── .gitignore
@@ -15,6 +16,7 @@ Passport/
 ## Stack
 
 - `frontend/`: Expo + React Native + Expo Router
+- `ios-native/`: standalone SwiftUI iOS app for running directly in Xcode
 - `supabase/`: database migrations, RLS policies, seeds, and Edge Functions
 - Supabase Auth for email/password and Google sign-in
 - Supabase Storage for resumes, videos, and avatars
@@ -34,6 +36,7 @@ Passport/
 - Supabase schema for profiles, likes, interviews, referrals, availability, videos, and notifications
 - RLS policies and RPC functions for the core product flow
 - Edge Function scaffolding for referrals, resume parsing, availability sync, and interview approval
+- A separate native SwiftUI iOS shell for Xcode-based iPhone simulator work
 
 ## Notes
 

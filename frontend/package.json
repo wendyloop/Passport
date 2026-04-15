@@ -5,9 +5,10 @@
   "main": "expo-router/entry",
   "scripts": {
     "dev": "expo start",
-    "ios": "expo start --ios",
+    "ios": "expo run:ios",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "android": "expo run:android"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.2",

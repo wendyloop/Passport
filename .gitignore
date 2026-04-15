@@ -11,6 +11,7 @@ pnpm-debug.log*
 .expo-shared/
 dist/
 web-build/
+frontend/ios/
 
 # React Native / Metro
 .metro-health-check*
