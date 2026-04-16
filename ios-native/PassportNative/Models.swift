@@ -7,6 +7,22 @@ enum UserRole: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum JobFunctionOption: String, CaseIterable, Identifiable {
+    case engineering = "Engineering"
+    case design = "Design"
+    case product = "Product"
+    case science = "Science"
+    case sales = "Sales"
+    case marketing = "Marketing"
+    case support = "Support"
+    case operations = "Operations"
+    case hr = "HR"
+    case finance = "Finance"
+    case legal = "Legal"
+
+    var id: String { rawValue }
+}
+
 struct Candidate: Identifiable {
     let id = UUID()
     let name: String
@@ -30,7 +46,33 @@ struct NotificationItem: Identifiable {
     let body: String
 }
 
+struct CandidateProfile {
+    var fullName: String
+    var headline: String
+    var school: String
+    var employers: [String]
+    var jobFunction: JobFunctionOption
+    var referred: Bool
+    var resumeFileName: String?
+    var resumeImportedAt: Date?
+    var introVideoFileName: String?
+    var introVideoDuration: Double?
+}
+
 enum DemoData {
+    static let defaultCandidateProfile = CandidateProfile(
+        fullName: "Maya Chen",
+        headline: "Senior designer focused on marketplace trust and candidate experience.",
+        school: "Stanford University",
+        employers: ["Figma", "Notion"],
+        jobFunction: .design,
+        referred: true,
+        resumeFileName: nil,
+        resumeImportedAt: nil,
+        introVideoFileName: nil,
+        introVideoDuration: nil
+    )
+
     static let candidates: [Candidate] = [
         Candidate(
             name: "Maya Chen",

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct EmployerHomeView: View {
     let fullName: String
@@ -10,6 +11,7 @@ struct EmployerHomeView: View {
     @State private var selectedJobFunction: String?
     @State private var referralOnly = false
     @State private var activeFilter: FeedFilterKind?
+    @State private var selectedTab: EmployerTab = .feed
 
     private var filteredCandidates: [Candidate] {
         DemoData.candidates.filter { candidate in
@@ -35,137 +37,45 @@ struct EmployerHomeView: View {
     }
 
     var body: some View {
-        TabView {
-            feedView
-            .tabItem {
-                Label("Feed", systemImage: "play.square")
-            }
-
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        EmployerHeader(
-                            title: "Liked Candidates",
-                            subtitle: "Saved candidates remain here for review and follow-up.",
-                            onShowNotifications: onShowNotifications,
-                            onSignOut: onSignOut
-                        )
-
-                        ForEach(DemoData.candidates.prefix(2)) { candidate in
-                            SimpleListCard(
-                                title: candidate.name,
-                                subtitle: "\(candidate.headline)\n\(candidate.school)"
-                            )
-                        }
-                    }
-                    .padding(20)
-                }
-                .background(PassportTheme.background)
-            }
-            .tabItem {
-                Label("Liked", systemImage: "heart")
-            }
-
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        EmployerHeader(
-                            title: "Schedule",
-                            subtitle: "Manage availability, approvals, and referral invites.",
-                            onShowNotifications: onShowNotifications,
-                            onSignOut: onSignOut
-                        )
-
-                        SimpleListCard(
-                            title: "Open slots",
-                            subtitle: "Apr 18, 9:00 AM\nApr 18, 1:30 PM\nApr 19, 11:00 AM"
-                        )
-
-                        ForEach(DemoData.employerRequests) { request in
-                            SimpleListCard(
-                                title: request.title,
-                                subtitle: "\(request.status)\n\(request.slots.joined(separator: "\n"))"
-                            )
-                        }
-
-                        SimpleListCard(
-                            title: "Monthly referrals",
-                            subtitle: "5 issued per month\nRegistered employers only"
-                        )
-                    }
-                    .padding(20)
-                }
-                .background(PassportTheme.background)
-            }
-            .tabItem {
-                Label("Schedule", systemImage: "calendar")
-            }
-        }
-        .tint(PassportTheme.accent)
-    }
-
-    private var feedView: some View {
         GeometryReader { proxy in
-            let pageSize = FeedPageMetrics.pageSize(for: proxy)
-            let bottomInset = FeedPageMetrics.bottomOverlayPadding(for: proxy)
+            let bottomBarInset = FeedPageMetrics.bottomBarInset(for: proxy)
+            let contentBottomInset = FeedPageMetrics.contentBottomInset(for: proxy)
 
             ZStack {
-                if filteredCandidates.isEmpty {
-                    PassportTheme.background
-                        .ignoresSafeArea()
-
-                    VStack(spacing: 16) {
-                        Text("No candidates match your filters")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(PassportTheme.textPrimary)
-
-                        Button("Reset filters") {
-                            selectedSchool = nil
-                            selectedEmployer = nil
-                            selectedJobFunction = nil
-                            referralOnly = false
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 12)
-                        .background(PassportTheme.accent)
-                        .foregroundStyle(.black)
-                        .clipShape(Capsule())
-                    }
-                } else {
-                    ScrollView(.vertical) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(filteredCandidates) { candidate in
-                                FullScreenCandidateCard(
-                                    candidate: candidate,
-                                    containerSize: pageSize,
-                                    bottomInset: bottomInset
-                                )
-                                .frame(width: pageSize.width, height: pageSize.height)
-                                .id(candidate.id)
-                            }
-                        }
-                        .scrollTargetLayout()
-                    }
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.paging)
+                PassportTheme.background
                     .ignoresSafeArea()
+
+                switch selectedTab {
+                case .feed:
+                    feedView(proxy: proxy, bottomInset: contentBottomInset)
+                case .liked:
+                    likedView(bottomInset: contentBottomInset)
+                case .schedule:
+                    scheduleView(bottomInset: contentBottomInset)
                 }
             }
-            .background(PassportTheme.background)
+            .overlay(alignment: .top) {
+                if selectedTab == .feed {
+                    EmployerFeedTopBar(
+                        selectedSchool: $selectedSchool,
+                        selectedEmployer: $selectedEmployer,
+                        selectedJobFunction: $selectedJobFunction,
+                        referralOnly: $referralOnly,
+                        activeFilter: $activeFilter,
+                        onShowNotifications: onShowNotifications,
+                        onSignOut: onSignOut
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.top, FeedPageMetrics.topOverlayPadding)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                EmployerBottomBar(selectedTab: $selectedTab)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, bottomBarInset)
+            }
         }
-        .overlay(alignment: .top) {
-            EmployerFeedTopBar(
-                selectedSchool: $selectedSchool,
-                selectedEmployer: $selectedEmployer,
-                selectedJobFunction: $selectedJobFunction,
-                referralOnly: $referralOnly,
-                activeFilter: $activeFilter,
-                onShowNotifications: onShowNotifications,
-                onSignOut: onSignOut
-            )
-            .padding(.horizontal, 10)
-            .padding(.top, FeedPageMetrics.topOverlayPadding)
-        }
+        .ignoresSafeArea(edges: .bottom)
         .sheet(item: $activeFilter) { filter in
             NavigationStack {
                 FilterSelectionSheet(
@@ -176,7 +86,112 @@ struct EmployerHomeView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .ignoresSafeArea()
+    }
+
+    private func feedView(proxy: GeometryProxy, bottomInset: CGFloat) -> some View {
+        let pageSize = FeedPageMetrics.pageSize(for: proxy)
+
+        return ZStack {
+            if filteredCandidates.isEmpty {
+                VStack(spacing: 16) {
+                    Text("No candidates match your filters")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(PassportTheme.textPrimary)
+
+                    Button("Reset filters") {
+                        selectedSchool = nil
+                        selectedEmployer = nil
+                        selectedJobFunction = nil
+                        referralOnly = false
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(PassportTheme.accent)
+                    .foregroundStyle(.black)
+                    .clipShape(Capsule())
+                }
+            } else {
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredCandidates) { candidate in
+                            FullScreenCandidateCard(
+                                candidate: candidate,
+                                containerSize: pageSize,
+                                bottomInset: bottomInset
+                            )
+                            .frame(width: pageSize.width, height: pageSize.height)
+                            .id(candidate.id)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .contentMargins(.zero, for: .scrollContent)
+            }
+        }
+        .frame(width: pageSize.width, height: pageSize.height)
+        .background(PassportTheme.background)
+    }
+
+    private func likedView(bottomInset: CGFloat) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                EmployerHeader(
+                    title: "Liked Candidates",
+                    subtitle: "Saved candidates remain here for review and follow-up.",
+                    onShowNotifications: onShowNotifications,
+                    onSignOut: onSignOut
+                )
+
+                ForEach(DemoData.candidates.prefix(2)) { candidate in
+                    SimpleListCard(
+                        title: candidate.name,
+                        subtitle: "\(candidate.headline)\n\(candidate.school)"
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, bottomInset)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(PassportTheme.background)
+    }
+
+    private func scheduleView(bottomInset: CGFloat) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                EmployerHeader(
+                    title: "Schedule",
+                    subtitle: "Manage availability, approvals, and referral invites.",
+                    onShowNotifications: onShowNotifications,
+                    onSignOut: onSignOut
+                )
+
+                SimpleListCard(
+                    title: "Open slots",
+                    subtitle: "Apr 18, 9:00 AM\nApr 18, 1:30 PM\nApr 19, 11:00 AM"
+                )
+
+                ForEach(DemoData.employerRequests) { request in
+                    SimpleListCard(
+                        title: request.title,
+                        subtitle: "\(request.status)\n\(request.slots.joined(separator: "\n"))"
+                    )
+                }
+
+                SimpleListCard(
+                    title: "Monthly referrals",
+                    subtitle: "5 issued per month\nRegistered employers only"
+                )
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, bottomInset)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(PassportTheme.background)
     }
 
     private func options(for filter: FeedFilterKind) -> [String] {
@@ -204,7 +219,6 @@ struct EmployerHomeView: View {
             .constant(nil)
         }
     }
-
 }
 
 private struct EmployerFeedTopBar: View {
@@ -340,7 +354,7 @@ private struct ReferralChip: View {
             .foregroundStyle(PassportTheme.textPrimary)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background((referralOnly ? PassportTheme.accent.opacity(0.35) : PassportTheme.surface.opacity(0.86)))
+            .background(referralOnly ? PassportTheme.accent.opacity(0.35) : PassportTheme.surface.opacity(0.86))
             .clipShape(Capsule())
             .overlay(Capsule().stroke(PassportTheme.border.opacity(0.75), lineWidth: 1))
         }
@@ -353,7 +367,6 @@ private struct FullScreenCandidateCard: View {
     let bottomInset: CGFloat
 
     @State private var pulse = false
-    @State private var barFill: CGFloat = 0.15
 
     var body: some View {
         ZStack {
@@ -363,7 +376,7 @@ private struct FullScreenCandidateCard: View {
                 colors: [
                     Color.black.opacity(0.00),
                     Color.black.opacity(0.06),
-                    Color.black.opacity(0.85)
+                    Color.black.opacity(0.88)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -410,20 +423,6 @@ private struct FullScreenCandidateCard: View {
                         }
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(PassportTheme.textSecondary)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                ForEach(0..<12, id: \.self) { index in
-                                    Capsule()
-                                        .fill(index < Int(barFill * 12) ? PassportTheme.accent : PassportTheme.textPrimary.opacity(0.18))
-                                        .frame(height: 4)
-                                }
-                            }
-
-                            Text("Auto-play placeholder for the candidate intro. Replace this with AVPlayer when you wire real videos.")
-                                .font(.footnote)
-                                .foregroundStyle(PassportTheme.textSecondary)
-                        }
                     }
 
                     Spacer()
@@ -443,14 +442,9 @@ private struct FullScreenCandidateCard: View {
         .clipped()
         .onAppear {
             pulse = false
-            barFill = 0.15
 
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
                 pulse.toggle()
-            }
-
-            withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) {
-                barFill = 1.0
             }
         }
     }
@@ -478,6 +472,12 @@ private enum FeedFilterKind: String, Identifiable {
     }
 }
 
+private enum EmployerTab: String, CaseIterable {
+    case feed
+    case liked
+    case schedule
+}
+
 private enum FeedPageMetrics {
     static var topOverlayPadding: CGFloat {
         let topInset =
@@ -491,27 +491,31 @@ private enum FeedPageMetrics {
     }
 
     static func pageSize(for proxy: GeometryProxy) -> CGSize {
-        let screenBounds = UIScreen.main.bounds.size
-        let width = max(proxy.size.width, screenBounds.width)
-        let height = max(
-            proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom,
-            screenBounds.height
-        )
-
-        return CGSize(width: width, height: height)
+        proxy.size
     }
 
     static func bottomOverlayPadding(for proxy: GeometryProxy) -> CGFloat {
         let height = pageSize(for: proxy).height
 
         if height <= 700 {
-            return 84
+            return 62
         } else if height <= 820 {
-            return 96
+            return 72
         } else {
-            return 112
+            return 82
         }
     }
+
+    static var bottomBarHeight: CGFloat { 56 }
+
+    static func bottomBarInset(for proxy: GeometryProxy) -> CGFloat {
+        max(8, proxy.safeAreaInsets.bottom + 6)
+    }
+
+    static func contentBottomInset(for proxy: GeometryProxy) -> CGFloat {
+        bottomOverlayPadding(for: proxy) + bottomBarHeight + bottomBarInset(for: proxy)
+    }
+
 }
 
 private struct FilterSelectionSheet: View {
@@ -551,6 +555,68 @@ private struct FilterSelectionSheet: View {
         .background(PassportTheme.background)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct EmployerBottomBar: View {
+    @Binding var selectedTab: EmployerTab
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(PassportTheme.border.opacity(0.22))
+                .frame(height: 0.8)
+
+            HStack(spacing: 0) {
+                ForEach(EmployerTab.allCases, id: \.rawValue) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: icon(for: tab))
+                                .font(.system(size: 17, weight: .semibold))
+                            Text(label(for: tab))
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                        .padding(.bottom, 6)
+                        .foregroundStyle(selectedTab == tab ? PassportTheme.textPrimary : PassportTheme.textSecondary)
+                        .overlay(alignment: .top) {
+                            Capsule()
+                                .fill(selectedTab == tab ? PassportTheme.accent : Color.clear)
+                                .frame(width: 34, height: 3)
+                                .offset(y: -7)
+                        }
+                    }
+                }
+            }
+            .frame(height: FeedPageMetrics.bottomBarHeight)
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color.black.opacity(0.94))
+    }
+
+    private func label(for tab: EmployerTab) -> String {
+        switch tab {
+        case .feed:
+            "Feed"
+        case .liked:
+            "Liked"
+        case .schedule:
+            "Schedule"
+        }
+    }
+
+    private func icon(for tab: EmployerTab) -> String {
+        switch tab {
+        case .feed:
+            "play.square.fill"
+        case .liked:
+            "heart.fill"
+        case .schedule:
+            "calendar"
+        }
     }
 }
 
@@ -635,69 +701,6 @@ private struct SideAction: View {
 
             Text(label)
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-    }
-}
-
-private struct CandidateCard: View {
-    let candidate: Candidate
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [PassportTheme.card, PassportTheme.surface, Color.black],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(height: 420)
-                .overlay(alignment: .topLeading) {
-                    HStack(spacing: 8) {
-                        if candidate.referred {
-                            Capsule()
-                                .fill(PassportTheme.accentSoft)
-                                .frame(width: 88, height: 30)
-                                .overlay {
-                                    Text("Referral")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(.black)
-                                }
-                        }
-
-                        Capsule()
-                            .stroke(PassportTheme.border, lineWidth: 1)
-                            .frame(width: 110, height: 30)
-                            .overlay {
-                                Text(candidate.jobFunction)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(PassportTheme.textPrimary)
-                            }
-                    }
-                    .padding()
-                }
-                .overlay(alignment: .bottomLeading) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(candidate.name)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
-                            .foregroundStyle(PassportTheme.textPrimary)
-
-                        Text(candidate.headline)
-                            .foregroundStyle(PassportTheme.textPrimary)
-
-                        Text("School: \(candidate.school)")
-                            .foregroundStyle(PassportTheme.textSecondary)
-
-                        Text("Previous employers: \(candidate.previousEmployers.joined(separator: ", "))")
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
-                    .padding(20)
-                }
-
-            Text("Native placeholder for the TikTok-style video card. The SwiftUI version can later be replaced with AVPlayer-backed vertical videos.")
-                .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
     }
