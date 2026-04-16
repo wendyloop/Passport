@@ -5,15 +5,44 @@ import CoreTransferable
 import UniformTypeIdentifiers
 
 struct JobSeekerHomeView: View {
-    let fullName: String
+    let profile: CandidateProfileDraft
+    let requests: [JobSeekerRequestItem]
+    let openSlotsByEmployer: [String: [AvailabilitySlotRecord]]
+    let onSaveProfile: (CandidateProfileDraft) -> Void
+    let onUploadResume: (URL) -> Void
+    let onUploadVideo: (URL, Double) -> Void
+    let onSelectSlot: (String, String) -> Void
     let onShowNotifications: () -> Void
     let onSignOut: () -> Void
 
-    @State private var profile = DemoData.defaultCandidateProfile
+    @State private var workingProfile: CandidateProfileDraft
     @State private var isEditingProfile = false
     @State private var showingResumeImporter = false
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var importErrorMessage: String?
+
+    init(
+        profile: CandidateProfileDraft,
+        requests: [JobSeekerRequestItem],
+        openSlotsByEmployer: [String: [AvailabilitySlotRecord]],
+        onSaveProfile: @escaping (CandidateProfileDraft) -> Void,
+        onUploadResume: @escaping (URL) -> Void,
+        onUploadVideo: @escaping (URL, Double) -> Void,
+        onSelectSlot: @escaping (String, String) -> Void,
+        onShowNotifications: @escaping () -> Void,
+        onSignOut: @escaping () -> Void
+    ) {
+        self.profile = profile
+        self.requests = requests
+        self.openSlotsByEmployer = openSlotsByEmployer
+        self.onSaveProfile = onSaveProfile
+        self.onUploadResume = onUploadResume
+        self.onUploadVideo = onUploadVideo
+        self.onSelectSlot = onSelectSlot
+        self.onShowNotifications = onShowNotifications
+        self.onSignOut = onSignOut
+        _workingProfile = State(initialValue: profile)
+    }
 
     var body: some View {
         TabView {
@@ -41,14 +70,52 @@ struct JobSeekerHomeView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         header(
                             title: "Interview Requests",
-                            subtitle: "Requests appear here after employers like your profile."
+                            subtitle: "Employers you interest can send requests and let you choose from open slots."
                         )
 
-                        ForEach(DemoData.jobSeekerRequests) { request in
+                        if requests.isEmpty {
                             SimpleProfileCard(
-                                title: "\(request.title) • \(request.status)",
-                                details: request.slots.joined(separator: "\n")
+                                title: "No requests yet",
+                                details: "Once an employer likes your video profile, their interview request will show up here."
                             )
+                        } else {
+                            ForEach(requests) { request in
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text(request.employerName)
+                                        .font(.headline)
+                                        .foregroundStyle(PassportTheme.textPrimary)
+
+                                    Text("Status: \(request.status)")
+                                        .foregroundStyle(PassportTheme.textSecondary)
+
+                                    let slots = openSlotsByEmployer[request.employerProfileID] ?? []
+                                    if slots.isEmpty {
+                                        Text("No open slots published right now.")
+                                            .font(.footnote)
+                                            .foregroundStyle(PassportTheme.textSecondary)
+                                    } else {
+                                        VStack(spacing: 10) {
+                                            ForEach(slots) { slot in
+                                                Button {
+                                                    onSelectSlot(request.id, slot.id)
+                                                } label: {
+                                                    Text(slotLabel(slot))
+                                                        .font(.subheadline.weight(.semibold))
+                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                                        .padding(.horizontal, 14)
+                                                        .padding(.vertical, 12)
+                                                        .background(PassportTheme.card)
+                                                        .foregroundStyle(PassportTheme.textPrimary)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(18)
+                                .background(PassportTheme.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            }
                         }
                     }
                     .padding(20)
@@ -61,8 +128,13 @@ struct JobSeekerHomeView: View {
         }
         .tint(PassportTheme.accent)
         .sheet(isPresented: $isEditingProfile) {
-            CandidateProfileEditor(profile: $profile)
-                .presentationDetents([.large])
+            CandidateProfileEditor(
+                profile: $workingProfile,
+                onSave: {
+                    onSaveProfile(workingProfile)
+                }
+            )
+            .presentationDetents([.large])
         }
         .fileImporter(
             isPresented: $showingResumeImporter,
@@ -77,6 +149,9 @@ struct JobSeekerHomeView: View {
             Task {
                 await handleVideoSelection(item: newItem)
             }
+        }
+        .onChange(of: profile) { _, newValue in
+            workingProfile = newValue
         }
         .alert("Import issue", isPresented: Binding(
             get: { importErrorMessage != nil },
@@ -132,22 +207,22 @@ struct JobSeekerHomeView: View {
 
     private var profileCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(profile.fullName.isEmpty ? fullName : profile.fullName)
+            Text(workingProfile.fullName.isEmpty ? "Candidate" : workingProfile.fullName)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundStyle(PassportTheme.textPrimary)
 
-            Text(profile.headline)
+            Text(workingProfile.headline)
                 .foregroundStyle(PassportTheme.textPrimary)
 
             Divider().overlay(PassportTheme.border)
 
-            Text("School: \(profile.school)")
+            Text("School: \(workingProfile.school)")
                 .foregroundStyle(PassportTheme.textSecondary)
-            Text("Employers: \(profile.employers.joined(separator: ", "))")
+            Text("Employers: \(workingProfile.employers.joined(separator: ", "))")
                 .foregroundStyle(PassportTheme.textSecondary)
-            Text("Referral badge: \(profile.referred ? "Yes" : "No")")
+            Text("Referral badge: \(workingProfile.referred ? "Yes" : "No")")
                 .foregroundStyle(PassportTheme.textSecondary)
-            Text("Job function: \(profile.jobFunction.rawValue)")
+            Text("Job function: \(workingProfile.jobFunction.title)")
                 .foregroundStyle(PassportTheme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,15 +273,15 @@ struct JobSeekerHomeView: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
 
-            if let resumeFileName = profile.resumeFileName {
+            if let resumeFileName = workingProfile.resumeFileName {
                 SimpleProfileCard(
                     title: "Resume ready",
-                    details: "\(resumeFileName)\nImported \(formattedImportDate(profile.resumeImportedAt))"
+                    details: "\(resumeFileName)\nImported \(formattedImportDate(workingProfile.resumeImportedAt))"
                 )
             }
 
-            if let videoFileName = profile.introVideoFileName {
-                let duration = formattedDuration(profile.introVideoDuration ?? 0)
+            if let videoFileName = workingProfile.introVideoFileName {
+                let duration = formattedDuration(workingProfile.introVideoDuration ?? 0)
                 SimpleProfileCard(
                     title: "Intro video ready",
                     details: "\(videoFileName)\nDuration \(duration)"
@@ -225,12 +300,8 @@ struct JobSeekerHomeView: View {
 
     private var supportedResumeTypes: [UTType] {
         var types: [UTType] = [.pdf, .plainText, .rtf]
-        if let docx = UTType(filenameExtension: "docx") {
-            types.append(docx)
-        }
-        if let doc = UTType(filenameExtension: "doc") {
-            types.append(doc)
-        }
+        if let docx = UTType(filenameExtension: "docx") { types.append(docx) }
+        if let doc = UTType(filenameExtension: "doc") { types.append(doc) }
         return types
     }
 
@@ -238,15 +309,10 @@ struct JobSeekerHomeView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessed {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            profile.resumeFileName = url.lastPathComponent
-            profile.resumeImportedAt = Date()
+            guard let copiedURL = copyImportedFileToTemporaryDirectory(from: url) else { return }
+            workingProfile.resumeFileName = copiedURL.lastPathComponent
+            workingProfile.resumeImportedAt = Date()
+            onUploadResume(copiedURL)
         case .failure(let error):
             importErrorMessage = error.localizedDescription
         }
@@ -255,7 +321,7 @@ struct JobSeekerHomeView: View {
     @MainActor
     private func handleVideoSelection(item: PhotosPickerItem) async {
         do {
-            guard let movie = try await item.loadTransferable(type: SelectedMovie.self) else {
+            guard let movie = try await item.loadTransferable(type: JobSeekerSelectedMovie.self) else {
                 importErrorMessage = "The selected video could not be loaded."
                 return
             }
@@ -269,8 +335,9 @@ struct JobSeekerHomeView: View {
                 return
             }
 
-            profile.introVideoFileName = movie.fileName
-            profile.introVideoDuration = duration
+            workingProfile.introVideoFileName = movie.fileName
+            workingProfile.introVideoDuration = duration
+            onUploadVideo(movie.url, duration)
         } catch {
             importErrorMessage = error.localizedDescription
         }
@@ -290,13 +357,45 @@ struct JobSeekerHomeView: View {
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }
+
+    private func slotLabel(_ slot: AvailabilitySlotRecord) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        let endFormatter = DateFormatter()
+        endFormatter.timeStyle = .short
+        endFormatter.dateStyle = .none
+        return "\(formatter.string(from: slot.startAt)) - \(endFormatter.string(from: slot.endAt))"
+    }
+
+    private func copyImportedFileToTemporaryDirectory(from url: URL) -> URL? {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let destination = URL(filePath: NSTemporaryDirectory()).appending(path: url.lastPathComponent)
+
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: url, to: destination)
+            return destination
+        } catch {
+            importErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
 }
 
 private struct SimpleProfileCard: View {
     let title: String
     let details: String
 
-    private var contentView: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.headline)
@@ -314,14 +413,11 @@ private struct SimpleProfileCard: View {
                 .stroke(PassportTheme.border, lineWidth: 1)
         )
     }
-
-    var body: some View {
-        contentView
-    }
 }
 
 private struct CandidateProfileEditor: View {
-    @Binding var profile: CandidateProfile
+    @Binding var profile: CandidateProfileDraft
+    let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var employersText = ""
 
@@ -329,17 +425,15 @@ private struct CandidateProfileEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Group {
-                        profileField(title: "Full name", text: $profile.fullName)
-                        profileField(title: "Headline", text: $profile.headline, axis: .vertical)
-                        profileField(title: "School", text: $profile.school)
-                        profileField(
-                            title: "Previous employers",
-                            text: $employersText,
-                            axis: .vertical,
-                            placeholder: "Figma, Notion, Stripe"
-                        )
-                    }
+                    profileField(title: "Full name", text: $profile.fullName)
+                    profileField(title: "Headline", text: $profile.headline, axis: .vertical)
+                    profileField(title: "School", text: $profile.school)
+                    profileField(
+                        title: "Previous employers",
+                        text: $employersText,
+                        axis: .vertical,
+                        placeholder: "Figma, Notion, Stripe"
+                    )
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Job function")
@@ -348,7 +442,7 @@ private struct CandidateProfileEditor: View {
 
                         Picker("Job function", selection: $profile.jobFunction) {
                             ForEach(JobFunctionOption.allCases) { option in
-                                Text(option.rawValue).tag(option)
+                                Text(option.title).tag(option)
                             }
                         }
                         .pickerStyle(.wheel)
@@ -357,13 +451,6 @@ private struct CandidateProfileEditor: View {
                     .padding(18)
                     .background(PassportTheme.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-
-                    Toggle("Referral badge", isOn: $profile.referred)
-                        .toggleStyle(SwitchToggleStyle(tint: PassportTheme.accent))
-                        .padding(18)
-                        .background(PassportTheme.surface)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
                 .padding(20)
             }
@@ -384,6 +471,7 @@ private struct CandidateProfileEditor: View {
                             .split(separator: ",")
                             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                             .filter { !$0.isEmpty }
+                        onSave()
                         dismiss()
                     }
                     .foregroundStyle(PassportTheme.accent)
@@ -416,7 +504,7 @@ private struct CandidateProfileEditor: View {
     }
 }
 
-private struct SelectedMovie: Transferable {
+private struct JobSeekerSelectedMovie: Transferable {
     let url: URL
     let fileName: String
 
@@ -430,14 +518,28 @@ private struct SelectedMovie: Transferable {
             }
 
             try FileManager.default.copyItem(at: received.file, to: copiedURL)
-            return SelectedMovie(url: copiedURL, fileName: received.file.lastPathComponent)
+            return JobSeekerSelectedMovie(url: copiedURL, fileName: received.file.lastPathComponent)
         }
     }
 }
 
 #Preview {
     JobSeekerHomeView(
-        fullName: "Maya Chen",
+        profile: DemoData.defaultCandidateProfile,
+        requests: [
+            JobSeekerRequestItem(
+                id: "req-1",
+                employerName: "Acme",
+                status: "pending_candidate_selection",
+                employerProfileID: "employer-1",
+                availabilitySlotID: nil
+            )
+        ],
+        openSlotsByEmployer: [:],
+        onSaveProfile: { _ in },
+        onUploadResume: { _ in },
+        onUploadVideo: { _, _ in },
+        onSelectSlot: { _, _ in },
         onShowNotifications: {},
         onSignOut: {}
     )

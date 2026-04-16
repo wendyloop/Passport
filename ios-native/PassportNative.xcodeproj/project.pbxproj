@@ -15,6 +15,9 @@
 		A10000010000000000000006 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* Models.swift */; };
 		A10000010000000000000007 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* Config.swift */; };
 		A10000010000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* Assets.xcassets */; };
+		A10000010000000000000009 /* SampleVideos in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009 /* SampleVideos */; };
+		A10000010000000000000011 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011 /* SupabaseService.swift */; };
+		A10000010000000000000012 /* AppSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* AppSessionStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +30,9 @@
 		A20000010000000000000006 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		A20000010000000000000007 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		A20000010000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000010000000000000009 /* SampleVideos */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SampleVideos; sourceTree = "<group>"; };
+		A20000010000000000000011 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
+		A20000010000000000000012 /* AppSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSessionStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +65,9 @@
 				A20000010000000000000006 /* Models.swift */,
 				A20000010000000000000007 /* Config.swift */,
 				A20000010000000000000008 /* Assets.xcassets */,
+				A20000010000000000000009 /* SampleVideos */,
+				A20000010000000000000011 /* SupabaseService.swift */,
+				A20000010000000000000012 /* AppSessionStore.swift */,
 			);
 			path = PassportNative;
 			sourceTree = "<group>";
@@ -130,6 +139,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000008 /* Assets.xcassets in Resources */,
+				A10000010000000000000009 /* SampleVideos in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +151,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000007 /* Config.swift in Sources */,
+				A10000010000000000000011 /* SupabaseService.swift in Sources */,
+				A10000010000000000000012 /* AppSessionStore.swift in Sources */,
 				A10000010000000000000003 /* EmployerHomeView.swift in Sources */,
 				A10000010000000000000004 /* JobSeekerHomeView.swift in Sources */,
 				A10000010000000000000006 /* Models.swift in Sources */,
@@ -165,18 +177,12 @@
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 42AKPHSLM9;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PassportNative;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
-				INFOPLIST_KEY_SUPABASE_ANON_KEY = "";
-				INFOPLIST_KEY_SUPABASE_URL = "";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PassportNative/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -186,6 +192,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.passport.nativeios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				SUPABASE_ANON_KEY = "";
+				SUPABASE_REDIRECT_SCHEME = passportnative;
+				SUPABASE_URL = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -206,18 +215,12 @@
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 42AKPHSLM9;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PassportNative;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
-				INFOPLIST_KEY_SUPABASE_ANON_KEY = "";
-				INFOPLIST_KEY_SUPABASE_URL = "";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PassportNative/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -227,6 +230,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.passport.nativeios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				SUPABASE_ANON_KEY = "";
+				SUPABASE_REDIRECT_SCHEME = passportnative;
+				SUPABASE_URL = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

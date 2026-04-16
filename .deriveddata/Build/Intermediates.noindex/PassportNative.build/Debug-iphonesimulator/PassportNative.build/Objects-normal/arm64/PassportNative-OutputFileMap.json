@@ -1,0 +1,109 @@
+{
+  "" : {
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNative-primary.dia",
+    "emit-module-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNative-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNative-primary-emit-module.dia",
+    "pch" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNative-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNative-primary.swiftdeps"
+  },
+  "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/AppSessionStore.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/AppSessionStore~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/Config.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Config~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/EmployerHomeView.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/EmployerHomeView~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/JobSeekerHomeView.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/JobSeekerHomeView~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/Models.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Models~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/NativeRootView.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/NativeRootView~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/PassportNativeApp.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/PassportNativeApp~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/SupabaseService.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/SupabaseService~partial.swiftmodule"
+  },
+  "/Users/wendy/Dev/Passport/ios-native/PassportNative/Theme.swift" : {
+    "const-values" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.swiftconstvalues",
+    "dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.d",
+    "diagnostics" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.dia",
+    "index-unit-output-path" : "/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.o",
+    "swift-dependencies" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme.swiftdeps",
+    "swiftmodule" : "/Users/wendy/Dev/Passport/.deriveddata/Build/Intermediates.noindex/PassportNative.build/Debug-iphonesimulator/PassportNative.build/Objects-normal/arm64/Theme~partial.swiftmodule"
+  }
+}
