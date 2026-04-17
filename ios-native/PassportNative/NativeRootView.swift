@@ -7,9 +7,11 @@ import UniformTypeIdentifiers
 struct NativeRootView: View {
     @StateObject private var store = AppSessionStore()
 
+    @State private var selectedPortal: AuthPortal = .employee
     @State private var authMode: AuthMode = .signIn
     @State private var email = ""
     @State private var password = ""
+    @State private var isPasswordVisible = false
 
     @State private var onboardingRole: UserRole = .jobSeeker
     @State private var fullName = ""
@@ -28,6 +30,8 @@ struct NativeRootView: View {
     @State private var selectedVideoURL: URL?
     @State private var selectedVideoDuration: Double?
     @State private var showingNotifications = false
+    @FocusState private var focusedAuthField: AuthField?
+    @FocusState private var focusedOnboardingField: OnboardingField?
 
     var body: some View {
         NavigationStack {
@@ -38,10 +42,24 @@ struct NativeRootView: View {
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
+                .onTapGesture {
+                    focusedAuthField = nil
+                    focusedOnboardingField = nil
+                }
 
                 content
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedAuthField = nil
+                        focusedOnboardingField = nil
+                    }
+                }
+            }
             .sheet(isPresented: $showingNotifications) {
                 NotificationsSheet()
                     .environmentObject(store)
@@ -93,103 +111,60 @@ struct NativeRootView: View {
     }
 
     private var authView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Passport")
-                    .font(.system(size: 36, weight: .black, design: .rounded))
-                    .foregroundStyle(PassportTheme.textPrimary)
-
-                Text("Short-form hiring for iPhone. Job seekers upload a concise intro video. Employers scroll, like, and schedule directly.")
-                    .font(.headline)
-                    .foregroundStyle(PassportTheme.textSecondary)
-
-                VStack(spacing: 14) {
-                    Picker("Mode", selection: $authMode) {
-                        ForEach(AuthMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    TextField("Email", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .textFieldStyle(PassportTextFieldStyle())
-
-                    SecureField("Password", text: $password)
-                        .textFieldStyle(PassportTextFieldStyle())
+        GeometryReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    authHeader
+                    portalSelector
+                    authCard
                 }
-                .padding(20)
-                .background(PassportTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(PassportTheme.border, lineWidth: 1)
-                )
-
-                Button(action: handleEmailAuth) {
-                    Text(authMode == .signIn ? "Sign In" : "Create Account")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(PassportTheme.accent)
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .disabled(store.isBusy)
-
-                Button(action: { Task { await store.signInWithGoogle() } }) {
-                    Text("Continue With Google")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(PassportTheme.surface)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(PassportTheme.border, lineWidth: 1)
-                        )
-                }
-                .disabled(store.isBusy)
-
-                configCard
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
+                .frame(minHeight: max(proxy.size.height, 0), alignment: .top)
             }
-            .padding(24)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
     private var onboardingView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Finish Your Profile")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                Text("\(selectedPortal.portalTitle) Setup")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(PassportTheme.textPrimary)
 
-                Text("Choose a role, fill in your public profile, and upload the assets needed for the hiring flow.")
+                Text(selectedPortal.onboardingSubtitle)
                     .foregroundStyle(PassportTheme.textSecondary)
 
                 VStack(spacing: 16) {
-                    Picker("Role", selection: $onboardingRole) {
-                        ForEach(UserRole.allCases) { role in
-                            Text(role.title).tag(role)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    onboardingPortalCard
 
                     TextField("Full name", text: $fullName)
+                        .focused($focusedOnboardingField, equals: .fullName)
+                        .submitLabel(.next)
+                        .onSubmit {
+                            focusedOnboardingField = .headline
+                        }
                         .textFieldStyle(PassportTextFieldStyle())
 
                     TextField("Headline", text: $headline, axis: .vertical)
                         .lineLimit(2...4)
+                        .focused($focusedOnboardingField, equals: .headline)
                         .textFieldStyle(PassportTextFieldStyle())
 
                     if onboardingRole == .jobSeeker {
                         TextField("School", text: $schoolName)
+                            .focused($focusedOnboardingField, equals: .school)
+                            .submitLabel(.next)
+                            .onSubmit {
+                                focusedOnboardingField = .employers
+                            }
                             .textFieldStyle(PassportTextFieldStyle())
 
                         TextField("Previous employers, comma separated", text: $employersText, axis: .vertical)
                             .lineLimit(2...4)
+                            .focused($focusedOnboardingField, equals: .employers)
                             .textFieldStyle(PassportTextFieldStyle())
 
                         Picker("Job function", selection: $selectedJobFunction) {
@@ -227,13 +202,24 @@ struct NativeRootView: View {
                         }
                     } else {
                         TextField("Company name", text: $companyName)
+                            .focused($focusedOnboardingField, equals: .companyName)
+                            .submitLabel(.next)
+                            .onSubmit {
+                                focusedOnboardingField = .companyDomain
+                            }
                             .textFieldStyle(PassportTextFieldStyle())
 
                         TextField("Company domain", text: $companyDomain)
                             .textInputAutocapitalization(.never)
+                            .focused($focusedOnboardingField, equals: .companyDomain)
+                            .submitLabel(.next)
+                            .onSubmit {
+                                focusedOnboardingField = .positionTitle
+                            }
                             .textFieldStyle(PassportTextFieldStyle())
 
                         TextField("Position title", text: $positionTitle)
+                            .focused($focusedOnboardingField, equals: .positionTitle)
                             .textFieldStyle(PassportTextFieldStyle())
                     }
                 }
@@ -257,8 +243,10 @@ struct NativeRootView: View {
                 .disabled(store.isBusy)
             }
             .padding(24)
+            .padding(.bottom, 12)
             .onAppear(perform: populateOnboardingDefaultsIfNeeded)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     @ViewBuilder
@@ -321,7 +309,182 @@ struct NativeRootView: View {
         )
     }
 
+    private var authHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Passport")
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Text(selectedPortal.heroTitle)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(PassportTheme.textPrimary)
+        }
+    }
+
+    private var portalSelector: some View {
+        HStack(spacing: 10) {
+            ForEach(AuthPortal.allCases) { portal in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedPortal = portal
+                        onboardingRole = portal.role
+                    }
+                } label: {
+                    Text(portal.portalTitle)
+                        .font(.subheadline.weight(.bold))
+                    .foregroundStyle(selectedPortal == portal ? Color.black : PassportTheme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 16)
+                    .background(selectedPortal == portal ? PassportTheme.accent : PassportTheme.surface.opacity(0.9))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(selectedPortal == portal ? PassportTheme.accentSoft : PassportTheme.border, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var authCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Text(selectedPortal.portalTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(PassportTheme.textPrimary)
+
+                Spacer()
+
+                Picker("Mode", selection: $authMode) {
+                    ForEach(AuthMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 160)
+            }
+
+            VStack(spacing: 12) {
+                TextField("Email", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textContentType(.emailAddress)
+                    .focused($focusedAuthField, equals: .email)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedAuthField = .password
+                    }
+                    .textFieldStyle(PassportTextFieldStyle())
+
+                passwordField
+            }
+
+            Button(action: handleEmailAuth) {
+                Text(authMode == .signIn ? "Continue In \(selectedPortal.shortPortalName)" : "Create \(selectedPortal.shortPortalName) Account")
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(PassportTheme.accent)
+                    .foregroundStyle(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .disabled(store.isBusy)
+
+//            Button(action: {
+//                onboardingRole = selectedPortal.role
+//                focusedAuthField = nil
+//                Task { await store.signInWithGoogle() }
+//            }) {
+//                Text("Continue With Google")
+//                    .fontWeight(.semibold)
+//                    .frame(maxWidth: .infinity)
+//                    .padding(.vertical, 15)
+//                    .background(PassportTheme.surface)
+//                    .foregroundStyle(PassportTheme.textPrimary)
+//                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+//                    .overlay(
+//                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+//                            .stroke(PassportTheme.border, lineWidth: 1)
+//                    )
+//            }
+//            .disabled(store.isBusy)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(PassportTheme.surface.opacity(0.96))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(PassportTheme.border.opacity(0.95), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.22), radius: 26, y: 12)
+    }
+
+    private var passwordField: some View {
+        HStack(spacing: 12) {
+            Group {
+                if isPasswordVisible {
+                    TextField("Password", text: $password)
+                        .focused($focusedAuthField, equals: .password)
+                } else {
+                    SecureField("Password", text: $password)
+                        .focused($focusedAuthField, equals: .password)
+                }
+            }
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.asciiCapable)
+            .submitLabel(.go)
+            .onSubmit(handleEmailAuth)
+
+            Button {
+                isPasswordVisible.toggle()
+                focusedAuthField = .password
+            } label: {
+                Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(PassportTheme.textSecondary)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(PassportTheme.card)
+        .foregroundStyle(PassportTheme.textPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var onboardingPortalCard: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Circle()
+                .fill(PassportTheme.accent)
+                .frame(width: 12, height: 12)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(selectedPortal.portalTitle)
+                    .font(.headline)
+                    .foregroundStyle(PassportTheme.textPrimary)
+
+                Text(selectedPortal.onboardingSubtitle)
+                    .font(.footnote)
+                    .foregroundStyle(PassportTheme.textSecondary)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(PassportTheme.card.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
     private func handleEmailAuth() {
+        onboardingRole = selectedPortal.role
+        focusedAuthField = nil
         Task {
             if authMode == .signIn {
                 await store.signIn(email: email, password: password)
@@ -361,7 +524,12 @@ struct NativeRootView: View {
         if headline.isEmpty { headline = store.profile?.headline ?? "" }
         if schoolName.isEmpty { schoolName = store.jobSeekerProfile?.schoolName ?? "" }
         if employersText.isEmpty { employersText = store.jobSeekerEmployers.map(\.employerName).joined(separator: ", ") }
-        if let role = store.role { onboardingRole = role }
+        if let role = store.role {
+            onboardingRole = role
+            selectedPortal = role == .employer ? .employer : .employee
+        } else {
+            onboardingRole = selectedPortal.role
+        }
         if let jobFunction = store.jobSeekerProfile?.jobFunction { selectedJobFunction = jobFunction }
         if companyName.isEmpty { companyName = store.employerProfile?.companyName ?? "" }
         if companyDomain.isEmpty { companyDomain = store.employerProfile?.companyDomain ?? "" }
@@ -479,6 +647,77 @@ private enum AuthMode: String, CaseIterable, Identifiable {
         case .signUp: return "Create"
         }
     }
+}
+
+private enum AuthPortal: String, CaseIterable, Identifiable {
+    case employee
+    case employer
+
+    var id: String { rawValue }
+
+    var role: UserRole {
+        switch self {
+        case .employee: return .jobSeeker
+        case .employer: return .employer
+        }
+    }
+
+    var portalTitle: String {
+        switch self {
+        case .employee: return "Employee Portal"
+        case .employer: return "Employer Portal"
+        }
+    }
+
+    var shortPortalName: String {
+        switch self {
+        case .employee: return "Employee"
+        case .employer: return "Employer"
+        }
+    }
+
+    var heroTitle: String {
+        switch self {
+        case .employee: return "Employee Portal"
+        case .employer: return "Employer Portal"
+        }
+    }
+
+    var onboardingSubtitle: String {
+        switch self {
+        case .employee: return "Complete your candidate profile and add the video employers will see in the feed."
+        case .employer: return "Set up your hiring profile and add the company details candidates will see."
+        }
+    }
+
+    var signInHint: String {
+        switch self {
+        case .employee: return "Existing candidate accounts will open into the job seeker experience."
+        case .employer: return "Existing employer accounts will open into the hiring dashboard."
+        }
+    }
+
+    var signUpHint: String {
+        switch self {
+        case .employee: return ""
+        case .employer: return ""
+        }
+    }
+}
+
+private enum AuthField: Hashable {
+    case email
+    case password
+}
+
+private enum OnboardingField: Hashable {
+    case fullName
+    case headline
+    case school
+    case employers
+    case companyName
+    case companyDomain
+    case positionTitle
 }
 
 private struct RootSelectedMovie {

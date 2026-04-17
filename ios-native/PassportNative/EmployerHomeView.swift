@@ -21,6 +21,7 @@ struct EmployerHomeView: View {
     @State private var selectedEmployer: String?
     @State private var selectedJobFunction: String?
     @State private var referralOnly = false
+    @State private var currentFeedCandidateID: String?
     @State private var startAt = Date()
     @State private var endAt = Date().addingTimeInterval(1800)
     @State private var referralEmail = ""
@@ -68,7 +69,8 @@ struct EmployerHomeView: View {
     }
 
     private func feedView(proxy: GeometryProxy) -> some View {
-        let pageSize = proxy.size
+        let pageWidth = proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing
+        let pageHeight = proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
 
         return ZStack(alignment: .top) {
             if filteredCandidates.isEmpty {
@@ -92,10 +94,14 @@ struct EmployerHomeView: View {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredCandidates) { candidate in
-                            EmployerFeedCard(candidate: candidate) {
+                            EmployerFeedCard(
+                                candidate: candidate,
+                                isActive: currentFeedCandidateID == candidate.id
+                            ) {
                                 onLikeCandidate(candidate.id)
                             }
-                            .frame(width: pageSize.width, height: pageSize.height)
+                            .frame(width: pageWidth, height: pageHeight)
+                            .clipped()
                             .id(candidate.id)
                         }
                     }
@@ -103,13 +109,32 @@ struct EmployerHomeView: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $currentFeedCandidateID)
+                .frame(width: pageWidth, height: pageHeight)
             }
 
             feedTopBar
                 .padding(.horizontal, 10)
-                .padding(.top, 10)
+                .padding(.top, max(proxy.safeAreaInsets.top + 18, 34))
         }
         .ignoresSafeArea()
+        .onAppear {
+            if currentFeedCandidateID == nil {
+                currentFeedCandidateID = filteredCandidates.first?.id
+            }
+        }
+        .onChange(of: filteredCandidates.map(\.id)) { _, ids in
+            guard let first = ids.first else {
+                currentFeedCandidateID = nil
+                return
+            }
+
+            if let currentFeedCandidateID, ids.contains(currentFeedCandidateID) {
+                return
+            }
+
+            self.currentFeedCandidateID = first
+        }
     }
 
     private var likedView: some View {
@@ -397,11 +422,12 @@ private enum EmployerTab: String, CaseIterable {
 
 private struct EmployerFeedCard: View {
     let candidate: Candidate
+    let isActive: Bool
     let onLike: () -> Void
 
     var body: some View {
         ZStack {
-            TikTokVideoSurface(candidate: candidate)
+            TikTokVideoSurface(candidate: candidate, isActive: isActive)
 
             LinearGradient(
                 colors: [
@@ -465,7 +491,7 @@ private struct EmployerFeedCard: View {
                     .padding(.bottom, 8)
                 }
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 72)
             }
         }
         .contentShape(Rectangle())
@@ -521,11 +547,12 @@ private struct ActionCircle: View {
 
 private struct TikTokVideoSurface: View {
     let candidate: Candidate
+    let isActive: Bool
 
     var body: some View {
         ZStack {
             if let url = DemoVideoCatalog.url(for: candidate.demoVideoName, localPath: candidate.localVideoPath, remoteURL: candidate.remoteVideoURL) {
-                LoopingVideoSurface(url: url)
+                LoopingVideoSurface(url: url, isActive: isActive)
                     .ignoresSafeArea()
             } else {
                 LinearGradient(
@@ -582,13 +609,17 @@ private enum DemoVideoCatalog {
 
 private struct LoopingVideoSurface: View {
     let url: URL
+    let isActive: Bool
     @StateObject private var playerStore = LoopingPlayerStore()
 
     var body: some View {
         LoopingPlayerLayerView(player: playerStore.player)
             .onAppear {
                 playerStore.configure(url: url)
-                playerStore.play()
+                playerStore.setPlaying(isActive)
+            }
+            .onChange(of: isActive) { _, newValue in
+                playerStore.setPlaying(newValue)
             }
             .onDisappear {
                 playerStore.pause()
@@ -596,13 +627,14 @@ private struct LoopingVideoSurface: View {
     }
 }
 
-private final class LoopingPlayerStore: ObservableObject {
+    private final class LoopingPlayerStore: ObservableObject {
     let player = AVQueuePlayer()
     private var looper: AVPlayerLooper?
     private var currentURL: URL?
 
     init() {
-        player.isMuted = true
+        player.isMuted = false
+        configureAudioSession()
         player.actionAtItemEnd = .none
     }
 
@@ -617,6 +649,19 @@ private final class LoopingPlayerStore: ObservableObject {
 
     func play() { player.play() }
     func pause() { player.pause() }
+    func setPlaying(_ isPlaying: Bool) {
+        if isPlaying {
+            play()
+        } else {
+            pause()
+        }
+    }
+
+    private func configureAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(.playback, mode: .moviePlayback, options: [])
+        try? audioSession.setActive(true)
+    }
 }
 
 private struct LoopingPlayerLayerView: UIViewRepresentable {

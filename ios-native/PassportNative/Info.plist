@@ -14,6 +14,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleDisplayName</key>
 	<string>PassportNative</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -29,12 +33,16 @@
 	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.business</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Passport uses your photo library so job seekers can select a short intro video.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Passport may save processed media for your profile experience.</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SUPABASE_PROJECT_REF</key>
+	<string>$(SUPABASE_PROJECT_REF)</string>
 	<key>SUPABASE_REDIRECT_SCHEME</key>
 	<string>$(SUPABASE_REDIRECT_SCHEME)</string>
 	<key>SUPABASE_URL</key>

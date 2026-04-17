@@ -287,6 +287,18 @@ struct JobSeekerHomeView: View {
                     details: "\(videoFileName)\nDuration \(duration)"
                 )
             }
+
+            if let videoURL = workingProfile.introVideoURL, !videoURL.isEmpty {
+                SimpleProfileCard(
+                    title: "Video uploaded",
+                    details: shortDisplayURL(videoURL)
+                )
+            } else if workingProfile.introVideoFileName != nil {
+                SimpleProfileCard(
+                    title: "Upload pending",
+                    details: "The video has been selected locally, but no Supabase URL has been saved yet."
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -356,6 +368,15 @@ struct JobSeekerHomeView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func shortDisplayURL(_ urlString: String) -> String {
+        guard let url = URL(string: urlString), let host = url.host else {
+            return urlString
+        }
+
+        let path = url.path.isEmpty ? "/" : url.path
+        return "\(host)\n\(path)"
     }
 
     private func slotLabel(_ slot: AvailabilitySlotRecord) -> String {

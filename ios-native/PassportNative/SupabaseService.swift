@@ -48,7 +48,10 @@ final class SupabaseService {
     }
 
     var isConfigured: Bool {
-        config.supabaseURL.hasPrefix("http") && !config.supabaseAnonKey.isEmpty
+        config.supabaseURL.hasPrefix("http")
+            && !config.supabaseAnonKey.isEmpty
+            && !config.isPlaceholderURL
+            && !config.isPlaceholderKey
     }
 
     func signUp(email: String, password: String) async throws -> AuthSession {
@@ -751,8 +754,12 @@ final class SupabaseService {
     }
 
     private func validateConfiguration() throws {
-        guard isConfigured, URL(string: config.supabaseURL) != nil else {
-            throw SupabaseServiceError.invalidConfiguration
+        guard !config.isPlaceholderURL, !config.isPlaceholderKey else {
+            throw SupabaseServiceError.apiError("Supabase config is still using placeholder values. \(config.debugSummary)")
+        }
+
+        guard isConfigured, let url = URL(string: config.supabaseURL), url.host != nil else {
+            throw SupabaseServiceError.apiError("Supabase config is invalid. \(config.debugSummary)")
         }
     }
 

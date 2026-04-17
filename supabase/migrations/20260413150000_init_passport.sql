@@ -635,6 +635,7 @@ left join lateral (
 ) cv on true
 where p.role = 'job_seeker'
   and p.onboarding_complete = true
+  and cv.video_url is not null
 group by
   p.id,
   p.full_name,
