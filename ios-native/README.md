@@ -1,6 +1,6 @@
-# Passport Native iOS
+# JobTok Native iOS
 
-This folder contains a standalone SwiftUI iOS app for Passport.
+This folder contains a standalone SwiftUI iOS app for JobTok.
 
 It is intentionally separate from the Expo app in `frontend/` so you can:
 
@@ -12,9 +12,9 @@ It is intentionally separate from the Expo app in `frontend/` so you can:
 
 Open:
 
-- `ios-native/PassportNative.xcodeproj`
+- `ios-native/JobTok.xcodeproj`
 
-Then choose the `PassportNative` scheme and run it on an iPhone simulator.
+Then choose the `JobTok` scheme and run it on an iPhone simulator.
 
 ## Current state
 
@@ -31,7 +31,7 @@ Then choose the `PassportNative` scheme and run it on an iPhone simulator.
 
 ## Native app setup
 
-Set these build settings on the `PassportNative` target:
+Set these build settings on the `JobTok` target:
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
@@ -39,11 +39,11 @@ Set these build settings on the `PassportNative` target:
 
 Default redirect scheme in the project is:
 
-- `passportnative`
+- `jobtok`
 
 In Supabase Auth URL configuration, add:
 
-- `passportnative://auth-callback`
+- `jobtok://auth-callback`
 
 For Google auth, also configure the Google provider in Supabase and allow the same redirect path.
 

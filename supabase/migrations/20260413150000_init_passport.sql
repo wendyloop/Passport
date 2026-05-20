@@ -864,63 +864,44 @@ to authenticated
 using (auth.uid() = profile_id)
 with check (auth.uid() = profile_id);
 
-insert into storage.buckets (id, name, public)
-values
-  ('avatars', 'avatars', true),
-  ('videos', 'videos', true),
-  ('resumes', 'resumes', false)
-on conflict (id) do nothing;
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'storage'
+      and table_name = 'buckets'
+  ) and exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'storage'
+      and table_name = 'objects'
+  ) then
+    insert into storage.buckets (id, name, public)
+    values
+      ('avatars', 'avatars', true),
+      ('videos', 'videos', true),
+      ('resumes', 'resumes', false)
+    on conflict (id) do nothing;
 
-drop policy if exists "Public read for avatars" on storage.objects;
-create policy "Public read for avatars"
-on storage.objects
-for select
-to authenticated
-using (bucket_id = 'avatars');
+    execute 'drop policy if exists "Public read for avatars" on storage.objects';
+    execute 'create policy "Public read for avatars" on storage.objects for select to authenticated using (bucket_id = ''avatars'')';
 
-drop policy if exists "Public read for videos" on storage.objects;
-create policy "Public read for videos"
-on storage.objects
-for select
-to authenticated
-using (bucket_id = 'videos');
+    execute 'drop policy if exists "Public read for videos" on storage.objects';
+    execute 'create policy "Public read for videos" on storage.objects for select to authenticated using (bucket_id = ''videos'')';
 
-drop policy if exists "Private read for resumes by owner" on storage.objects;
-create policy "Private read for resumes by owner"
-on storage.objects
-for select
-to authenticated
-using (
-  bucket_id = 'resumes'
-  and owner = auth.uid()
-);
+    execute 'drop policy if exists "Private read for resumes by owner" on storage.objects';
+    execute 'create policy "Private read for resumes by owner" on storage.objects for select to authenticated using (bucket_id = ''resumes'' and owner = auth.uid())';
 
-drop policy if exists "Avatar uploads scoped to owner folder" on storage.objects;
-create policy "Avatar uploads scoped to owner folder"
-on storage.objects
-for insert
-to authenticated
-with check (
-  bucket_id = 'avatars'
-  and (storage.foldername(name))[1] = auth.uid()::text
-);
+    execute 'drop policy if exists "Avatar uploads scoped to owner folder" on storage.objects';
+    execute 'create policy "Avatar uploads scoped to owner folder" on storage.objects for insert to authenticated with check (bucket_id = ''avatars'' and (storage.foldername(name))[1] = auth.uid()::text)';
 
-drop policy if exists "Video uploads scoped to owner folder" on storage.objects;
-create policy "Video uploads scoped to owner folder"
-on storage.objects
-for insert
-to authenticated
-with check (
-  bucket_id = 'videos'
-  and (storage.foldername(name))[1] = auth.uid()::text
-);
+    execute 'drop policy if exists "Video uploads scoped to owner folder" on storage.objects';
+    execute 'create policy "Video uploads scoped to owner folder" on storage.objects for insert to authenticated with check (bucket_id = ''videos'' and (storage.foldername(name))[1] = auth.uid()::text)';
 
-drop policy if exists "Resume uploads scoped to owner folder" on storage.objects;
-create policy "Resume uploads scoped to owner folder"
-on storage.objects
-for insert
-to authenticated
-with check (
-  bucket_id = 'resumes'
-  and (storage.foldername(name))[1] = auth.uid()::text
-);
+    execute 'drop policy if exists "Resume uploads scoped to owner folder" on storage.objects';
+    execute 'create policy "Resume uploads scoped to owner folder" on storage.objects for insert to authenticated with check (bucket_id = ''resumes'' and (storage.foldername(name))[1] = auth.uid()::text)';
+  else
+    raise notice 'storage schema not present; skipping storage bucket and policy setup';
+  end if;
+end $$;
