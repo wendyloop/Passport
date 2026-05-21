@@ -5,15 +5,26 @@ import UIKit
 struct RemoteVideoSurface: View {
     let urlString: String?
     var isActive: Bool = true
+    var videoGravity: AVLayerVideoGravity = .resizeAspectFill
+    var autoPlay: Bool = true
+    var allowsTapToTogglePlayback: Bool = false
+    var showsPlayOverlayWhenPaused: Bool = false
 
     var body: some View {
         if let urlString, let url = URL(string: urlString) {
-            LoopingVideoSurface(url: url, isActive: isActive)
+            LoopingVideoSurface(
+                url: url,
+                isActive: isActive,
+                videoGravity: videoGravity,
+                autoPlay: autoPlay,
+                allowsTapToTogglePlayback: allowsTapToTogglePlayback,
+                showsPlayOverlayWhenPaused: showsPlayOverlayWhenPaused
+            )
         } else {
             LinearGradient(
                 colors: [
                     PassportTheme.card,
-                    Color(red: 0.09, green: 0.16, blue: 0.28),
+                    PassportTheme.accentSoft,
                     Color.black
                 ],
                 startPoint: .topLeading,
@@ -26,20 +37,61 @@ struct RemoteVideoSurface: View {
 struct LoopingVideoSurface: View {
     let url: URL
     let isActive: Bool
+    let videoGravity: AVLayerVideoGravity
+    let autoPlay: Bool
+    let allowsTapToTogglePlayback: Bool
+    let showsPlayOverlayWhenPaused: Bool
+
     @StateObject private var playerStore = LoopingPlayerStore()
+    @State private var userInitiatedPlayback = false
+
+    private var shouldPlay: Bool {
+        isActive && (autoPlay || userInitiatedPlayback)
+    }
 
     var body: some View {
-        LoopingPlayerLayerView(player: playerStore.player)
-            .onAppear {
-                playerStore.configure(url: url)
-                playerStore.setPlaying(isActive)
+        ZStack {
+            LoopingPlayerLayerView(
+                player: playerStore.player,
+                videoGravity: videoGravity
+            )
+            .background(Color.black)
+
+            if showsPlayOverlayWhenPaused && !shouldPlay {
+                Button {
+                    userInitiatedPlayback = true
+                    playerStore.setPlaying(true)
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.black.opacity(0.62))
+                            .frame(width: 72, height: 72)
+
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.white)
+                            .offset(x: 2)
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            .onChange(of: isActive) { _, newValue in
-                playerStore.setPlaying(newValue)
-            }
-            .onDisappear {
-                playerStore.pause()
-            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard allowsTapToTogglePlayback else { return }
+            userInitiatedPlayback.toggle()
+            playerStore.setPlaying(shouldPlay)
+        }
+        .onAppear {
+            playerStore.configure(url: url)
+            playerStore.setPlaying(shouldPlay)
+        }
+        .onChange(of: isActive) { _, _ in
+            playerStore.setPlaying(shouldPlay)
+        }
+        .onDisappear {
+            playerStore.pause()
+        }
     }
 }
 
@@ -61,6 +113,7 @@ private final class LoopingPlayerStore: ObservableObject {
         player.removeAllItems()
         let item = AVPlayerItem(url: url)
         looper = AVPlayerLooper(player: player, templateItem: item)
+        player.seek(to: .zero)
     }
 
     func pause() {
@@ -72,6 +125,7 @@ private final class LoopingPlayerStore: ObservableObject {
             player.play()
         } else {
             player.pause()
+            player.seek(to: .zero)
         }
     }
 
@@ -84,17 +138,19 @@ private final class LoopingPlayerStore: ObservableObject {
 
 private struct LoopingPlayerLayerView: UIViewRepresentable {
     let player: AVQueuePlayer
+    let videoGravity: AVLayerVideoGravity
 
     func makeUIView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
+        view.backgroundColor = .black
         view.playerLayer.player = player
-        view.playerLayer.videoGravity = .resizeAspectFill
+        view.playerLayer.videoGravity = videoGravity
         return view
     }
 
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
         uiView.playerLayer.player = player
-        uiView.playerLayer.videoGravity = .resizeAspectFill
+        uiView.playerLayer.videoGravity = videoGravity
     }
 }
 

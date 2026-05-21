@@ -23,6 +23,7 @@ final class AppSessionStore: ObservableObject {
     @Published private(set) var latestResume: ResumeUploadRecord?
     @Published private(set) var notifications: [NotificationRecord] = []
     @Published private(set) var jobFeed: [JobPostingRecord] = []
+    @Published private(set) var savedJobRecords: [SavedJobRecord] = []
     @Published private(set) var candidateApplications: [JobApplicationRecord] = []
     @Published private(set) var employerJobs: [JobPostingRecord] = []
     @Published private(set) var employerApplications: [JobApplicationRecord] = []
@@ -60,13 +61,22 @@ final class AppSessionStore: ObservableObject {
     var candidateDraft: CandidateProfileDraft {
         CandidateProfileDraft(
             fullName: profile?.fullName ?? "",
+            fullNameLastChangedAt: profile?.fullNameLastChangedAt,
             headline: profile?.headline ?? "",
+            handle: profile?.handle ?? "",
+            handleLastChangedAt: profile?.handleLastChangedAt,
+            avatarURL: profile?.avatarURL,
             school: jobSeekerProfile?.schoolName ?? latestResume?.parsedSchoolName ?? "",
             employers: jobSeekerEmployers.map(\.employerName),
             jobFunction: jobSeekerProfile?.jobFunction ?? .engineering,
             dreamRole: jobSeekerProfile?.dreamRole ?? "",
+            desiredCompensationRange: jobSeekerProfile?.desiredCompensationRange ?? mappedCompensationRange(from: jobSeekerProfile?.desiredCompensationAnnual),
+            linkedInURL: jobSeekerProfile?.linkedInURL ?? "",
+            instagramUsername: jobSeekerProfile?.instagramUsername ?? "",
+            tiktokUsername: jobSeekerProfile?.tiktokUsername ?? "",
             visibility: jobSeekerProfile?.discoveryVisibility ?? .appliedRolesOnly,
             resumeFileName: latestResume?.filePath.split(separator: "/").last.map(String.init),
+            resumeStoragePath: latestResume?.filePath,
             resumeImportedAt: latestResume?.createdAt,
             introVideoFileName: jobSeekerProfile?.introVideoURL?.split(separator: "/").last.map(String.init),
             introVideoDuration: nil,
@@ -77,6 +87,7 @@ final class AppSessionStore: ObservableObject {
     var employerDraft: EmployerProfileDraft {
         EmployerProfileDraft(
             fullName: profile?.fullName ?? "",
+            fullNameLastChangedAt: profile?.fullNameLastChangedAt,
             headline: profile?.headline ?? "",
             companyName: employerProfile?.companyName ?? "",
             companyDomain: employerProfile?.companyDomain ?? "",
@@ -90,6 +101,15 @@ final class AppSessionStore: ObservableObject {
                 partialResult[message.candidateProfileID] = message
             }
         }
+    }
+
+    var savedJobIDs: Set<String> {
+        Set(savedJobRecords.map(\.jobID))
+    }
+
+    var savedJobs: [JobPostingRecord] {
+        let jobLookup = Dictionary(uniqueKeysWithValues: jobFeed.map { ($0.id, $0) })
+        return savedJobRecords.compactMap { jobLookup[$0.jobID] }
     }
 
     func bootstrap() async {
@@ -133,6 +153,15 @@ final class AppSessionStore: ObservableObject {
         }
         clearSession()
         phase = .signedOut
+    }
+
+    func deleteAccount() async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            try await service.deleteAccount(session: session)
+            clearSession()
+            phase = .signedOut
+        }
     }
 
     func sendEmailLogin(email: String, redirectTo: URL) async -> Bool {
@@ -180,6 +209,9 @@ final class AppSessionStore: ObservableObject {
                 userID: userID,
                 email: currentEmail,
                 fullName: fullName,
+                handle: profile?.handle,
+                avatarURL: profile?.avatarURL,
+                includeAvatarURL: true,
                 headline: headline,
                 onboardingComplete: true,
                 session: session
@@ -214,6 +246,11 @@ final class AppSessionStore: ObservableObject {
                     schoolName: schoolName,
                     jobFunction: jobFunction,
                     dreamRole: dreamRole,
+                    desiredCompensationAnnual: nil,
+                    desiredCompensationRange: candidateDraft.desiredCompensationRange.nonEmptyValue,
+                    linkedInURL: normalizedOptionalURL(candidateDraft.linkedInURL),
+                    instagramUsername: normalizedUsername(candidateDraft.instagramUsername),
+                    tiktokUsername: normalizedUsername(candidateDraft.tiktokUsername),
                     introVideoURL: uploadedVideoPublicURL,
                     visibility: .appliedRolesOnly,
                     session: session
@@ -248,6 +285,9 @@ final class AppSessionStore: ObservableObject {
                 userID: userID,
                 email: currentEmail,
                 fullName: draft.fullName,
+                handle: normalizedHandle(draft.handle),
+                avatarURL: profile?.avatarURL,
+                includeAvatarURL: true,
                 headline: draft.headline,
                 onboardingComplete: true,
                 session: session
@@ -257,6 +297,11 @@ final class AppSessionStore: ObservableObject {
                 schoolName: draft.school,
                 jobFunction: draft.jobFunction,
                 dreamRole: draft.dreamRole,
+                desiredCompensationAnnual: nil,
+                desiredCompensationRange: draft.desiredCompensationRange.nonEmptyValue,
+                linkedInURL: normalizedOptionalURL(draft.linkedInURL),
+                instagramUsername: normalizedUsername(draft.instagramUsername),
+                tiktokUsername: normalizedUsername(draft.tiktokUsername),
                 introVideoURL: draft.introVideoURL,
                 visibility: draft.visibility,
                 session: session
@@ -265,6 +310,34 @@ final class AppSessionStore: ObservableObject {
 
             // Phase 2: when candidate discovery is turned on, visibility changes should
             // immediately influence employer browse queries rather than only applied-role access.
+
+            try await loadCurrentUserState()
+        }
+    }
+
+    func saveEmployerProfile(_ draft: EmployerProfileDraft) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            let userID = try requireUserID()
+
+            try await service.upsertProfile(
+                userID: userID,
+                email: currentEmail,
+                fullName: draft.fullName,
+                handle: profile?.handle,
+                avatarURL: profile?.avatarURL,
+                includeAvatarURL: true,
+                headline: draft.headline,
+                onboardingComplete: true,
+                session: session
+            )
+            try await service.upsertEmployerProfile(
+                userID: userID,
+                companyName: draft.companyName,
+                companyDomain: draft.companyDomain,
+                positionTitle: draft.positionTitle,
+                session: session
+            )
 
             try await loadCurrentUserState()
         }
@@ -297,10 +370,58 @@ final class AppSessionStore: ObservableObject {
                 schoolName: draft.school,
                 jobFunction: draft.jobFunction,
                 dreamRole: draft.dreamRole,
+                desiredCompensationAnnual: nil,
+                desiredCompensationRange: draft.desiredCompensationRange.nonEmptyValue,
+                linkedInURL: normalizedOptionalURL(draft.linkedInURL),
+                instagramUsername: normalizedUsername(draft.instagramUsername),
+                tiktokUsername: normalizedUsername(draft.tiktokUsername),
                 introVideoURL: upload.publicURL,
                 visibility: draft.visibility,
                 session: session
             )
+            try await loadCurrentUserState()
+        }
+    }
+
+    func toggleSavedJob(jobID: String) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            let userID = try requireUserID()
+
+            if savedJobIDs.contains(jobID) {
+                try await service.unsaveJob(userID: userID, jobID: jobID, session: session)
+            } else {
+                try await service.saveJob(userID: userID, jobID: jobID, session: session)
+            }
+
+            try await refreshJobSeekerData()
+        }
+    }
+
+    func uploadCandidateAvatar(imageData: Data) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            let userID = try requireUserID()
+            let upload = try await service.uploadFile(
+                bucket: "avatars",
+                path: "\(userID)/avatar-\(Int(Date().timeIntervalSince1970)).jpg",
+                data: imageData,
+                contentType: "image/jpeg",
+                session: session
+            )
+
+            try await service.upsertProfile(
+                userID: userID,
+                email: currentEmail,
+                fullName: candidateDraft.fullName,
+                handle: normalizedHandle(candidateDraft.handle),
+                avatarURL: upload.publicURL,
+                includeAvatarURL: true,
+                headline: candidateDraft.headline,
+                onboardingComplete: true,
+                session: session
+            )
+
             try await loadCurrentUserState()
         }
     }
@@ -312,6 +433,17 @@ final class AppSessionStore: ObservableObject {
             try await uploadResumeFile(userID: userID, fileURL: fileURL, session: session)
             try await loadCurrentUserState()
         }
+    }
+
+    func requestResumePreviewURL() async throws -> URL? {
+        let session = try await requireSession()
+        guard let filePath = latestResume?.filePath else { return nil }
+        return try await service.createSignedFileURL(
+            bucket: "resumes",
+            path: filePath,
+            expiresIn: 60 * 30,
+            session: session
+        )
     }
 
     func applyToJob(jobID: String, coverNote: String?) async {
@@ -344,6 +476,8 @@ final class AppSessionStore: ObservableObject {
                 title: draft.title,
                 companyName: draft.companyName,
                 location: draft.location,
+                compensationMinAnnual: normalizedAnnualCompensation(from: draft.compensationMinAnnual),
+                compensationMaxAnnual: normalizedAnnualCompensation(from: draft.compensationMaxAnnual),
                 jobFunction: draft.jobFunction,
                 description: draft.description,
                 applicationEmail: draft.applicationEmail,
@@ -354,6 +488,42 @@ final class AppSessionStore: ObservableObject {
             )
 
             try await refreshAdminData()
+        }
+    }
+
+    func createEmployerJob(draft: JobPostingDraft, localVideoURL: URL) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            let userID = try requireUserID()
+            let uploadURL = try await prepareVideoForUpload(localVideoURL)
+            let fileName = uploadURL.lastPathComponent
+            let videoData = try Data(contentsOf: uploadURL)
+
+            let upload = try await service.uploadFile(
+                bucket: "job-videos",
+                path: "\(userID)/\(Int(Date().timeIntervalSince1970))-\(fileName)",
+                data: videoData,
+                contentType: mimeType(for: uploadURL) ?? "video/mp4",
+                session: session
+            )
+
+            try await service.createJob(
+                employerProfileID: userID,
+                title: draft.title,
+                companyName: draft.companyName,
+                location: draft.location,
+                compensationMinAnnual: normalizedAnnualCompensation(from: draft.compensationMinAnnual),
+                compensationMaxAnnual: normalizedAnnualCompensation(from: draft.compensationMaxAnnual),
+                jobFunction: draft.jobFunction,
+                description: draft.description,
+                applicationEmail: draft.applicationEmail,
+                videoURL: upload.publicURL,
+                sourceURL: draft.sourceURL,
+                isPublished: draft.isPublished,
+                session: session
+            )
+
+            try await refreshEmployerData()
         }
     }
 
@@ -418,7 +588,7 @@ final class AppSessionStore: ObservableObject {
 
         try await loadNotifications()
 
-        if profile?.onboardingComplete == true, let role = profile?.role {
+        if let role = profile?.role {
             switch role {
             case .jobSeeker:
                 try await refreshJobSeekerData()
@@ -428,8 +598,11 @@ final class AppSessionStore: ObservableObject {
                 try await refreshAdminData()
             }
             phase = .signedIn
+        } else if profile != nil {
+            try await refreshJobSeekerData()
+            phase = .signedIn
         } else {
-            phase = .onboarding
+            phase = .signedOut
         }
     }
 
@@ -437,6 +610,7 @@ final class AppSessionStore: ObservableObject {
         let session = try await requireSession()
         let userID = try requireUserID()
         jobFeed = try await service.fetchJobs(publishedOnly: true, session: session)
+        savedJobRecords = try await service.fetchSavedJobs(userID: userID, session: session)
         candidateApplications = try await service.fetchJobApplications(candidateID: userID, session: session)
     }
 
@@ -534,6 +708,7 @@ final class AppSessionStore: ObservableObject {
         latestResume = nil
         notifications = []
         jobFeed = []
+        savedJobRecords = []
         candidateApplications = []
         employerJobs = []
         employerApplications = []
@@ -550,9 +725,33 @@ final class AppSessionStore: ObservableObject {
         do {
             try await operation()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(for: error)
         }
         isBusy = false
+    }
+
+    private func friendlyErrorMessage(for error: Error) -> String {
+        let message = error.localizedDescription
+
+        if message.localizedCaseInsensitiveContains("profiles_handle_unique_idx")
+            || message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
+                && message.localizedCaseInsensitiveContains("handle") {
+            return "That handle is already taken. Try a different one."
+        }
+
+        if message.localizedCaseInsensitiveContains("handle can only be changed once every 30 days") {
+            return "You can only change your handle once every 30 days."
+        }
+
+        if message.localizedCaseInsensitiveContains("full name can only be changed once every 7 days") {
+            return "You can only change your full name once every 7 days."
+        }
+
+        if message.localizedCaseInsensitiveContains("profiles_handle_format") {
+            return "Handles can only use lowercase letters, numbers, and underscores."
+        }
+
+        return message
     }
 
     private func prepareVideoForUpload(_ url: URL) async throws -> URL {
@@ -646,5 +845,74 @@ final class AppSessionStore: ObservableObject {
         default:
             return nil
         }
+    }
+
+    private func normalizedAnnualCompensation(from rawValue: String) -> Int? {
+        let digits = rawValue.filter(\.isNumber)
+        guard let value = Int(digits), value > 0 else { return nil }
+        return value
+    }
+
+    private func draftCompensationValue(from rawValue: String) -> Int? {
+        normalizedAnnualCompensation(from: rawValue)
+    }
+
+    private func mappedCompensationRange(from annualValue: Int?) -> String {
+        guard let annualValue else { return "" }
+        switch annualValue {
+        case ..<50_000:
+            return "Under $50k"
+        case 50_000..<75_000:
+            return "$50k-$75k"
+        case 75_000..<100_000:
+            return "$75k-$100k"
+        case 100_000..<125_000:
+            return "$100k-$125k"
+        case 125_000..<150_000:
+            return "$125k-$150k"
+        case 150_000..<175_000:
+            return "$150k-$175k"
+        case 175_000..<200_000:
+            return "$175k-$200k"
+        default:
+            return "$200k+"
+        }
+    }
+
+    private func normalizedOptionalURL(_ rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let lowercased = trimmed.lowercased()
+        if lowercased.hasPrefix("http://") || lowercased.hasPrefix("https://") {
+            return trimmed
+        }
+
+        return "https://\(trimmed)"
+    }
+
+    private func normalizedUsername(_ rawValue: String) -> String? {
+        let trimmed = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "^@", with: "", options: .regularExpression)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+private func normalizedHandle(_ rawValue: String) -> String? {
+        let trimmed = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9_]", with: "", options: .regularExpression)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(30))
+    }
+}
+
+private extension String {
+    var nonEmptyValue: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

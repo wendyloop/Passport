@@ -1,35 +1,22 @@
 import SwiftUI
-import PhotosUI
-import AVFoundation
 import AuthenticationServices
-import CoreTransferable
-import UniformTypeIdentifiers
 import UIKit
 
 struct NativeRootView: View {
     @StateObject private var store = AppSessionStore()
     private let config = PassportConfig.load()
     private let webAuthenticationPresentationContextProvider = WebAuthenticationPresentationContextProvider()
+    private let loginAccent = PassportTheme.accent
+    private let authCardReservedHeight: CGFloat = 250
 
     @State private var email = ""
+    @State private var password = ""
     @State private var authNoticeMessage: String?
     @State private var webAuthenticationSession: ASWebAuthenticationSession?
+    @State private var selectedLoginMethod: LoginMethod = .google
+    @State private var emailAuthMode: EmailAuthMode = .signIn
+    @State private var lastHandledAuthRedirect: String?
 
-    @State private var fullName = ""
-    @State private var headline = ""
-    @State private var schoolName = ""
-    @State private var employersText = ""
-    @State private var selectedJobFunction: JobFunctionOption = .engineering
-    @State private var dreamRole = ""
-    @State private var companyName = ""
-    @State private var companyDomain = ""
-    @State private var positionTitle = ""
-
-    @State private var showingResumeImporter = false
-    @State private var selectedResumeURL: URL?
-    @State private var selectedVideoItem: PhotosPickerItem?
-    @State private var selectedVideoURL: URL?
-    @State private var selectedVideoDuration: Double?
     @State private var showingNotifications = false
     @FocusState private var focusedField: Field?
 
@@ -37,18 +24,10 @@ struct NativeRootView: View {
         URL(string: "\(config.redirectScheme)://auth-callback")!
     }
 
-    private var onboardingRole: UserRole {
-        store.role ?? .jobSeeker
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    colors: [PassportTheme.background, PassportTheme.card],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                authBackground
                 .ignoresSafeArea()
                 .onTapGesture {
                     focusedField = nil
@@ -66,21 +45,6 @@ struct NativeRootView: View {
                     .presentationDetents([.medium, .large])
             }
         }
-        .fileImporter(
-            isPresented: $showingResumeImporter,
-            allowedContentTypes: supportedResumeTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            if case let .success(urls) = result, let first = urls.first {
-                selectedResumeURL = copyImportedFileToTemporaryDirectory(from: first)
-            }
-        }
-        .onChange(of: selectedVideoItem) { _, newValue in
-            guard let newValue else { return }
-            Task {
-                await loadSelectedVideo(from: newValue)
-            }
-        }
         .alert("Issue", isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { newValue in
@@ -94,8 +58,24 @@ struct NativeRootView: View {
         .onOpenURL { url in
             Task {
                 authNoticeMessage = nil
-                await store.handleAuthRedirect(url: url)
+                await handleAuthRedirectIfNeeded(url: url)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var authBackground: some View {
+        switch store.phase {
+        case .signedOut:
+            PassportTheme.background
+        case .launching:
+            PassportTheme.accent
+        case .onboarding, .signedIn:
+            LinearGradient(
+                colors: [PassportTheme.background, PassportTheme.card],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
@@ -103,146 +83,65 @@ struct NativeRootView: View {
     private var content: some View {
         switch store.phase {
         case .launching:
-            ProgressView()
-                .tint(PassportTheme.accent)
+            launchingView
         case .signedOut:
             authView
         case .onboarding:
-            onboardingView
+            signedInView
         case .signedIn:
             signedInView
         }
     }
 
+    private var launchingView: some View {
+        VStack(spacing: 16) {
+            Text("💼")
+                .font(.system(size: 70))
+
+            Text("JobTok")
+                .font(.system(size: 44, weight: .black, design: .rounded))
+                .foregroundStyle(Color.black)
+
+            ProgressView()
+                .tint(Color.black)
+                .padding(.top, 10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var authView: some View {
         GeometryReader { proxy in
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("JobTok")
-                            .font(.system(size: 30, weight: .black, design: .rounded))
-                            .foregroundStyle(PassportTheme.textPrimary)
-                        Text("Short-form hiring for candidates, employers, and admins.")
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
+                VStack {
+                    Spacer(minLength: 0)
 
-                    authCard
+                    VStack(spacing: 30) {
+                        VStack(spacing: 16) {
+                            Text("JobTok")
+                                .font(.system(size: 68, weight: .black, design: .rounded))
+                                .foregroundStyle(Color.black)
+                                .multilineTextAlignment(.center)
+
+                            Text(selectedLoginMethod.subtitle)
+                                .font(.system(size: 17, weight: .medium, design: .rounded))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(PassportTheme.textSecondary)
+                        }
+
+                        loginMethodSelector
+                        authCard
+                    }
+                    .frame(maxWidth: 360)
+
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 28)
-                .frame(minHeight: max(proxy.size.height, 0), alignment: .top)
+                .padding(.vertical, 28)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: max(proxy.size.height, 0))
             }
             .scrollDismissesKeyboard(.interactively)
         }
-    }
-
-    private var onboardingView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("\(onboardingRole.onboardingTitle) Setup")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(PassportTheme.textPrimary)
-
-                Text(onboardingRole.onboardingSubtitle)
-                    .foregroundStyle(PassportTheme.textSecondary)
-
-                VStack(spacing: 16) {
-                    TextField("Full name", text: $fullName)
-                        .focused($focusedField, equals: .fullName)
-                        .textFieldStyle(PassportTextFieldStyle())
-
-                    TextField("Headline", text: $headline, axis: .vertical)
-                        .lineLimit(2...4)
-                        .focused($focusedField, equals: .headline)
-                        .textFieldStyle(PassportTextFieldStyle())
-
-                    switch onboardingRole {
-                    case .jobSeeker:
-                        TextField("School", text: $schoolName)
-                            .focused($focusedField, equals: .school)
-                            .textFieldStyle(PassportTextFieldStyle())
-
-                        TextField("Previous employers, comma separated", text: $employersText, axis: .vertical)
-                            .lineLimit(2...4)
-                            .focused($focusedField, equals: .employers)
-                            .textFieldStyle(PassportTextFieldStyle())
-
-                        Picker("Job function", selection: $selectedJobFunction) {
-                            ForEach(JobFunctionOption.allCases) { option in
-                                Text(option.title).tag(option)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(PassportTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                        TextField("Dream role", text: $dreamRole)
-                            .focused($focusedField, equals: .dreamRole)
-                            .textFieldStyle(PassportTextFieldStyle())
-
-                        Button {
-                            showingResumeImporter = true
-                        } label: {
-                            labelRow(
-                                title: selectedResumeURL == nil ? "Upload resume" : "Resume selected",
-                                subtitle: selectedResumeURL?.lastPathComponent ?? "Required to apply to jobs."
-                            )
-                        }
-
-                        PhotosPicker(
-                            selection: $selectedVideoItem,
-                            matching: .videos,
-                            photoLibrary: .shared()
-                        ) {
-                            labelRow(
-                                title: selectedVideoURL == nil ? "Upload 60s pitch" : "Pitch selected",
-                                subtitle: selectedVideoURL?.lastPathComponent ?? "Optional for MVP. Phase 2 discovery will use this heavily."
-                            )
-                        }
-
-                    case .employer:
-                        TextField("Company name", text: $companyName)
-                            .focused($focusedField, equals: .companyName)
-                            .textFieldStyle(PassportTextFieldStyle())
-
-                        TextField("Company domain", text: $companyDomain)
-                            .textInputAutocapitalization(.never)
-                            .focused($focusedField, equals: .companyDomain)
-                            .textFieldStyle(PassportTextFieldStyle())
-
-                        TextField("Position title", text: $positionTitle)
-                            .focused($focusedField, equals: .positionTitle)
-                            .textFieldStyle(PassportTextFieldStyle())
-
-                    case .admin:
-                        labelRow(
-                            title: "Admin access",
-                            subtitle: "Admins can upload and publish job videos once your backend role is set to admin."
-                        )
-                    }
-                }
-                .padding(20)
-                .background(PassportTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-
-                Button(action: saveOnboarding) {
-                    Text("Save And Continue")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(PassportTheme.accent)
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .disabled(store.isBusy)
-            }
-            .padding(24)
-            .onAppear(perform: populateOnboardingDefaultsIfNeeded)
-        }
-        .scrollDismissesKeyboard(.interactively)
     }
 
     @ViewBuilder
@@ -252,22 +151,35 @@ struct NativeRootView: View {
             JobSeekerHomeView(
                 profile: store.candidateDraft,
                 jobs: store.jobFeed,
+                savedJobs: store.savedJobs,
+                savedJobIDs: store.savedJobIDs,
                 applications: store.candidateApplications,
                 onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
+                onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
                 onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
                 onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
+                onRequestResumePreview: { try await store.requestResumePreviewURL() },
                 onApply: { jobID, coverNote in Task { await store.applyToJob(jobID: jobID, coverNote: coverNote) } },
+                onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
                 onRefresh: { Task { await store.refreshCurrentRoleData() } },
                 onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } }
+                onSignOut: { Task { await store.signOut() } },
+                onDeleteAccount: { Task { await store.deleteAccount() } }
             )
         case .employer:
             EmployerHomeView(
-                fullName: store.profile?.fullName ?? "Employer",
+                profile: store.employerDraft,
+                accountEmail: store.currentEmail ?? "",
                 jobs: store.employerJobs,
                 applications: store.employerApplications,
                 discoverableCandidates: store.discoverableCandidates,
                 latestOutreachByCandidateID: store.latestOutreachByCandidateID,
+                onSaveProfile: { draft in
+                    Task { await store.saveEmployerProfile(draft) }
+                },
+                onCreateJob: { draft, videoURL in
+                    Task { await store.createEmployerJob(draft: draft, localVideoURL: videoURL) }
+                },
                 onRefresh: { Task { await store.refreshCurrentRoleData() } },
                 onToggleJobPublishState: { jobID, isPublished in
                     Task { await store.toggleJobPublishState(jobID: jobID, isPublished: isPublished) }
@@ -283,7 +195,8 @@ struct NativeRootView: View {
                     }
                 },
                 onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } }
+                onSignOut: { Task { await store.signOut() } },
+                onDeleteAccount: { Task { await store.deleteAccount() } }
             )
         case .admin:
             AdminHomeView(
@@ -301,108 +214,150 @@ struct NativeRootView: View {
             JobSeekerHomeView(
                 profile: store.candidateDraft,
                 jobs: store.jobFeed,
+                savedJobs: store.savedJobs,
+                savedJobIDs: store.savedJobIDs,
                 applications: store.candidateApplications,
                 onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
+                onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
                 onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
                 onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
+                onRequestResumePreview: { try await store.requestResumePreviewURL() },
                 onApply: { jobID, coverNote in Task { await store.applyToJob(jobID: jobID, coverNote: coverNote) } },
+                onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
                 onRefresh: { Task { await store.refreshCurrentRoleData() } },
                 onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } }
+                onSignOut: { Task { await store.signOut() } },
+                onDeleteAccount: { Task { await store.deleteAccount() } }
             )
         }
     }
 
-    private var authCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Continue")
-                .font(.headline)
-                .foregroundStyle(PassportTheme.textPrimary)
+    private var loginMethodSelector: some View {
+        HStack(spacing: 20) {
+            ForEach(LoginMethod.allCases) { method in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedLoginMethod = method
+                        authNoticeMessage = nil
+                        if method != .email {
+                            focusedField = nil
+                        }
+                    }
+                } label: {
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(selectedLoginMethod == method ? loginAccent : PassportTheme.card)
+                                .frame(width: 56, height: 56)
 
-            Button {
-                startOAuthLogin(with: .google)
-            } label: {
-                authButtonLabel(title: "Continue with Google", systemImage: "globe")
-            }
-            .buttonStyle(.plain)
-            .disabled(store.isBusy)
+                            Image(systemName: method.symbol)
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(selectedLoginMethod == method ? Color.black : PassportTheme.textPrimary)
+                        }
 
-            Button {
-                startOAuthLogin(with: .apple)
-            } label: {
-                authButtonLabel(title: "Continue with Apple", systemImage: "apple.logo")
-            }
-            .buttonStyle(.plain)
-            .disabled(store.isBusy)
-
-            HStack {
-                Rectangle()
-                    .fill(PassportTheme.border)
-                    .frame(height: 1)
-                Text("or")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(PassportTheme.textSecondary)
-                Rectangle()
-                    .fill(PassportTheme.border)
-                    .frame(height: 1)
-            }
-
-            VStack(spacing: 12) {
-                TextField("Email", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($focusedField, equals: .email)
-                    .textFieldStyle(PassportTextFieldStyle())
-
-                Button(action: handleEmailAuth) {
-                    Text("Send Magic Link")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(PassportTheme.accent)
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        Text(method.title)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(selectedLoginMethod == method ? PassportTheme.textPrimary : PassportTheme.textSecondary)
+                    }
                 }
-                .disabled(store.isBusy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var authCard: some View {
+        VStack(spacing: 18) {
+            switch selectedLoginMethod {
+            case .google:
+                Button {
+                    startOAuthLogin(with: .google)
+                } label: {
+                    primaryAuthButtonLabel(title: "Continue with Google", systemImage: "globe")
+                }
+                .buttonStyle(.plain)
+                .disabled(store.isBusy)
+            case .apple:
+                Button {
+                    startOAuthLogin(with: .apple)
+                } label: {
+                    primaryAuthButtonLabel(title: "Continue with Apple", systemImage: "apple.logo")
+                }
+                .buttonStyle(.plain)
+                .disabled(store.isBusy)
+            case .email:
+                VStack(spacing: 14) {
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .email)
+                        .textFieldStyle(AuthTextFieldStyle())
+
+                    SecureField("Password", text: $password)
+                        .textContentType(.password)
+                        .focused($focusedField, equals: .password)
+                        .textFieldStyle(AuthTextFieldStyle())
+
+                    Button(action: handleEmailPasswordAuth) {
+                        primaryAuthButtonLabel(
+                            title: emailAuthMode == .signIn ? "Sign In with Email" : "Create Account",
+                            systemImage: "envelope.fill"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.isBusy || trimmedEmail.isEmpty || password.isEmpty)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            emailAuthMode = emailAuthMode == .signIn ? .createAccount : .signIn
+                            authNoticeMessage = nil
+                        }
+                    } label: {
+                        Text(emailAuthMode == .signIn ? "Need an account? Create one" : "Already have an account? Sign in")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(PassportTheme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             if let authNoticeMessage {
                 Text(authNoticeMessage)
                     .font(.footnote)
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(PassportTheme.textSecondary)
+                    .padding(.top, 2)
             }
-
-            Text("Roles are assigned in Supabase. Admin and employer access should be granted in the backend. Everyone else signs in as a candidate.")
-                .font(.footnote)
-                .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(PassportTheme.surface.opacity(0.96))
-        )
+        .frame(maxWidth: 360)
+        .frame(minHeight: authCardReservedHeight, alignment: .top)
     }
 
-    private func authButtonLabel(title: String, systemImage: String) -> some View {
+    private func primaryAuthButtonLabel(title: String, systemImage: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
+                .frame(width: 22)
             Text(title)
-                .fontWeight(.bold)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 15)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 17)
         .background(PassportTheme.card)
         .foregroundStyle(PassportTheme.textPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(PassportTheme.border.opacity(0.7), lineWidth: 1)
+        )
     }
 
     private func startOAuthLogin(with provider: SocialAuthProvider) {
         focusedField = nil
         authNoticeMessage = nil
+        lastHandledAuthRedirect = nil
 
         do {
             let authorizationURL = try store.oauthAuthorizationURL(
@@ -415,8 +370,13 @@ struct NativeRootView: View {
             ) { callbackURL, error in
                 Task { @MainActor in
                     if let callbackURL {
-                        await store.handleAuthRedirect(url: callbackURL)
+                        await handleAuthRedirectIfNeeded(url: callbackURL)
                     } else if let error {
+                        if let authError = error as? ASWebAuthenticationSessionError,
+                           authError.code == .canceledLogin {
+                            webAuthenticationSession = nil
+                            return
+                        }
                         store.errorMessage = error.localizedDescription
                     }
                     webAuthenticationSession = nil
@@ -431,125 +391,50 @@ struct NativeRootView: View {
         }
     }
 
-    private func handleEmailAuth() {
+    private var trimmedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func handleEmailPasswordAuth() {
         focusedField = nil
         authNoticeMessage = nil
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
 
         Task {
-            let didSend = await store.sendEmailLogin(email: trimmedEmail, redirectTo: authRedirectURL)
-            if didSend {
-                authNoticeMessage = "Check \(trimmedEmail) for your JobTok magic link."
+            switch emailAuthMode {
+            case .signIn:
+                await store.signIn(email: trimmedEmail, password: password)
+            case .createAccount:
+                await store.signUp(email: trimmedEmail, password: password)
             }
         }
     }
 
-    private func saveOnboarding() {
-        let employers = employersText
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        Task {
-            await store.completeOnboarding(
-                fullName: fullName,
-                headline: headline,
-                schoolName: schoolName,
-                employers: employers,
-                jobFunction: selectedJobFunction,
-                dreamRole: dreamRole,
-                companyName: companyName,
-                companyDomain: companyDomain,
-                positionTitle: positionTitle,
-                resumeURL: selectedResumeURL,
-                introVideoURL: selectedVideoURL,
-                introVideoDuration: selectedVideoDuration
-            )
-        }
+    @MainActor
+    private func handleAuthRedirectIfNeeded(url: URL) async {
+        let redirectSignature = url.absoluteString
+        guard lastHandledAuthRedirect != redirectSignature else { return }
+        lastHandledAuthRedirect = redirectSignature
+        await store.handleAuthRedirect(url: url)
     }
 
-    private func populateOnboardingDefaultsIfNeeded() {
-        if fullName.isEmpty { fullName = store.profile?.fullName ?? "" }
-        if headline.isEmpty { headline = store.profile?.headline ?? "" }
-        if schoolName.isEmpty { schoolName = store.jobSeekerProfile?.schoolName ?? "" }
-        if employersText.isEmpty { employersText = store.jobSeekerEmployers.map(\.employerName).joined(separator: ", ") }
-        if dreamRole.isEmpty { dreamRole = store.jobSeekerProfile?.dreamRole ?? "" }
-        if let jobFunction = store.jobSeekerProfile?.jobFunction { selectedJobFunction = jobFunction }
-        if companyName.isEmpty { companyName = store.employerProfile?.companyName ?? "" }
-        if companyDomain.isEmpty { companyDomain = store.employerProfile?.companyDomain ?? "" }
-        if positionTitle.isEmpty { positionTitle = store.employerProfile?.positionTitle ?? "" }
-    }
-
-    private func loadSelectedVideo(from item: PhotosPickerItem) async {
-        do {
-            guard let movie = try await RootSelectedMovie.load(from: item) else { return }
-            let asset = AVURLAsset(url: movie.url)
-            let duration = try await asset.load(.duration).seconds
-            guard duration <= 60 else {
-                store.errorMessage = "Your pitch video must be 60 seconds or shorter."
-                return
-            }
-            selectedVideoURL = movie.url
-            selectedVideoDuration = duration
-        } catch {
-            store.errorMessage = error.localizedDescription
-        }
-    }
-
-    private var supportedResumeTypes: [UTType] {
-        var types: [UTType] = [.pdf, .plainText, .rtf]
-        if let docx = UTType(filenameExtension: "docx") { types.append(docx) }
-        if let doc = UTType(filenameExtension: "doc") { types.append(doc) }
-        return types
-    }
-
-    private func labelRow(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(PassportTheme.textPrimary)
-            Text(subtitle)
-                .font(.footnote)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(PassportTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func copyImportedFileToTemporaryDirectory(from url: URL) -> URL? {
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessed {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let destination = URL(filePath: NSTemporaryDirectory()).appending(path: url.lastPathComponent)
-
-        do {
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: url, to: destination)
-            return destination
-        } catch {
-            store.errorMessage = error.localizedDescription
-            return nil
-        }
-    }
 }
 
-struct PassportTextFieldStyle: TextFieldStyle {
+struct AuthTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
-            .padding(14)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 15)
             .background(PassportTheme.card)
             .foregroundStyle(PassportTheme.textPrimary)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(PassportTheme.border.opacity(0.7), lineWidth: 1)
+            )
     }
 }
+
+typealias PassportTextFieldStyle = AuthTextFieldStyle
 
 private struct NotificationsSheet: View {
     @EnvironmentObject private var store: AppSessionStore
@@ -572,60 +457,44 @@ private struct NotificationsSheet: View {
 
 private enum Field {
     case email
-    case fullName
-    case headline
-    case school
-    case employers
-    case dreamRole
-    case companyName
-    case companyDomain
-    case positionTitle
+    case password
 }
 
-private struct RootSelectedMovie: Transferable {
-    let url: URL
+private enum LoginMethod: String, CaseIterable, Identifiable {
+    case google
+    case apple
+    case email
 
-    static func load(from item: PhotosPickerItem) async throws -> RootSelectedMovie? {
-        try await item.loadTransferable(type: RootSelectedMovie.self)
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .google: return "Google"
+        case .apple: return "Apple"
+        case .email: return "Email"
+        }
     }
 
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let temporaryDirectory = URL(filePath: NSTemporaryDirectory())
-            let copiedURL = temporaryDirectory.appending(path: received.file.lastPathComponent)
+    var subtitle: String {
+        switch self {
+        case .google: return "Sign in with Google"
+        case .apple: return "Sign in with Apple"
+        case .email: return "Sign in with Email"
+        }
+    }
 
-            if FileManager.default.fileExists(atPath: copiedURL.path) {
-                try FileManager.default.removeItem(at: copiedURL)
-            }
-
-            try FileManager.default.copyItem(at: received.file, to: copiedURL)
-            return RootSelectedMovie(url: copiedURL)
+    var symbol: String {
+        switch self {
+        case .google: return "globe"
+        case .apple: return "apple.logo"
+        case .email: return "envelope.fill"
         }
     }
 }
 
-private extension UserRole {
-    var onboardingTitle: String {
-        switch self {
-        case .jobSeeker:
-            return "Candidate"
-        case .employer:
-            return "Employer"
-        case .admin:
-            return "Admin"
-        }
-    }
-
-    var onboardingSubtitle: String {
-        switch self {
-        case .jobSeeker:
-            return "Build your public profile with a resume and a 60-second pitch."
-        case .employer:
-            return "Set up the company profile that will receive applications."
-        case .admin:
-            return "Admins upload and publish job videos for employer accounts."
-        }
-    }
+private enum EmailAuthMode {
+    case signIn
+    case createAccount
 }
 
 private final class WebAuthenticationPresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {

@@ -1,22 +1,65 @@
 import SwiftUI
+import PhotosUI
+import CoreTransferable
 
 struct EmployerHomeView: View {
-    let fullName: String
+    let profile: EmployerProfileDraft
+    let accountEmail: String
     let jobs: [JobPostingRecord]
     let applications: [JobApplicationRecord]
     let discoverableCandidates: [DiscoverableCandidateRecord]
     let latestOutreachByCandidateID: [String: CandidateOutreachRecord]
+    let onSaveProfile: (EmployerProfileDraft) -> Void
+    let onCreateJob: (JobPostingDraft, URL) -> Void
     let onRefresh: () -> Void
     let onToggleJobPublishState: (String, Bool) -> Void
     let onReachOut: (String, String?, String, String) -> Void
     let onShowNotifications: () -> Void
     let onSignOut: () -> Void
+    let onDeleteAccount: () -> Void
 
+    @State private var workingProfile: EmployerProfileDraft
     @State private var selectedJobFunctionRawValue = "all"
-    @State private var dreamRoleQuery = ""
-    @State private var schoolQuery = ""
-    @State private var employerQuery = ""
+    @State private var currentCandidateID: String?
     @State private var selectedCandidateForOutreach: DiscoverableCandidateRecord?
+    @State private var isEditingProfile = false
+    @State private var isCreatingJob = false
+    @State private var showingSettingsDrawer = false
+    @State private var showingDeleteAccountAlert = false
+    @State private var selectedProfileTab: EmployerProfileTab = .videos
+
+    init(
+        profile: EmployerProfileDraft,
+        accountEmail: String,
+        jobs: [JobPostingRecord],
+        applications: [JobApplicationRecord],
+        discoverableCandidates: [DiscoverableCandidateRecord],
+        latestOutreachByCandidateID: [String: CandidateOutreachRecord],
+        onSaveProfile: @escaping (EmployerProfileDraft) -> Void,
+        onCreateJob: @escaping (JobPostingDraft, URL) -> Void,
+        onRefresh: @escaping () -> Void,
+        onToggleJobPublishState: @escaping (String, Bool) -> Void,
+        onReachOut: @escaping (String, String?, String, String) -> Void,
+        onShowNotifications: @escaping () -> Void,
+        onSignOut: @escaping () -> Void,
+        onDeleteAccount: @escaping () -> Void
+    ) {
+        self.profile = profile
+        self.accountEmail = accountEmail
+        self.jobs = jobs
+        self.applications = applications
+        self.discoverableCandidates = discoverableCandidates
+        self.latestOutreachByCandidateID = latestOutreachByCandidateID
+        self.onSaveProfile = onSaveProfile
+        self.onCreateJob = onCreateJob
+        self.onRefresh = onRefresh
+        self.onToggleJobPublishState = onToggleJobPublishState
+        self.onReachOut = onReachOut
+        self.onShowNotifications = onShowNotifications
+        self.onSignOut = onSignOut
+        self.onDeleteAccount = onDeleteAccount
+        _workingProfile = State(initialValue: profile)
+    }
 
     private var selectedJobFunction: JobFunctionOption? {
         guard selectedJobFunctionRawValue != "all" else { return nil }
@@ -25,40 +68,16 @@ struct EmployerHomeView: View {
 
     private var filteredCandidates: [DiscoverableCandidateRecord] {
         discoverableCandidates.filter { candidate in
-            if let selectedJobFunction, candidate.jobFunction != selectedJobFunction {
-                return false
-            }
-
-            if !dreamRoleQuery.isEmpty {
-                let dreamRole = candidate.dreamRole ?? ""
-                if !dreamRole.localizedCaseInsensitiveContains(dreamRoleQuery) {
-                    return false
-                }
-            }
-
-            if !schoolQuery.isEmpty {
-                let schoolName = candidate.schoolName ?? ""
-                if !schoolName.localizedCaseInsensitiveContains(schoolQuery) {
-                    return false
-                }
-            }
-
-            if !employerQuery.isEmpty {
-                let flattenedEmployers = candidate.previousEmployers.joined(separator: " ")
-                if !flattenedEmployers.localizedCaseInsensitiveContains(employerQuery) {
-                    return false
-                }
-            }
-
-            return true
+            guard let selectedJobFunction else { return true }
+            return candidate.jobFunction == selectedJobFunction
         }
     }
 
     var body: some View {
         TabView {
-            jobsView
+            discoverView
                 .tabItem {
-                    Label("Jobs", systemImage: "briefcase.fill")
+                    Label("Discover", systemImage: "play.square.fill")
                 }
 
             applicantsView
@@ -66,9 +85,9 @@ struct EmployerHomeView: View {
                     Label("Applicants", systemImage: "person.2.fill")
                 }
 
-            discoveryView
+            profileView
                 .tabItem {
-                    Label("Discover", systemImage: "sparkles")
+                    Label("Profile", systemImage: "building.2.crop.circle")
                 }
         }
         .tint(PassportTheme.accent)
@@ -84,69 +103,93 @@ struct EmployerHomeView: View {
             )
             .presentationDetents([.large])
         }
+        .sheet(isPresented: $isEditingProfile) {
+            EmployerProfileEditor(profile: $workingProfile) {
+                onSaveProfile(workingProfile)
+            }
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $isCreatingJob) {
+            EmployerCreateJobSheet(
+                profile: workingProfile,
+                accountEmail: accountEmail,
+                onCreateJob: onCreateJob
+            )
+            .presentationDetents([.large])
+        }
+        .onChange(of: profile) { _, newValue in
+            workingProfile = newValue
+        }
+        .alert("Delete Account?", isPresented: $showingDeleteAccountAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                showingSettingsDrawer = false
+                onDeleteAccount()
+            }
+        } message: {
+            Text("This permanently deletes your JobTok account and employer profile data.")
+        }
     }
 
-    private var jobsView: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    screenHeader(
-                        title: fullName.isEmpty ? "Employer" : fullName,
-                        subtitle: "Own the feed you’ve published and manage what is live."
+    private var discoverView: some View {
+        GeometryReader { proxy in
+            let pageWidth = proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing
+            let pageHeight = proxy.size.height + proxy.safeAreaInsets.top
+
+            ZStack(alignment: .top) {
+                if filteredCandidates.isEmpty {
+                    EmployerEmptyStateView(
+                        title: "No candidate videos yet",
+                        message: discoverableCandidates.isEmpty
+                            ? "Candidates who make themselves discoverable will appear here."
+                            : "No candidates match the role filter you selected."
                     )
-
-                    if jobs.isEmpty {
-                        EmployerInfoCard(
-                            title: "No jobs assigned",
-                            details: "Admins can assign your first JobTok role from the admin portal."
-                        )
-                    } else {
-                        ForEach(jobs) { job in
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(job.title)
-                                    .font(.headline)
-                                    .foregroundStyle(PassportTheme.textPrimary)
-
-                                Text("\(job.companyName) • \(job.location ?? "Remote")")
-                                    .foregroundStyle(PassportTheme.textSecondary)
-
-                                Text(job.description)
-                                    .foregroundStyle(PassportTheme.textPrimary)
-                                    .lineLimit(4)
-
-                                HStack {
-                                    statusPill(
-                                        title: job.isPublished ? "Published" : "Draft",
-                                        isEmphasized: job.isPublished
-                                    )
-
-                                    if let jobFunction = job.jobFunction {
-                                        statusPill(title: jobFunction.title, isEmphasized: false)
+                } else {
+                    ScrollView(.vertical) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filteredCandidates) { candidate in
+                                EmployerCandidateFeedCard(
+                                    candidate: candidate,
+                                    latestOutreach: latestOutreachByCandidateID[candidate.id],
+                                    isActive: currentCandidateID == candidate.id,
+                                    onReachOut: {
+                                        selectedCandidateForOutreach = candidate
                                     }
-
-                                    Spacer()
-
-                                    Button(job.isPublished ? "Unpublish" : "Publish") {
-                                        onToggleJobPublishState(job.id, !job.isPublished)
-                                    }
-                                    .font(.subheadline.weight(.bold))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background(PassportTheme.card)
-                                    .foregroundStyle(PassportTheme.textPrimary)
-                                    .clipShape(Capsule())
-                                }
+                                )
+                                .frame(width: pageWidth, height: pageHeight)
+                                .clipped()
+                                .id(candidate.id)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(18)
-                            .background(PassportTheme.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         }
+                        .scrollTargetLayout()
                     }
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: $currentCandidateID)
+                    .frame(width: pageWidth, height: pageHeight)
+                    .offset(y: -proxy.safeAreaInsets.top)
                 }
-                .padding(20)
+
+                discoverTopBar
+                    .padding(.horizontal, 10)
+                    .padding(.top, max(proxy.safeAreaInsets.top - 2, 0))
+                    .offset(y: -24)
             }
-            .background(PassportTheme.background)
+            .onAppear {
+                if currentCandidateID == nil {
+                    currentCandidateID = filteredCandidates.first?.id
+                }
+            }
+            .onChange(of: filteredCandidates.map(\.id)) { _, ids in
+                guard let first = ids.first else {
+                    currentCandidateID = nil
+                    return
+                }
+                if let currentCandidateID, ids.contains(currentCandidateID) {
+                    return
+                }
+                self.currentCandidateID = first
+            }
         }
     }
 
@@ -156,13 +199,13 @@ struct EmployerHomeView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     screenHeader(
                         title: "Applicants",
-                        subtitle: "Every in-app application arrives here with the saved resume snapshot and pitch."
+                        subtitle: "Everyone who applied to your roles appears here with their saved pitch and resume snapshot."
                     )
 
                     if applications.isEmpty {
                         EmployerInfoCard(
                             title: "No applicants yet",
-                            details: "Once candidates apply to your jobs, their profile snapshot and pitch video will appear here."
+                            details: "Once candidates apply to your roles, their profile snapshot and pitch video will appear here."
                         )
                     } else {
                         ForEach(applications) { application in
@@ -176,72 +219,458 @@ struct EmployerHomeView: View {
         }
     }
 
-    private var discoveryView: some View {
+    private var profileView: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    screenHeader(
-                        title: "Discover",
-                        subtitle: "Browse candidates who made themselves discoverable to hiring employers."
-                    )
-
-                    discoveryFilters
-
-                    if filteredCandidates.isEmpty {
-                        EmployerInfoCard(
-                            title: discoverableCandidates.isEmpty ? "No discoverable candidates yet" : "No matches for these filters",
-                            details: discoverableCandidates.isEmpty
-                                ? "Candidates will appear here after they set their profile visibility to discoverable."
-                                : "Adjust dream role, school, prior employers, or job function filters."
-                        )
-                    } else {
-                        ForEach(filteredCandidates) { candidate in
-                            EmployerDiscoveryCard(
-                                candidate: candidate,
-                                latestOutreach: latestOutreachByCandidateID[candidate.id],
-                                onReachOut: {
-                                    selectedCandidateForOutreach = candidate
-                                }
-                            )
-                        }
+            ZStack(alignment: .leading) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        profileTopBar
+                        employerProfileHero
+                        employerProfileTabBar
+                        employerProfileTabContent
                     }
+                    .padding(20)
                 }
-                .padding(20)
+                .background(PassportTheme.background)
+
+                if showingSettingsDrawer {
+                    Color.black.opacity(0.34)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                showingSettingsDrawer = false
+                            }
+                        }
+
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+
+                        ProfileSettingsDrawer(
+                            onClose: {
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    showingSettingsDrawer = false
+                                }
+                            },
+                            onLogOut: {
+                                showingSettingsDrawer = false
+                                onSignOut()
+                            },
+                            onDeleteAccount: {
+                                showingDeleteAccountAlert = true
+                            }
+                        )
+                        .frame(width: 304)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .transition(.move(edge: .trailing))
+                    .zIndex(1)
+                }
             }
-            .background(PassportTheme.background)
         }
     }
 
-    private var discoveryFilters: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Filters")
-                .font(.headline)
+    private var profileTopBar: some View {
+        HStack {
+            Color.clear
+                .frame(width: 42, height: 42)
+
+            Spacer()
+
+            Text("Profile")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(PassportTheme.textPrimary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    showingSettingsDrawer = true
+                }
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(PassportTheme.textPrimary)
+                    .frame(width: 42, height: 42)
+                    .background(PassportTheme.card)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(PassportTheme.border.opacity(0.7), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var employerProfileHero: some View {
+        VStack(spacing: 16) {
+            HStack(alignment: .top) {
+                Spacer()
+                employerProfileAvatar
+                Spacer()
+            }
+
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(workingProfile.companyName.isEmpty ? "Your Company" : workingProfile.companyName)
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .multilineTextAlignment(.center)
+
+                    Button("Edit") {
+                        isEditingProfile = true
+                    }
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(PassportTheme.card)
+                    .foregroundStyle(PassportTheme.textPrimary)
+                    .clipShape(Capsule())
+                }
+
+                Text(employerIdentityText)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(PassportTheme.textSecondary)
+
+                Text(employerBioText)
+                    .font(.body)
+                    .foregroundStyle(PassportTheme.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+
+                if let companyURL = companyDomainURL {
+                    HStack(spacing: 10) {
+                        Link(destination: companyURL) {
+                            Label(domainDisplayText, systemImage: "link")
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(PassportTheme.card.opacity(0.96))
+                                .foregroundStyle(PassportTheme.textSecondary)
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(PassportTheme.border.opacity(0.55), lineWidth: 1)
+                                )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 12) {
+                employerProfileStat(title: "Jobs", value: "\(jobs.count)")
+                employerProfileStat(title: "Live", value: "\(publishedJobsCount)")
+                employerProfileStat(title: "Applicants", value: "\(applications.count)")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 24)
+        .jobTokCard(cornerRadius: 30)
+    }
+
+    private var employerProfileTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(EmployerProfileTab.allCases) { tab in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedProfileTab = tab
+                    }
+                } label: {
+                    VStack(spacing: 10) {
+                        Text(tab.title)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(selectedProfileTab == tab ? PassportTheme.textPrimary : PassportTheme.textSecondary)
+                            .frame(maxWidth: .infinity)
+
+                        Capsule()
+                            .fill(selectedProfileTab == tab ? PassportTheme.accent : Color.clear)
+                            .frame(height: 3)
+                    }
+                    .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+
+    @ViewBuilder
+    private var employerProfileTabContent: some View {
+        switch selectedProfileTab {
+        case .videos:
+            employerVideosTab
+        case .about:
+            employerAboutTab
+        case .company:
+            employerCompanyTab
+        }
+    }
+
+    private var discoverTopBar: some View {
+        HStack(spacing: 10) {
+            Text("JobTok")
+                .font(.headline.weight(.bold))
                 .foregroundStyle(PassportTheme.textPrimary)
 
-            Picker("Job function", selection: $selectedJobFunctionRawValue) {
-                Text("All Functions").tag("all")
+            Picker("Role filter", selection: $selectedJobFunctionRawValue) {
+                Text("All").tag("all")
                 ForEach(JobFunctionOption.allCases) { option in
                     Text(option.title).tag(option.rawValue)
                 }
             }
             .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(PassportTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .tint(PassportTheme.textPrimary)
 
-            TextField("Dream role", text: $dreamRoleQuery)
-                .textFieldStyle(PassportTextFieldStyle())
+            Spacer()
 
-            TextField("School", text: $schoolQuery)
-                .textFieldStyle(PassportTextFieldStyle())
-
-            TextField("Previous employer", text: $employerQuery)
-                .textFieldStyle(PassportTextFieldStyle())
+            HeaderAction(symbol: "arrow.clockwise", action: onRefresh)
+            HeaderAction(symbol: "bell.fill", action: onShowNotifications)
+            HeaderAction(symbol: "rectangle.portrait.and.arrow.right", action: onSignOut)
         }
-        .padding(18)
-        .background(PassportTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .jobTokChromeCapsule()
+    }
+
+    private var employerVideosTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Role videos")
+                        .font(.headline)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    Text("Publish short-form hiring posts directly from your profile.")
+                        .foregroundStyle(PassportTheme.textSecondary)
+                }
+                Spacer()
+                Button("Create Post") {
+                    isCreatingJob = true
+                }
+                .font(.subheadline.weight(.bold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(PassportTheme.accent)
+                .foregroundStyle(.black)
+                .clipShape(Capsule())
+            }
+
+            if jobs.isEmpty {
+                EmployerInfoCard(
+                    title: "No role videos yet",
+                    details: "Upload your first hiring video and it will appear in the candidate feed after publishing."
+                )
+            } else {
+                ForEach(jobs) { job in
+                    VStack(alignment: .leading, spacing: 12) {
+                        RemoteVideoSurface(
+                            urlString: job.videoURL,
+                            isActive: true,
+                            videoGravity: .resizeAspect,
+                            autoPlay: false,
+                            allowsTapToTogglePlayback: true,
+                            showsPlayOverlayWhenPaused: true
+                        )
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                        Text(job.title)
+                            .font(.headline)
+                            .foregroundStyle(PassportTheme.textPrimary)
+
+                        Text("\(job.companyName) • \(job.location ?? "Remote")")
+                            .foregroundStyle(PassportTheme.textSecondary)
+
+                        Text(job.description)
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .lineLimit(3)
+
+                        HStack {
+                            statusPill(title: job.isPublished ? "Published" : "Draft", isEmphasized: job.isPublished)
+                            if let jobFunction = job.jobFunction {
+                                statusPill(title: jobFunction.title, isEmphasized: false)
+                            }
+                            Spacer()
+                            Button(job.isPublished ? "Unpublish" : "Publish") {
+                                onToggleJobPublishState(job.id, !job.isPublished)
+                            }
+                            .font(.subheadline.weight(.bold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(PassportTheme.card)
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .clipShape(Capsule())
+                        }
+                    }
+                    .padding(20)
+                    .jobTokCard(cornerRadius: 28)
+                }
+            }
+        }
+    }
+
+    private var employerAboutTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("About")
+                    .font(.headline)
+                    .foregroundStyle(PassportTheme.textPrimary)
+                Spacer()
+                Button("Edit") {
+                    isEditingProfile = true
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PassportTheme.textSecondary)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                employerMetaRow(title: "Team", value: workingProfile.fullName.isEmpty ? "Add your hiring contact name" : workingProfile.fullName)
+                employerMetaRow(title: "Headline", value: workingProfile.headline.isEmpty ? "Add a short employer headline" : workingProfile.headline)
+                employerMetaRow(title: "Hiring for", value: workingProfile.positionTitle.isEmpty ? "Add your primary hiring focus" : workingProfile.positionTitle)
+                employerMetaRow(title: "Email", value: accountEmail)
+                employerMetaRow(title: "Role", value: "Employer")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .jobTokCard(cornerRadius: 28)
+    }
+
+    private var employerCompanyTab: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("Company")
+                    .font(.headline)
+                    .foregroundStyle(PassportTheme.textPrimary)
+                Spacer()
+                Button("Edit") {
+                    isEditingProfile = true
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PassportTheme.textSecondary)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                employerMetaRow(title: "Company", value: workingProfile.companyName.isEmpty ? "Add your company name" : workingProfile.companyName)
+                employerMetaRow(title: "Domain", value: domainDisplayText)
+                employerMetaRow(title: "Open roles", value: "\(publishedJobsCount) live • \(draftJobsCount) draft")
+            }
+            .padding(20)
+            .jobTokCard(cornerRadius: 28)
+        }
+    }
+
+    private var publishedJobsCount: Int {
+        jobs.filter(\.isPublished).count
+    }
+
+    private var draftJobsCount: Int {
+        jobs.count - publishedJobsCount
+    }
+
+    private var employerIdentityText: String {
+        let name = workingProfile.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let focus = workingProfile.positionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch (name.isEmpty, focus.isEmpty) {
+        case (false, false):
+            return "\(name) • \(focus)"
+        case (false, true):
+            return name
+        case (true, false):
+            return focus
+        case (true, true):
+            return "Employer"
+        }
+    }
+
+    private var employerBioText: String {
+        let headline = workingProfile.headline.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !headline.isEmpty {
+            return headline
+        }
+        if !workingProfile.positionTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Hiring for \(workingProfile.positionTitle) at \(workingProfile.companyName.isEmpty ? "your company" : workingProfile.companyName)."
+        }
+        return "Build a hiring profile that feels like a creator page for your company and open roles."
+    }
+
+    private var domainDisplayText: String {
+        let trimmed = workingProfile.companyDomain.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Add your website or domain" : trimmed
+    }
+
+    private var companyDomainURL: URL? {
+        let trimmed = workingProfile.companyDomain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://")
+            ? trimmed
+            : "https://\(trimmed)"
+        return URL(string: normalized)
+    }
+
+    private var employerProfileAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [PassportTheme.accent, PassportTheme.accentSoft],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 108, height: 108)
+
+            Text(employerInitials)
+                .font(.system(size: 34, weight: .black, design: .rounded))
+                .foregroundStyle(.black)
+                .frame(width: 100, height: 100)
+                .background(PassportTheme.accent)
+                .clipShape(Circle())
+        }
+    }
+
+    private var employerInitials: String {
+        let source = workingProfile.companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? workingProfile.fullName
+            : workingProfile.companyName
+        let parts = source
+            .split(whereSeparator: \.isWhitespace)
+            .prefix(2)
+            .compactMap { $0.first.map(String.init) }
+        let value = parts.joined()
+        return value.isEmpty ? "JT" : value.uppercased()
+    }
+
+    private func employerProfileStat(title: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(PassportTheme.textPrimary)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(PassportTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(PassportTheme.border.opacity(0.65), lineWidth: 1)
+        )
+    }
+
+    private func employerMetaRow(title: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(PassportTheme.textPrimary)
+                .frame(width: 92, alignment: .leading)
+
+            Text(value)
+                .foregroundStyle(PassportTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private func screenHeader(title: String, subtitle: String) -> some View {
@@ -273,13 +702,170 @@ struct EmployerHomeView: View {
     }
 }
 
+private struct EmployerCandidateFeedCard: View {
+    let candidate: DiscoverableCandidateRecord
+    let latestOutreach: CandidateOutreachRecord?
+    let isActive: Bool
+    let onReachOut: () -> Void
+
+    var body: some View {
+        ZStack {
+            RemoteVideoSurface(urlString: candidate.videoURL, isActive: isActive)
+                .ignoresSafeArea()
+
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.02),
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.92)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack {
+                Spacer()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    if let jobFunction = candidate.jobFunction {
+                        Text(jobFunction.title.uppercased())
+                            .font(.caption.weight(.bold))
+                            .tracking(1.1)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(PassportTheme.accentSoft.opacity(0.95))
+                            .foregroundStyle(PassportTheme.accent)
+                            .clipShape(Capsule())
+                    }
+
+                    Text(candidate.fullName ?? "Candidate")
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .foregroundStyle(PassportTheme.textPrimary)
+
+                    if let headline = candidate.headline, !headline.isEmpty {
+                        Text(headline)
+                            .font(.headline)
+                            .foregroundStyle(PassportTheme.textPrimary)
+                    }
+
+                    if let schoolName = candidate.schoolName, !schoolName.isEmpty {
+                        Text(schoolName)
+                            .foregroundStyle(PassportTheme.textSecondary)
+                    }
+
+                    if let dreamRole = candidate.dreamRole, !dreamRole.isEmpty {
+                        Text("Dream role: \(dreamRole)")
+                            .foregroundStyle(PassportTheme.textSecondary)
+                    }
+
+                    if !candidate.previousEmployers.isEmpty {
+                        Text("Previous employers: \(candidate.previousEmployers.joined(separator: ", "))")
+                            .font(.subheadline)
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .lineLimit(3)
+                    }
+
+                    if let compensationRange = candidate.desiredCompensationRange, !compensationRange.isEmpty {
+                        Text("Comp: \(compensationRange)")
+                            .font(.subheadline)
+                            .foregroundStyle(PassportTheme.textSecondary)
+                    }
+
+                    candidateLinksRow(
+                        linkedInURLString: candidate.linkedInURL,
+                        instagramUsername: candidate.instagramUsername,
+                        tiktokUsername: candidate.tiktokUsername
+                    )
+
+                    if let latestOutreach {
+                        Text("Last outreach: \(formattedDate(latestOutreach.createdAt))")
+                            .font(.footnote)
+                            .foregroundStyle(PassportTheme.textSecondary)
+                    }
+
+                    Button(action: onReachOut) {
+                        Text(latestOutreach == nil ? "Reach Out" : "Reach Out Again")
+                            .font(.subheadline.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(PassportTheme.accent)
+                            .foregroundStyle(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 72)
+            }
+        }
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    @ViewBuilder
+    private func candidateLinksRow(
+        linkedInURLString: String?,
+        instagramUsername: String?,
+        tiktokUsername: String?
+    ) -> some View {
+        let linkedInURL = linkedInURLString.flatMap(URL.init(string:))
+        let normalizedInstagram = normalizeUsername(instagramUsername)
+        let normalizedTikTok = normalizeUsername(tiktokUsername)
+
+        if linkedInURL != nil || normalizedInstagram != nil || normalizedTikTok != nil {
+            HStack(spacing: 8) {
+                if let linkedInURL {
+                    candidateLinkTag(title: "LinkedIn", url: linkedInURL)
+                }
+                if let normalizedInstagram, let url = URL(string: "https://instagram.com/\(normalizedInstagram)") {
+                    candidateLinkTag(title: "@\(normalizedInstagram)", url: url)
+                }
+                if let normalizedTikTok, let url = URL(string: "https://www.tiktok.com/@\(normalizedTikTok)") {
+                    candidateLinkTag(title: "@\(normalizedTikTok)", url: url)
+                }
+            }
+        }
+    }
+
+    private func candidateLinkTag(title: String, url: URL) -> some View {
+        Link(destination: url) {
+            Label(title, systemImage: "at")
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(PassportTheme.card.opacity(0.94))
+                .foregroundStyle(PassportTheme.textSecondary)
+                .clipShape(Capsule())
+        }
+    }
+
+    private func normalizeUsername(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "^@", with: "", options: .regularExpression)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 private struct EmployerApplicantCard: View {
     let application: JobApplicationRecord
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if application.candidateVideoURL != nil {
-                RemoteVideoSurface(urlString: application.candidateVideoURL, isActive: true)
+                RemoteVideoSurface(
+                    urlString: application.candidateVideoURL,
+                    isActive: true,
+                    videoGravity: .resizeAspect,
+                    autoPlay: false,
+                    allowsTapToTogglePlayback: true,
+                    showsPlayOverlayWhenPaused: true
+                )
                     .frame(height: 260)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
@@ -312,6 +898,17 @@ private struct EmployerApplicantCard: View {
                         .foregroundStyle(PassportTheme.textSecondary)
                 }
 
+                if let compensationRange = application.candidateCompensationRange, !compensationRange.isEmpty {
+                    Text("Comp: \(compensationRange)")
+                        .foregroundStyle(PassportTheme.textSecondary)
+                }
+
+                applicantLinksRow(
+                    linkedInURLString: application.candidateLinkedInURL,
+                    instagramUsername: application.candidateInstagramUsername,
+                    tiktokUsername: application.candidateTiktokUsername
+                )
+
                 HStack {
                     applicationStatusPill(title: application.status.capitalized)
                     applicationStatusPill(title: application.emailDeliveryStatus.capitalized)
@@ -333,8 +930,7 @@ private struct EmployerApplicantCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(PassportTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .jobTokCard(cornerRadius: 22)
     }
 
     private func applicationStatusPill(title: String) -> some View {
@@ -346,80 +942,407 @@ private struct EmployerApplicantCard: View {
             .foregroundStyle(PassportTheme.textPrimary)
             .clipShape(Capsule())
     }
+
+    @ViewBuilder
+    private func applicantLinksRow(
+        linkedInURLString: String?,
+        instagramUsername: String?,
+        tiktokUsername: String?
+    ) -> some View {
+        let linkedInURL = linkedInURLString.flatMap(URL.init(string:))
+        let normalizedInstagram = normalizeUsername(instagramUsername)
+        let normalizedTikTok = normalizeUsername(tiktokUsername)
+
+        if linkedInURL != nil || normalizedInstagram != nil || normalizedTikTok != nil {
+            HStack(spacing: 8) {
+                if let linkedInURL {
+                    candidateLinkTag(title: "LinkedIn", url: linkedInURL)
+                }
+                if let normalizedInstagram, let url = URL(string: "https://instagram.com/\(normalizedInstagram)") {
+                    candidateLinkTag(title: "@\(normalizedInstagram)", url: url)
+                }
+                if let normalizedTikTok, let url = URL(string: "https://www.tiktok.com/@\(normalizedTikTok)") {
+                    candidateLinkTag(title: "@\(normalizedTikTok)", url: url)
+                }
+            }
+        }
+    }
+
+    private func candidateLinkTag(title: String, url: URL) -> some View {
+        Link(destination: url) {
+            Label(title, systemImage: "at")
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(PassportTheme.card.opacity(0.94))
+                .foregroundStyle(PassportTheme.textSecondary)
+                .clipShape(Capsule())
+        }
+    }
+
+    private func normalizeUsername(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "^@", with: "", options: .regularExpression)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
-private struct EmployerDiscoveryCard: View {
-    let candidate: DiscoverableCandidateRecord
-    let latestOutreach: CandidateOutreachRecord?
-    let onReachOut: () -> Void
+private struct EmployerProfileEditor: View {
+    @Binding var profile: EmployerProfileDraft
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var initialFullName = ""
+    @State private var validationMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RemoteVideoSurface(urlString: candidate.videoURL, isActive: true)
-                .frame(height: 280)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    fullNameField
+                    field(title: "Headline", text: $profile.headline, axis: .vertical, placeholder: "Hiring manager, founder, recruiter...")
+                    field(title: "Company name", text: $profile.companyName)
+                    field(title: "Company domain", text: $profile.companyDomain, placeholder: "usejobtok.com")
+                    field(title: "Hiring focus", text: $profile.positionTitle, placeholder: "Founding Engineer, Product Designer...")
+                    if let validationMessage {
+                        Text(validationMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 4)
+                    }
+                }
+                .padding(20)
+            }
+            .onAppear {
+                initialFullName = profile.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .background(PassportTheme.background)
+            .navigationTitle("Edit Employer Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundStyle(PassportTheme.textSecondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        let trimmedFullName = profile.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmedFullName != initialFullName,
+                           let fullNameLastChangedAt = profile.fullNameLastChangedAt,
+                           let nextAllowedDate = Calendar.current.date(byAdding: .day, value: 7, to: fullNameLastChangedAt),
+                           nextAllowedDate > .now {
+                            validationMessage = "Full name can only be changed once every 7 days."
+                            return
+                        }
+                        profile.fullName = trimmedFullName
+                        onSave()
+                        dismiss()
+                    }
+                    .foregroundStyle(PassportTheme.accent)
+                }
+            }
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(candidate.fullName ?? "Candidate")
+    private var fullNameField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Full name")
                     .font(.headline)
                     .foregroundStyle(PassportTheme.textPrimary)
-
-                if let headline = candidate.headline, !headline.isEmpty {
-                    Text(headline)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                }
-
-                if let schoolName = candidate.schoolName, !schoolName.isEmpty {
-                    Text("School: \(schoolName)")
+                Spacer()
+                if let fullNameLastChangedAt = profile.fullNameLastChangedAt {
+                    Text(fullNameCooldownText(from: fullNameLastChangedAt))
+                        .font(.caption)
                         .foregroundStyle(PassportTheme.textSecondary)
                 }
+            }
 
-                if let jobFunction = candidate.jobFunction {
-                    Text("Function: \(jobFunction.title)")
-                        .foregroundStyle(PassportTheme.textSecondary)
+            TextField("Full name", text: $profile.fullName)
+                .textFieldStyle(PassportTextFieldStyle())
+
+            Text("Can be changed once every 7 days.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+    }
+
+    private func field(title: String, text: Binding<String>, axis: Axis = .horizontal, placeholder: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            TextField(placeholder ?? title, text: text, axis: axis)
+                .textFieldStyle(PassportTextFieldStyle())
+                .lineLimit(axis == .vertical ? 3...5 : 1...1)
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+    }
+
+    private func fullNameCooldownText(from date: Date) -> String {
+        let nextAllowedDate = Calendar.current.date(byAdding: .day, value: 7, to: date) ?? date
+        if nextAllowedDate <= .now {
+            return "Available now"
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return "Again \(formatter.localizedString(for: nextAllowedDate, relativeTo: .now))"
+    }
+}
+
+private struct EmployerCreateJobSheet: View {
+    let profile: EmployerProfileDraft
+    let accountEmail: String
+    let onCreateJob: (JobPostingDraft, URL) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft = JobPostingDraft()
+    @State private var selectedVideoItem: PhotosPickerItem?
+    @State private var selectedVideoURL: URL?
+    @State private var videoName = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    field(title: "Job title", text: $draft.title)
+                    field(title: "Company name", text: $draft.companyName)
+                    field(title: "Location", text: $draft.location)
+                    compensationFields
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Job function")
+                            .font(.headline)
+                            .foregroundStyle(PassportTheme.textPrimary)
+
+                        Picker("Job function", selection: $draft.jobFunction) {
+                            ForEach(JobFunctionOption.allCases) { option in
+                                Text(option.title).tag(option)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(PassportTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+
+                    field(title: "Application email", text: $draft.applicationEmail)
+                    field(title: "Source URL (optional)", text: $draft.sourceURL)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Description")
+                            .font(.headline)
+                            .foregroundStyle(PassportTheme.textPrimary)
+
+                        TextField("Describe the opening", text: $draft.description, axis: .vertical)
+                            .lineLimit(5...8)
+                            .textFieldStyle(PassportTextFieldStyle())
+                    }
+
+                    Toggle(isOn: $draft.isPublished) {
+                        Text("Publish immediately")
+                            .foregroundStyle(PassportTheme.textPrimary)
+                    }
+                    .tint(PassportTheme.accent)
+
+                    PhotosPicker(
+                        selection: $selectedVideoItem,
+                        matching: .videos,
+                        photoLibrary: .shared()
+                    ) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(selectedVideoURL == nil ? "Upload role video" : "Role video selected")
+                                .font(.headline)
+                                .foregroundStyle(PassportTheme.textPrimary)
+                            Text(selectedVideoURL == nil ? "Choose the short-form job clip to publish." : videoName)
+                                .font(.footnote)
+                                .foregroundStyle(PassportTheme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(PassportTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+
+                    Button {
+                        guard let selectedVideoURL else {
+                            errorMessage = "Select a role video before publishing."
+                            return
+                        }
+                        onCreateJob(draft, selectedVideoURL)
+                        dismiss()
+                    } label: {
+                        Text("Create Job Video")
+                            .fontWeight(.bold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .background(PassportTheme.accent)
+                            .foregroundStyle(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
                 }
-
-                if let dreamRole = candidate.dreamRole, !dreamRole.isEmpty {
-                    Text("Dream role: \(dreamRole)")
-                        .foregroundStyle(PassportTheme.textSecondary)
-                }
-
-                if !candidate.previousEmployers.isEmpty {
-                    Text("Previous employers: \(candidate.previousEmployers.joined(separator: ", "))")
-                        .foregroundStyle(PassportTheme.textSecondary)
-                }
-
-                Text("Visibility: \(candidate.discoveryVisibility.title)")
+                .padding(20)
+            }
+            .background(PassportTheme.background)
+            .navigationTitle("New Role")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") {
+                        dismiss()
+                    }
                     .foregroundStyle(PassportTheme.textSecondary)
-
-                if let latestOutreach {
-                    Text("Last outreach: \(formattedDate(latestOutreach.createdAt)) • \(latestOutreach.deliveryStatus.capitalized)")
-                        .font(.footnote)
-                        .foregroundStyle(PassportTheme.textSecondary)
                 }
             }
-
-            Button(action: onReachOut) {
-                Text(latestOutreach == nil ? "Reach Out" : "Reach Out Again")
-                    .font(.subheadline.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(PassportTheme.accent)
-                    .foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .onAppear {
+            draft.employerProfileID = ""
+            draft.companyName = profile.companyName
+            draft.applicationEmail = accountEmail
+        }
+        .onChange(of: selectedVideoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                await loadVideo(newItem)
             }
+        }
+        .alert("Issue", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { newValue in
+                if !newValue { errorMessage = nil }
+            }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func field(title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            TextField(title, text: text, axis: .vertical)
+                .textFieldStyle(PassportTextFieldStyle())
+                .lineLimit(1...4)
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+    }
+
+    private var compensationFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Annual pay (optional)")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            HStack(spacing: 12) {
+                field(title: "Min", text: $draft.compensationMinAnnual)
+                field(title: "Max", text: $draft.compensationMaxAnnual)
+            }
+
+            Text("Enter whole numbers only, for example 120000.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+    }
+
+    @MainActor
+    private func loadVideo(_ item: PhotosPickerItem) async {
+        do {
+            guard let movie = try await item.loadTransferable(type: EmployerSelectedMovie.self) else {
+                errorMessage = "The selected video could not be loaded."
+                return
+            }
+            selectedVideoURL = movie.url
+            videoName = movie.fileName
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private enum EmployerProfileTab: String, CaseIterable, Identifiable {
+    case videos
+    case about
+    case company
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .videos:
+            return "Videos"
+        case .about:
+            return "About"
+        case .company:
+            return "Company"
+        }
+    }
+}
+
+private struct EmployerInfoCard: View {
+    let title: String
+    let details: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Text(details)
+                .foregroundStyle(PassportTheme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(PassportTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .jobTokCard(cornerRadius: 22)
     }
+}
 
-    private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+private struct EmployerEmptyStateView: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(PassportTheme.textPrimary)
+            Text(message)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .padding(24)
+    }
+}
+
+private struct EmployerSelectedMovie: Transferable {
+    let url: URL
+    let fileName: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let temporaryDirectory = URL(filePath: NSTemporaryDirectory())
+            let copiedURL = temporaryDirectory.appending(path: received.file.lastPathComponent)
+
+            if FileManager.default.fileExists(atPath: copiedURL.path) {
+                try FileManager.default.removeItem(at: copiedURL)
+            }
+
+            try FileManager.default.copyItem(at: received.file, to: copiedURL)
+            return EmployerSelectedMovie(url: copiedURL, fileName: received.file.lastPathComponent)
+        }
     }
 }
 
@@ -475,8 +1398,7 @@ private struct EmployerOutreachSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                         .padding(18)
-                        .background(PassportTheme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .jobTokCard(cornerRadius: 22)
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -499,8 +1421,7 @@ private struct EmployerOutreachSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .padding(18)
-                    .background(PassportTheme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .jobTokCard(cornerRadius: 22)
 
                     Button {
                         let relatedJobID = selectedRelatedJobID.isEmpty ? nil : selectedRelatedJobID
@@ -560,25 +1481,5 @@ private struct EmployerOutreachSheet: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
-    }
-}
-
-private struct EmployerInfoCard: View {
-    let title: String
-    let details: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(PassportTheme.textPrimary)
-
-            Text(details)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(PassportTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }

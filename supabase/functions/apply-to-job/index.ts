@@ -143,7 +143,7 @@ Deno.serve(async (request) => {
         .single(),
       adminClient
         .from("job_seeker_profiles")
-        .select("profile_id, school_name, job_function, dream_role, intro_video_url")
+        .select("profile_id, school_name, job_function, dream_role, intro_video_url, linkedin_url, instagram_username, tiktok_username, desired_compensation_range")
         .eq("profile_id", user.id)
         .single(),
       adminClient
@@ -208,6 +208,10 @@ Deno.serve(async (request) => {
         candidate_dream_role: candidateProfile.dream_role,
         candidate_previous_employers: previousEmployers,
         candidate_video_url: candidateProfile.intro_video_url,
+        candidate_linkedin_url: candidateProfile.linkedin_url,
+        candidate_instagram_username: candidateProfile.instagram_username,
+        candidate_tiktok_username: candidateProfile.tiktok_username,
+        candidate_compensation_range: candidateProfile.desired_compensation_range,
         resume_file_path: latestResume.file_path,
         resume_file_name: resumeFileName,
         email_delivery_status: "pending",

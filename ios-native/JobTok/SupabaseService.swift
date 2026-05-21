@@ -321,6 +321,18 @@ final class SupabaseService {
         return try await selectArray(path: "job_applications", query: query, session: session)
     }
 
+    func fetchSavedJobs(userID: String, session: AuthSession) async throws -> [SavedJobRecord] {
+        try await selectArray(
+            path: "saved_jobs",
+            query: [
+                ("profile_id", "eq.\(userID)"),
+                ("select", "*"),
+                ("order", "created_at.desc")
+            ],
+            session: session
+        )
+    }
+
     func fetchDiscoverableCandidates(session: AuthSession) async throws -> [DiscoverableCandidateRecord] {
         try await selectArray(
             path: "employer_candidate_discovery",
@@ -347,17 +359,25 @@ final class SupabaseService {
         userID: String,
         email: String?,
         fullName: String,
+        handle: String?,
+        avatarURL: String? = nil,
+        includeAvatarURL: Bool = false,
         headline: String,
         onboardingComplete: Bool,
         session: AuthSession
     ) async throws {
-        let body: [[String: AnyEncodable]] = [[
+        var row: [String: AnyEncodable] = [
             "id": AnyEncodable(userID),
             "email": AnyEncodable(email),
             "full_name": AnyEncodable(fullName),
+            "handle": AnyEncodable(handle),
             "headline": AnyEncodable(headline),
             "onboarding_complete": AnyEncodable(onboardingComplete)
-        ]]
+        ]
+        if includeAvatarURL {
+            row["avatar_url"] = AnyEncodable(avatarURL)
+        }
+        let body = [row]
 
         _ = try await postgrestWrite(
             path: "profiles",
@@ -374,6 +394,11 @@ final class SupabaseService {
         schoolName: String,
         jobFunction: JobFunctionOption,
         dreamRole: String,
+        desiredCompensationAnnual: Int?,
+        desiredCompensationRange: String?,
+        linkedInURL: String?,
+        instagramUsername: String?,
+        tiktokUsername: String?,
         introVideoURL: String?,
         visibility: CandidateVisibility,
         session: AuthSession
@@ -383,6 +408,11 @@ final class SupabaseService {
             "school_name": AnyEncodable(schoolName),
             "job_function": AnyEncodable(jobFunction.rawValue),
             "dream_role": AnyEncodable(dreamRole.isEmpty ? nil : dreamRole),
+            "desired_compensation_annual": AnyEncodable(desiredCompensationAnnual),
+            "desired_compensation_range": AnyEncodable(desiredCompensationRange),
+            "linkedin_url": AnyEncodable(linkedInURL),
+            "instagram_username": AnyEncodable(instagramUsername),
+            "tiktok_username": AnyEncodable(tiktokUsername),
             "intro_video_url": AnyEncodable(introVideoURL),
             "discovery_visibility": AnyEncodable(visibility.rawValue)
         ]]
@@ -468,6 +498,33 @@ final class SupabaseService {
         return record
     }
 
+    func saveJob(userID: String, jobID: String, session: AuthSession) async throws {
+        let body: [[String: AnyEncodable]] = [[
+            "profile_id": AnyEncodable(userID),
+            "job_id": AnyEncodable(jobID)
+        ]]
+
+        _ = try await postgrestWrite(
+            path: "saved_jobs",
+            method: "POST",
+            query: [("on_conflict", "profile_id,job_id")],
+            body: body,
+            session: session,
+            prefer: "resolution=merge-duplicates"
+        ) as EmptyPayload
+    }
+
+    func unsaveJob(userID: String, jobID: String, session: AuthSession) async throws {
+        try await delete(
+            path: "saved_jobs",
+            query: [
+                ("profile_id", "eq.\(userID)"),
+                ("job_id", "eq.\(jobID)")
+            ],
+            session: session
+        )
+    }
+
     func invokeParseResume(resumeID: String, rawText: String?, session: AuthSession) async throws {
         var body: [String: AnyEncodable] = ["resumeId": AnyEncodable(resumeID)]
         if let rawText, !rawText.isEmpty {
@@ -521,6 +578,8 @@ final class SupabaseService {
         title: String,
         companyName: String,
         location: String,
+        compensationMinAnnual: Int?,
+        compensationMaxAnnual: Int?,
         jobFunction: JobFunctionOption,
         description: String,
         applicationEmail: String,
@@ -536,6 +595,8 @@ final class SupabaseService {
             "title": AnyEncodable(title),
             "company_name": AnyEncodable(companyName),
             "location": AnyEncodable(location.isEmpty ? nil : location),
+            "compensation_min_annual": AnyEncodable(compensationMinAnnual),
+            "compensation_max_annual": AnyEncodable(compensationMaxAnnual),
             "job_function": AnyEncodable(jobFunction.rawValue),
             "description": AnyEncodable(description),
             "application_email": AnyEncodable(applicationEmail),
@@ -593,6 +654,43 @@ final class SupabaseService {
         )
         let response = try await execute(request, decode: CandidateOutreachEnvelope.self)
         return response.outreach
+    }
+
+    func deleteAccount(session: AuthSession) async throws {
+        let request = try makeRequest(
+            url: functionsBaseURL.appendingPathComponent("delete-account"),
+            method: "POST",
+            accessToken: session.accessToken,
+            body: [:] as [String: String]
+        )
+        _ = try await executeData(request)
+    }
+
+    func createSignedFileURL(
+        bucket: String,
+        path: String,
+        expiresIn: Int,
+        session: AuthSession
+    ) async throws -> URL {
+        let encodedPath = path
+            .split(separator: "/")
+            .map { segment in
+                segment.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String(segment)
+            }
+            .joined(separator: "/")
+
+        let request = try makeRequest(
+            url: URL(string: "\(storageBaseURL.absoluteString)/object/sign/\(bucket)/\(encodedPath)")!,
+            method: "POST",
+            accessToken: session.accessToken,
+            body: ["expiresIn": AnyEncodable(expiresIn)]
+        )
+        let response = try await execute(request, decode: StorageSignedURLEnvelope.self)
+        if let absolute = URL(string: response.signedURL), absolute.scheme != nil {
+            return absolute
+        }
+        let normalized = response.signedURL.hasPrefix("/") ? String(response.signedURL.dropFirst()) : response.signedURL
+        return storageBaseURL.appendingPathComponent(normalized)
     }
 
     func markNotificationsRead(ids: [String]?, session: AuthSession) async throws {
@@ -916,6 +1014,14 @@ private struct JobApplicationEnvelope: Codable {
 
 private struct CandidateOutreachEnvelope: Codable {
     let outreach: CandidateOutreachRecord
+}
+
+private struct StorageSignedURLEnvelope: Codable {
+    let signedURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case signedURL = "signedURL"
+    }
 }
 
 struct AnyEncodable: Encodable {

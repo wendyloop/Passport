@@ -72,8 +72,7 @@ struct AdminHomeView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(18)
-                            .background(PassportTheme.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .jobTokCard(cornerRadius: 22)
                         }
                     }
 
@@ -131,6 +130,7 @@ private struct AdminCreateJobSheet: View {
                     field(title: "Job title", text: $draft.title)
                     field(title: "Company name", text: $draft.companyName)
                     field(title: "Location", text: $draft.location)
+                    compensationFields
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Job function")
@@ -268,6 +268,23 @@ private struct AdminCreateJobSheet: View {
         }
     }
 
+    private var compensationFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Annual pay (optional)")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            HStack(spacing: 12) {
+                field(title: "Min", text: $draft.compensationMinAnnual)
+                field(title: "Max", text: $draft.compensationMaxAnnual)
+            }
+
+            Text("Enter whole numbers only, for example 120000.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+    }
+
     private func field(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -306,8 +323,7 @@ private struct AdminInfoCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(PassportTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .jobTokCard(cornerRadius: 22)
     }
 }
 

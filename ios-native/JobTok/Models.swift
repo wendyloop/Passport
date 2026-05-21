@@ -61,19 +61,19 @@ enum CandidateVisibility: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .private: return "Private"
-        case .appliedRolesOnly: return "Applied Roles Only"
-        case .discoverableToHiringEmployers: return "Discoverable To Hiring Employers"
+        case .appliedRolesOnly: return "Private"
+        case .discoverableToHiringEmployers: return "Public"
         }
     }
 
     var explanation: String {
         switch self {
         case .private:
-            return "Only you can view your full profile in JobTok."
+            return "Only employers tied to your applications can view your profile."
         case .appliedRolesOnly:
-            return "Employers only see your profile when you apply to one of their roles."
+            return "Only employers tied to your applications can view your profile."
         case .discoverableToHiringEmployers:
-            return "Hiring employers can discover your profile and reach out directly."
+            return "Any hiring employer can discover your profile."
         }
     }
 }
@@ -94,7 +94,10 @@ struct AppProfileRecord: Codable, Identifiable {
     let id: String
     var role: UserRole?
     var fullName: String?
+    var fullNameLastChangedAt: Date?
     var email: String?
+    var handle: String?
+    var handleLastChangedAt: Date?
     var avatarURL: String?
     var headline: String?
     var onboardingComplete: Bool
@@ -103,7 +106,10 @@ struct AppProfileRecord: Codable, Identifiable {
         case id
         case role
         case fullName = "full_name"
+        case fullNameLastChangedAt = "full_name_last_changed_at"
         case email
+        case handle
+        case handleLastChangedAt = "handle_last_changed_at"
         case avatarURL = "avatar_url"
         case headline
         case onboardingComplete = "onboarding_complete"
@@ -118,6 +124,11 @@ struct JobSeekerProfileRecord: Codable {
     var referralInviteID: String?
     var introVideoURL: String?
     var dreamRole: String?
+    var desiredCompensationAnnual: Int?
+    var desiredCompensationRange: String?
+    var linkedInURL: String?
+    var instagramUsername: String?
+    var tiktokUsername: String?
     var discoveryVisibility: CandidateVisibility
 
     enum CodingKeys: String, CodingKey {
@@ -128,6 +139,11 @@ struct JobSeekerProfileRecord: Codable {
         case referralInviteID = "referral_invite_id"
         case introVideoURL = "intro_video_url"
         case dreamRole = "dream_role"
+        case desiredCompensationAnnual = "desired_compensation_annual"
+        case desiredCompensationRange = "desired_compensation_range"
+        case linkedInURL = "linkedin_url"
+        case instagramUsername = "instagram_username"
+        case tiktokUsername = "tiktok_username"
         case discoveryVisibility = "discovery_visibility"
     }
 }
@@ -207,6 +223,8 @@ struct JobPostingRecord: Codable, Identifiable {
     let title: String
     let companyName: String
     let location: String?
+    let compensationMinAnnual: Int?
+    let compensationMaxAnnual: Int?
     let jobFunction: JobFunctionOption?
     let description: String
     let applicationEmail: String
@@ -222,6 +240,8 @@ struct JobPostingRecord: Codable, Identifiable {
         case title
         case companyName = "company_name"
         case location
+        case compensationMinAnnual = "compensation_min_annual"
+        case compensationMaxAnnual = "compensation_max_annual"
         case jobFunction = "job_function"
         case description
         case applicationEmail = "application_email"
@@ -250,6 +270,10 @@ struct JobApplicationRecord: Codable, Identifiable {
     let candidateDreamRole: String?
     let candidatePreviousEmployers: [String]
     let candidateVideoURL: String?
+    let candidateLinkedInURL: String?
+    let candidateInstagramUsername: String?
+    let candidateTiktokUsername: String?
+    let candidateCompensationRange: String?
     let resumeFilePath: String?
     let resumeFileName: String?
     let emailDeliveryStatus: String
@@ -274,6 +298,10 @@ struct JobApplicationRecord: Codable, Identifiable {
         case candidateDreamRole = "candidate_dream_role"
         case candidatePreviousEmployers = "candidate_previous_employers"
         case candidateVideoURL = "candidate_video_url"
+        case candidateLinkedInURL = "candidate_linkedin_url"
+        case candidateInstagramUsername = "candidate_instagram_username"
+        case candidateTiktokUsername = "candidate_tiktok_username"
+        case candidateCompensationRange = "candidate_compensation_range"
         case resumeFilePath = "resume_file_path"
         case resumeFileName = "resume_file_name"
         case emailDeliveryStatus = "email_delivery_status"
@@ -286,10 +314,16 @@ struct DiscoverableCandidateRecord: Codable, Identifiable {
     let candidateID: String
     let fullName: String?
     let headline: String?
+    let handle: String?
+    let avatarURL: String?
     let schoolName: String?
     let jobFunction: JobFunctionOption?
     let dreamRole: String?
     let discoveryVisibility: CandidateVisibility
+    let linkedInURL: String?
+    let instagramUsername: String?
+    let tiktokUsername: String?
+    let desiredCompensationRange: String?
     let previousEmployers: [String]
     let videoURL: String?
 
@@ -299,10 +333,16 @@ struct DiscoverableCandidateRecord: Codable, Identifiable {
         case candidateID = "candidate_id"
         case fullName = "full_name"
         case headline
+        case handle
+        case avatarURL = "avatar_url"
         case schoolName = "school_name"
         case jobFunction = "job_function"
         case dreamRole = "dream_role"
         case discoveryVisibility = "discovery_visibility"
+        case linkedInURL = "linkedin_url"
+        case instagramUsername = "instagram_username"
+        case tiktokUsername = "tiktok_username"
+        case desiredCompensationRange = "desired_compensation_range"
         case previousEmployers = "previous_employers"
         case videoURL = "video_url"
     }
@@ -332,6 +372,20 @@ struct CandidateOutreachRecord: Codable, Identifiable {
     }
 }
 
+struct SavedJobRecord: Codable, Identifiable {
+    let id: String
+    let profileID: String
+    let jobID: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case profileID = "profile_id"
+        case jobID = "job_id"
+        case createdAt = "created_at"
+    }
+}
+
 struct EmployerDirectoryItem: Identifiable, Hashable {
     let id: String
     let fullName: String
@@ -341,21 +395,31 @@ struct EmployerDirectoryItem: Identifiable, Hashable {
 
 struct CandidateProfileDraft: Equatable {
     var fullName: String = ""
+    var fullNameLastChangedAt: Date?
     var headline: String = ""
+    var handle: String = ""
+    var handleLastChangedAt: Date?
+    var avatarURL: String?
     var school: String = ""
     var employers: [String] = []
     var jobFunction: JobFunctionOption = .engineering
     var dreamRole: String = ""
+    var desiredCompensationRange: String = ""
+    var linkedInURL: String = ""
+    var instagramUsername: String = ""
+    var tiktokUsername: String = ""
     var visibility: CandidateVisibility = .appliedRolesOnly
     var resumeFileName: String?
+    var resumeStoragePath: String?
     var resumeImportedAt: Date?
     var introVideoFileName: String?
     var introVideoDuration: Double?
     var introVideoURL: String?
 }
 
-struct EmployerProfileDraft {
+struct EmployerProfileDraft: Equatable {
     var fullName: String = ""
+    var fullNameLastChangedAt: Date?
     var headline: String = ""
     var companyName: String = ""
     var companyDomain: String = ""
@@ -367,6 +431,8 @@ struct JobPostingDraft {
     var title: String = ""
     var companyName: String = ""
     var location: String = ""
+    var compensationMinAnnual: String = ""
+    var compensationMaxAnnual: String = ""
     var jobFunction: JobFunctionOption = .engineering
     var description: String = ""
     var applicationEmail: String = ""
@@ -377,13 +443,22 @@ struct JobPostingDraft {
 enum DemoData {
     static let defaultCandidateProfile = CandidateProfileDraft(
         fullName: "Maya Chen",
+        fullNameLastChangedAt: nil,
         headline: "Product designer with a creator-first portfolio and short-form storytelling skills.",
+        handle: "mayachen",
+        handleLastChangedAt: nil,
+        avatarURL: nil,
         school: "Stanford University",
         employers: ["Figma", "Notion"],
         jobFunction: .design,
         dreamRole: "Founding Product Designer",
+        desiredCompensationRange: "$150k-$175k",
+        linkedInURL: "",
+        instagramUsername: "",
+        tiktokUsername: "",
         visibility: .appliedRolesOnly,
         resumeFileName: nil,
+        resumeStoragePath: nil,
         resumeImportedAt: nil,
         introVideoFileName: nil,
         introVideoDuration: nil,
@@ -398,6 +473,8 @@ enum DemoData {
             title: "Senior Product Designer",
             companyName: "Figma",
             location: "San Francisco, CA",
+            compensationMinAnnual: 140000,
+            compensationMaxAnnual: 180000,
             jobFunction: .design,
             description: "Own the candidate application experience and create product surfaces that convert attention into applications.",
             applicationEmail: "talent@figma.com",
@@ -413,6 +490,8 @@ enum DemoData {
             title: "Growth Product Manager",
             companyName: "Ramp",
             location: "New York, NY",
+            compensationMinAnnual: 125000,
+            compensationMaxAnnual: 165000,
             jobFunction: .product,
             description: "Build creator-native acquisition and activation loops across mobile and web hiring funnels.",
             applicationEmail: "jobs@ramp.com",
