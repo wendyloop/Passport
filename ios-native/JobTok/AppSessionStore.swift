@@ -478,6 +478,9 @@ final class AppSessionStore: ObservableObject {
                 location: draft.location,
                 compensationMinAnnual: normalizedAnnualCompensation(from: draft.compensationMinAnnual),
                 compensationMaxAnnual: normalizedAnnualCompensation(from: draft.compensationMaxAnnual),
+                compensationMinHourly: normalizedHourlyCompensation(from: draft.compensationMinHourly),
+                compensationMaxHourly: normalizedHourlyCompensation(from: draft.compensationMaxHourly),
+                employmentType: draft.employmentType,
                 jobFunction: draft.jobFunction,
                 description: draft.description,
                 applicationEmail: draft.applicationEmail,
@@ -514,6 +517,9 @@ final class AppSessionStore: ObservableObject {
                 location: draft.location,
                 compensationMinAnnual: normalizedAnnualCompensation(from: draft.compensationMinAnnual),
                 compensationMaxAnnual: normalizedAnnualCompensation(from: draft.compensationMaxAnnual),
+                compensationMinHourly: normalizedHourlyCompensation(from: draft.compensationMinHourly),
+                compensationMaxHourly: normalizedHourlyCompensation(from: draft.compensationMaxHourly),
+                employmentType: draft.employmentType,
                 jobFunction: draft.jobFunction,
                 description: draft.description,
                 applicationEmail: draft.applicationEmail,
@@ -848,6 +854,12 @@ final class AppSessionStore: ObservableObject {
     }
 
     private func normalizedAnnualCompensation(from rawValue: String) -> Int? {
+        let digits = rawValue.filter(\.isNumber)
+        guard let value = Int(digits), value > 0 else { return nil }
+        return value
+    }
+
+    private func normalizedHourlyCompensation(from rawValue: String) -> Int? {
         let digits = rawValue.filter(\.isNumber)
         guard let value = Int(digits), value > 0 else { return nil }
         return value

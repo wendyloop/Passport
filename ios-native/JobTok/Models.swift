@@ -51,6 +51,25 @@ enum JobFunctionOption: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum EmploymentTypeOption: String, CaseIterable, Identifiable, Codable {
+    case fullTime = "full_time"
+    case partTime = "part_time"
+    case contract
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fullTime:
+            return "Full-time"
+        case .partTime:
+            return "Part-time"
+        case .contract:
+            return "Contract"
+        }
+    }
+}
+
 enum CandidateVisibility: String, CaseIterable, Identifiable, Codable {
     case `private`
     case appliedRolesOnly = "applied_roles_only"
@@ -225,6 +244,9 @@ struct JobPostingRecord: Codable, Identifiable {
     let location: String?
     let compensationMinAnnual: Int?
     let compensationMaxAnnual: Int?
+    let compensationMinHourly: Int?
+    let compensationMaxHourly: Int?
+    let employmentType: EmploymentTypeOption?
     let jobFunction: JobFunctionOption?
     let description: String
     let applicationEmail: String
@@ -242,6 +264,9 @@ struct JobPostingRecord: Codable, Identifiable {
         case location
         case compensationMinAnnual = "compensation_min_annual"
         case compensationMaxAnnual = "compensation_max_annual"
+        case compensationMinHourly = "compensation_min_hourly"
+        case compensationMaxHourly = "compensation_max_hourly"
+        case employmentType = "employment_type"
         case jobFunction = "job_function"
         case description
         case applicationEmail = "application_email"
@@ -433,6 +458,9 @@ struct JobPostingDraft {
     var location: String = ""
     var compensationMinAnnual: String = ""
     var compensationMaxAnnual: String = ""
+    var compensationMinHourly: String = ""
+    var compensationMaxHourly: String = ""
+    var employmentType: EmploymentTypeOption?
     var jobFunction: JobFunctionOption = .engineering
     var description: String = ""
     var applicationEmail: String = ""
@@ -475,6 +503,9 @@ enum DemoData {
             location: "San Francisco, CA",
             compensationMinAnnual: 140000,
             compensationMaxAnnual: 180000,
+            compensationMinHourly: nil,
+            compensationMaxHourly: nil,
+            employmentType: .fullTime,
             jobFunction: .design,
             description: "Own the candidate application experience and create product surfaces that convert attention into applications.",
             applicationEmail: "talent@figma.com",
@@ -492,6 +523,9 @@ enum DemoData {
             location: "New York, NY",
             compensationMinAnnual: 125000,
             compensationMaxAnnual: 165000,
+            compensationMinHourly: nil,
+            compensationMaxHourly: nil,
+            employmentType: .contract,
             jobFunction: .product,
             description: "Build creator-native acquisition and activation loops across mobile and web hiring funnels.",
             applicationEmail: "jobs@ramp.com",

@@ -1390,6 +1390,16 @@ private struct JobFeedCard: View {
                             .clipShape(Capsule())
                     }
 
+                    if let employmentType = job.employmentType {
+                        Text(employmentType.title)
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(PassportTheme.card.opacity(0.92))
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .clipShape(Capsule())
+                    }
+
                     Text(job.title)
                         .font(.system(size: 34, weight: .black, design: .rounded))
                         .foregroundStyle(PassportTheme.textPrimary)
@@ -1426,23 +1436,39 @@ private struct JobFeedCard: View {
     }
 
     private var compensationText: String? {
-        guard job.compensationMinAnnual != nil || job.compensationMaxAnnual != nil else { return nil }
+        if job.compensationMinAnnual != nil || job.compensationMaxAnnual != nil {
+            return formattedCompensation(
+                min: job.compensationMinAnnual,
+                max: job.compensationMaxAnnual,
+                suffix: ""
+            )
+        }
 
+        if job.compensationMinHourly != nil || job.compensationMaxHourly != nil {
+            return formattedCompensation(
+                min: job.compensationMinHourly,
+                max: job.compensationMaxHourly,
+                suffix: "/hr"
+            )
+        }
+        return nil
+    }
+
+    private func formattedCompensation(min: Int?, max: Int?, suffix: String) -> String? {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
         formatter.maximumFractionDigits = 0
 
-        let minimum = job.compensationMinAnnual.flatMap { formatter.string(from: NSNumber(value: $0)) }
-        let maximum = job.compensationMaxAnnual.flatMap { formatter.string(from: NSNumber(value: $0)) }
-
+        let minimum = min.flatMap { formatter.string(from: NSNumber(value: $0)) }
+        let maximum = max.flatMap { formatter.string(from: NSNumber(value: $0)) }
         switch (minimum, maximum) {
         case let (min?, max?):
-            return "\(min) - \(max)"
+            return "\(min) - \(max)\(suffix)"
         case let (min?, nil):
-            return "From \(min)"
+            return "From \(min)\(suffix)"
         case let (nil, max?):
-            return "Up to \(max)"
+            return "Up to \(max)\(suffix)"
         case (nil, nil):
             return nil
         }
@@ -2125,6 +2151,28 @@ private struct SavedJobCard: View {
                     .foregroundStyle(PassportTheme.textSecondary)
             }
 
+            HStack(spacing: 8) {
+                if let compensationText {
+                    Text(compensationText)
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(PassportTheme.card)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .clipShape(Capsule())
+                }
+
+                if let employmentType = job.employmentType {
+                    Text(employmentType.title)
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(PassportTheme.card)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .clipShape(Capsule())
+                }
+            }
+
             Text(job.description)
                 .font(.subheadline)
                 .foregroundStyle(PassportTheme.textPrimary)
@@ -2156,6 +2204,39 @@ private struct SavedJobCard: View {
         }
         .padding(18)
         .jobTokCard(cornerRadius: 24)
+    }
+
+    private var compensationText: String? {
+        if job.compensationMinAnnual != nil || job.compensationMaxAnnual != nil {
+            return formattedCompensation(min: job.compensationMinAnnual, max: job.compensationMaxAnnual, suffix: "")
+        }
+
+        if job.compensationMinHourly != nil || job.compensationMaxHourly != nil {
+            return formattedCompensation(min: job.compensationMinHourly, max: job.compensationMaxHourly, suffix: "/hr")
+        }
+
+        return nil
+    }
+
+    private func formattedCompensation(min: Int?, max: Int?, suffix: String) -> String? {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 0
+
+        let minimum = min.flatMap { formatter.string(from: NSNumber(value: $0)) }
+        let maximum = max.flatMap { formatter.string(from: NSNumber(value: $0)) }
+
+        switch (minimum, maximum) {
+        case let (min?, max?):
+            return "\(min) - \(max)\(suffix)"
+        case let (min?, nil):
+            return "From \(min)\(suffix)"
+        case let (nil, max?):
+            return "Up to \(max)\(suffix)"
+        case (nil, nil):
+            return nil
+        }
     }
 }
 
