@@ -159,7 +159,7 @@ struct NativeRootView: View {
                 onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
                 onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
                 onRequestResumePreview: { try await store.requestResumePreviewURL() },
-                onApply: { jobID, coverNote in Task { await store.applyToJob(jobID: jobID, coverNote: coverNote) } },
+                onApply: { draft in Task { await store.applyToJob(draft) } },
                 onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
                 onRefresh: { Task { await store.refreshCurrentRoleData() } },
                 onShowNotifications: { showingNotifications = true },
@@ -202,7 +202,12 @@ struct NativeRootView: View {
             AdminHomeView(
                 jobs: store.adminJobs,
                 employers: store.employerDirectoryItems,
-                onCreateJob: { draft, videoURL in Task { await store.createJob(draft: draft, localVideoURL: videoURL) } },
+                onCreateJob: { draft, videoURL in
+                    await store.createJob(draft: draft, localVideoURL: videoURL)
+                },
+                onImportSharedPost: { sourceURL in
+                    try await store.parseSharedJobPosting(sourceURL: sourceURL)
+                },
                 onToggleJobPublishState: { jobID, isPublished in
                     Task { await store.toggleJobPublishState(jobID: jobID, isPublished: isPublished) }
                 },
@@ -222,7 +227,7 @@ struct NativeRootView: View {
                 onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
                 onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
                 onRequestResumePreview: { try await store.requestResumePreviewURL() },
-                onApply: { jobID, coverNote in Task { await store.applyToJob(jobID: jobID, coverNote: coverNote) } },
+                onApply: { draft in Task { await store.applyToJob(draft) } },
                 onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
                 onRefresh: { Task { await store.refreshCurrentRoleData() } },
                 onShowNotifications: { showingNotifications = true },

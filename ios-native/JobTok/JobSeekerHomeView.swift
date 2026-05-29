@@ -3,7 +3,6 @@ import PhotosUI
 import AVFoundation
 import SafariServices
 import UIKit
-import CoreTransferable
 import UniformTypeIdentifiers
 
 struct JobSeekerHomeView: View {
@@ -17,7 +16,7 @@ struct JobSeekerHomeView: View {
     let onUploadResume: (URL) -> Void
     let onUploadVideo: (URL, Double) -> Void
     let onRequestResumePreview: () async throws -> URL?
-    let onApply: (String, String?) -> Void
+    let onApply: (JobApplicationDraft) -> Void
     let onToggleSavedJob: (String) -> Void
     let onRefresh: () -> Void
     let onShowNotifications: () -> Void
@@ -27,11 +26,11 @@ struct JobSeekerHomeView: View {
     @State private var workingProfile: CandidateProfileDraft
     @State private var isEditingProfile = false
     @State private var showingResumeImporter = false
-    @State private var selectedVideoItem: PhotosPickerItem?
+    @State private var showingVideoStudio = false
     @State private var importErrorMessage: String?
     @State private var currentJobID: String?
     @State private var applyingJob: JobPostingRecord?
-    @State private var coverNote = ""
+    @State private var applicationDraft = JobApplicationDraft()
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
     @State private var selectedAvatarItem: PhotosPickerItem?
@@ -54,7 +53,7 @@ struct JobSeekerHomeView: View {
         onUploadResume: @escaping (URL) -> Void,
         onUploadVideo: @escaping (URL, Double) -> Void,
         onRequestResumePreview: @escaping () async throws -> URL?,
-        onApply: @escaping (String, String?) -> Void,
+        onApply: @escaping (JobApplicationDraft) -> Void,
         onToggleSavedJob: @escaping (String) -> Void,
         onRefresh: @escaping () -> Void,
         onShowNotifications: @escaping () -> Void,
@@ -156,12 +155,24 @@ struct JobSeekerHomeView: View {
         .sheet(item: $applyingJob) { job in
             ApplySheet(
                 job: job,
-                coverNote: $coverNote,
+                draft: $applicationDraft,
                 onApply: {
-                    let trimmed = coverNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                    onApply(job.id, trimmed.isEmpty ? nil : trimmed)
-                    coverNote = ""
+                    onApply(applicationDraft)
+                    applicationDraft = JobApplicationDraft()
                     applyingJob = nil
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showingVideoStudio) {
+            JobTokVideoStudio(
+                purpose: .candidatePitch,
+                startMode: .library,
+                onCancel: {
+                    showingVideoStudio = false
+                },
+                onComplete: { composedVideo in
+                    acceptComposedVideo(composedVideo)
+                    showingVideoStudio = false
                 }
             )
         }
@@ -171,12 +182,6 @@ struct JobSeekerHomeView: View {
             allowsMultipleSelection: false
         ) { result in
             handleResumeImport(result: result)
-        }
-        .onChange(of: selectedVideoItem) { _, newItem in
-            guard let newItem else { return }
-            Task {
-                await handleVideoSelection(item: newItem)
-            }
         }
         .onChange(of: selectedAvatarItem) { _, newItem in
             guard let newItem else { return }
@@ -240,7 +245,7 @@ struct JobSeekerHomeView: View {
 
             ZStack(alignment: .top) {
                 if filteredJobs.isEmpty {
-                    EmptyStateView(
+                    FeedEmptyState(
                         title: jobs.isEmpty ? "No jobs live yet" : "No jobs match your filters",
                         message: jobs.isEmpty
                             ? "Admins can publish the first JobTok openings from the admin portal."
@@ -259,6 +264,7 @@ struct JobSeekerHomeView: View {
                                         onToggleSavedJob(job.id)
                                     },
                                     onApply: {
+                                        applicationDraft = makeApplicationDraft(for: job)
                                         applyingJob = job
                                     }
                                 )
@@ -309,7 +315,7 @@ struct JobSeekerHomeView: View {
                     )
 
                     if applications.isEmpty {
-                        SimpleProfileCard(
+                        InfoCard(
                             title: "No applications yet",
                             details: "Apply to a job from the feed and it will appear here."
                         )
@@ -555,21 +561,21 @@ struct JobSeekerHomeView: View {
             .frame(maxWidth: .infinity)
 
             HStack(spacing: 12) {
-                profileStat(title: "Applied", value: "\(applications.count)")
+                ProfileStatCell(title: "Applied", value: "\(applications.count)")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         selectedProfileTab = .about
                     }
                 } label: {
-                    profileStat(title: "Checklist", value: "\(completedChecklistCount)/5")
+                    ProfileStatCell(title: "Checklist", value: "\(completedChecklistCount)/5")
                 }
                 .buttonStyle(.plain)
 
                 Button {
                     toggleVisibilityMode()
                 } label: {
-                    profileStat(title: "Mode", value: visibilityLabel)
+                    ProfileStatCell(title: "Mode", value: visibilityLabel)
                 }
                 .buttonStyle(.plain)
             }
@@ -633,11 +639,9 @@ struct JobSeekerHomeView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
 
                 HStack(spacing: 12) {
-                    PhotosPicker(
-                        selection: $selectedVideoItem,
-                        matching: .videos,
-                        photoLibrary: .shared()
-                    ) {
+                    Button {
+                        showingVideoStudio = true
+                    } label: {
                         Label("Update Video", systemImage: "video.badge.plus")
                             .font(.subheadline.weight(.bold))
                             .frame(maxWidth: .infinity)
@@ -670,11 +674,9 @@ struct JobSeekerHomeView: View {
                     Text("This is the first thing employers should see on your profile.")
                         .foregroundStyle(PassportTheme.textSecondary)
 
-                    PhotosPicker(
-                        selection: $selectedVideoItem,
-                        matching: .videos,
-                        photoLibrary: .shared()
-                    ) {
+                    Button {
+                        showingVideoStudio = true
+                    } label: {
                         Label("Upload Video", systemImage: "video.badge.plus")
                             .font(.subheadline.weight(.bold))
                             .frame(maxWidth: .infinity)
@@ -706,7 +708,7 @@ struct JobSeekerHomeView: View {
     private var savedJobsTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             if savedJobs.isEmpty {
-                SimpleProfileCard(
+                InfoCard(
                     title: "No saved jobs yet",
                     details: "Save roles from the feed and they’ll show up here."
                 )
@@ -717,6 +719,7 @@ struct JobSeekerHomeView: View {
                         isApplied: appliedJobIDs.contains(job.id),
                         isSaved: savedJobIDs.contains(job.id),
                         onApply: {
+                            applicationDraft = makeApplicationDraft(for: job)
                             applyingJob = job
                         },
                         onToggleSaved: {
@@ -740,6 +743,36 @@ struct JobSeekerHomeView: View {
             .replacingOccurrences(of: "[^a-z0-9_]", with: "", options: .regularExpression)
         guard !derived.isEmpty else { return "@jobtok.creator" }
         return "@\(derived)"
+    }
+
+    private func makeApplicationDraft(for job: JobPostingRecord) -> JobApplicationDraft {
+        JobApplicationDraft(
+            jobID: job.id,
+            resumeFileName: workingProfile.resumeFileName,
+            resumeFilePath: workingProfile.resumeStoragePath,
+            includePitchVideo: workingProfile.introVideoURL != nil,
+            pitchVideoURL: workingProfile.introVideoURL,
+            sharedSocialLink: defaultApplicationSocialLink
+        )
+    }
+
+    private var defaultApplicationSocialLink: String {
+        let linkedIn = workingProfile.linkedInURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !linkedIn.isEmpty {
+            return linkedIn
+        }
+
+        let instagram = normalizedUsernameDisplay(workingProfile.instagramUsername)
+        if !instagram.isEmpty {
+            return "https://instagram.com/\(instagram)"
+        }
+
+        let tiktok = normalizedUsernameDisplay(workingProfile.tiktokUsername)
+        if !tiktok.isEmpty {
+            return "https://www.tiktok.com/@\(tiktok)"
+        }
+
+        return ""
     }
 
     private var visibilityLabel: String {
@@ -977,11 +1010,9 @@ struct JobSeekerHomeView: View {
                         .stroke(PassportTheme.border.opacity(0.65), lineWidth: 1)
                 )
 
-                PhotosPicker(
-                    selection: $selectedVideoItem,
-                    matching: .videos,
-                    photoLibrary: .shared()
-                ) {
+                Button {
+                    showingVideoStudio = true
+                } label: {
                     Label(workingProfile.introVideoFileName == nil ? "Add Video" : "Update Video", systemImage: "video.badge.plus")
                         .font(.subheadline.weight(.bold))
                         .frame(maxWidth: .infinity)
@@ -1036,13 +1067,12 @@ struct JobSeekerHomeView: View {
             }
             .buttonStyle(.plain)
         case .pitchVideo:
-            PhotosPicker(
-                selection: $selectedVideoItem,
-                matching: .videos,
-                photoLibrary: .shared()
-            ) {
+            Button {
+                showingVideoStudio = true
+            } label: {
                 checklistRowLabel(item)
             }
+            .buttonStyle(.plain)
         case .linkedIn:
             Button {
                 openProfileEditor(target: .linkedIn)
@@ -1161,25 +1191,6 @@ struct JobSeekerHomeView: View {
         return components.isEmpty ? "JT" : components.joined()
     }
 
-    private func profileStat(title: String, value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(PassportTheme.textPrimary)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(PassportTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(PassportTheme.border.opacity(0.65), lineWidth: 1)
-        )
-    }
-
     private func profileLinkTag(title: String, url: URL) -> some View {
         Link(destination: url) {
             Label(title, systemImage: "at")
@@ -1263,29 +1274,10 @@ struct JobSeekerHomeView: View {
         }
     }
 
-    @MainActor
-    private func handleVideoSelection(item: PhotosPickerItem) async {
-        do {
-            guard let movie = try await item.loadTransferable(type: JobSeekerSelectedMovie.self) else {
-                importErrorMessage = "The selected video could not be loaded."
-                return
-            }
-
-            let asset = AVURLAsset(url: movie.url)
-            let duration = try await asset.load(.duration).seconds
-
-            guard duration <= 60 else {
-                importErrorMessage = "Your pitch video must be 60 seconds or shorter."
-                selectedVideoItem = nil
-                return
-            }
-
-            workingProfile.introVideoFileName = movie.fileName
-            workingProfile.introVideoDuration = duration
-            onUploadVideo(movie.url, duration)
-        } catch {
-            importErrorMessage = error.localizedDescription
-        }
+    private func acceptComposedVideo(_ composedVideo: JobTokComposedVideo) {
+        workingProfile.introVideoFileName = composedVideo.fileName
+        workingProfile.introVideoDuration = composedVideo.duration
+        onUploadVideo(composedVideo.url, composedVideo.duration)
     }
 
     private func formattedDuration(_ duration: Double) -> String {
@@ -1334,122 +1326,135 @@ private struct JobFeedCard: View {
     let onToggleSaved: () -> Void
     let onApply: () -> Void
 
+    @State private var isMuted = false
+
+    private var canApply: Bool {
+        !alreadyApplied && !job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isSocialEmbed: Bool {
+        guard let url = job.videoURL.isEmpty ? nil : job.videoURL,
+              let host = URL(string: url)?.host?.lowercased() else { return false }
+        return host.contains("tiktok.com") || host.contains("instagram.com")
+    }
+
     var body: some View {
         ZStack {
-            RemoteVideoSurface(urlString: job.videoURL, isActive: isActive)
-                .ignoresSafeArea()
+            RemoteVideoSurface(
+                urlString: job.videoURL,
+                isActive: isActive,
+                allowsTapToTogglePlayback: true,
+                showsPlayOverlayWhenPaused: true,
+                isMuted: isMuted
+            )
+            .ignoresSafeArea()
 
             LinearGradient(
                 colors: [
                     Color.black.opacity(0.0),
-                    Color.black.opacity(0.1),
-                    Color.black.opacity(0.92)
+                    Color.black.opacity(0.18),
+                    Color.black.opacity(0.90)
                 ],
-                startPoint: .top,
+                startPoint: .center,
                 endPoint: .bottom
             )
             .ignoresSafeArea()
 
-            VStack {
-                HStack {
-                    Spacer()
-
-                    Button(action: onToggleSaved) {
-                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(isSaved ? .black : PassportTheme.textPrimary)
-                            .frame(width: 42, height: 42)
-                            .background(isSaved ? PassportTheme.accent : PassportTheme.card.opacity(0.92))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.top, 78)
-                .padding(.horizontal, 18)
-
+            VStack(spacing: 0) {
                 Spacer()
-                VStack(alignment: .leading, spacing: 12) {
-                    if let jobFunction = job.jobFunction {
-                        Text(jobFunction.title.uppercased())
-                            .font(.caption.weight(.bold))
-                            .tracking(1.1)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(PassportTheme.accentSoft.opacity(0.95))
-                            .foregroundStyle(PassportTheme.accent)
-                            .clipShape(Capsule())
+
+                HStack(alignment: .bottom, spacing: 0) {
+                    // Left: job info
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 6) {
+                            if let jobFunction = job.jobFunction {
+                                feedTag(jobFunction.title.uppercased(), accent: true)
+                            }
+                            if let pay = compensationText {
+                                feedTag(pay, accent: false)
+                            }
+                            if let type = job.employmentType {
+                                feedTag(type.title, accent: false)
+                            }
+                        }
+
+                        Text(job.title)
+                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+
+                        HStack(spacing: 6) {
+                            Text(job.companyName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                            if let location = job.location, !location.isEmpty {
+                                Text("·")
+                                    .foregroundStyle(.white.opacity(0.5))
+                                Label(location, systemImage: "mappin")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.7))
+                            }
+                        }
+
+                        Text(job.description)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.82))
+                            .lineLimit(2)
+
+                        Button(action: onApply) {
+                            Text(alreadyApplied ? "Already Applied" : (canApply ? "Apply Now" : "Apply Unavailable"))
+                                .font(.subheadline.weight(.bold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background((alreadyApplied || !canApply) ? Color.white.opacity(0.15) : PassportTheme.accent)
+                                .foregroundStyle(alreadyApplied ? .white : .black)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .disabled(alreadyApplied || !canApply)
                     }
+                    .padding(.trailing, 14)
 
-                    if let compensation = compensationText {
-                        Text(compensation)
-                            .font(.caption.weight(.bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(PassportTheme.card.opacity(0.92))
-                            .foregroundStyle(PassportTheme.textPrimary)
-                            .clipShape(Capsule())
+                    // Right: action column (TikTok-style)
+                    VStack(spacing: 18) {
+                        FeedActionButton(
+                            symbol: isSaved ? "bookmark.fill" : "bookmark",
+                            isActive: isSaved,
+                            label: "Save",
+                            action: onToggleSaved
+                        )
+                        if !isSocialEmbed {
+                            FeedActionButton(
+                                symbol: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                                label: isMuted ? "Muted" : "Sound",
+                                action: { isMuted.toggle() }
+                            )
+                        }
                     }
-
-                    if let employmentType = job.employmentType {
-                        Text(employmentType.title)
-                            .font(.caption.weight(.bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(PassportTheme.card.opacity(0.92))
-                            .foregroundStyle(PassportTheme.textPrimary)
-                            .clipShape(Capsule())
-                    }
-
-                    Text(job.title)
-                        .font(.system(size: 34, weight: .black, design: .rounded))
-                        .foregroundStyle(PassportTheme.textPrimary)
-
-                    Text(job.companyName)
-                        .font(.headline)
-                        .foregroundStyle(PassportTheme.textPrimary)
-
-                    if let location = job.location, !location.isEmpty {
-                        Text(location)
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
-
-                    Text(job.description)
-                        .font(.subheadline)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .lineLimit(5)
-
-                    Button(action: onApply) {
-                        Text(alreadyApplied ? "Already Applied" : "Apply Now")
-                            .font(.subheadline.weight(.bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(alreadyApplied ? PassportTheme.card : PassportTheme.accent)
-                            .foregroundStyle(alreadyApplied ? PassportTheme.textPrimary : .black)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .disabled(alreadyApplied)
+                    .frame(width: 56)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 72)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 84)
             }
         }
     }
 
+    private func feedTag(_ title: String, accent: Bool) -> some View {
+        Text(title)
+            .font(.caption.weight(.bold))
+            .tracking(accent ? 0.8 : 0)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(accent ? PassportTheme.accentSoft.opacity(0.95) : Color.black.opacity(0.45))
+            .foregroundStyle(accent ? PassportTheme.accent : .white)
+            .clipShape(Capsule())
+    }
+
     private var compensationText: String? {
         if job.compensationMinAnnual != nil || job.compensationMaxAnnual != nil {
-            return formattedCompensation(
-                min: job.compensationMinAnnual,
-                max: job.compensationMaxAnnual,
-                suffix: ""
-            )
+            return formattedCompensation(min: job.compensationMinAnnual, max: job.compensationMaxAnnual, suffix: "")
         }
-
         if job.compensationMinHourly != nil || job.compensationMaxHourly != nil {
-            return formattedCompensation(
-                min: job.compensationMinHourly,
-                max: job.compensationMaxHourly,
-                suffix: "/hr"
-            )
+            return formattedCompensation(min: job.compensationMinHourly, max: job.compensationMaxHourly, suffix: "/hr")
         }
         return nil
     }
@@ -1459,48 +1464,104 @@ private struct JobFeedCard: View {
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
         formatter.maximumFractionDigits = 0
-
         let minimum = min.flatMap { formatter.string(from: NSNumber(value: $0)) }
         let maximum = max.flatMap { formatter.string(from: NSNumber(value: $0)) }
         switch (minimum, maximum) {
-        case let (min?, max?):
-            return "\(min) - \(max)\(suffix)"
-        case let (min?, nil):
-            return "From \(min)\(suffix)"
-        case let (nil, max?):
-            return "Up to \(max)\(suffix)"
-        case (nil, nil):
-            return nil
+        case let (min?, max?): return "\(min) – \(max)\(suffix)"
+        case let (min?, nil): return "From \(min)\(suffix)"
+        case let (nil, max?): return "Up to \(max)\(suffix)"
+        case (nil, nil): return nil
         }
     }
 }
 
 private struct ApplySheet: View {
     let job: JobPostingRecord
-    @Binding var coverNote: String
+    @Binding var draft: JobApplicationDraft
     let onApply: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private var canApply: Bool {
+        draft.resumeFilePath != nil
+            && !job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text(job.title)
+                Text("Easy Apply")
                     .font(.title2.bold())
-                Text(job.companyName)
-                    .foregroundStyle(PassportTheme.textSecondary)
 
-                TextEditor(text: $coverNote)
-                    .frame(minHeight: 160)
-                    .padding(12)
-                    .background(PassportTheme.card)
-                    .foregroundStyle(PassportTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(job.title)
+                        .font(.headline)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    Text(job.companyName)
+                        .foregroundStyle(PassportTheme.textSecondary)
+                }
 
-                Text("Optional note. Your saved resume and pitch profile will be emailed automatically.")
-                    .font(.footnote)
-                    .foregroundStyle(PassportTheme.textSecondary)
+                if job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Applications are not available for this JobTok yet. The admin still needs to add the company’s apply route.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.orange)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+
+                applyAssetRow(
+                    title: "Resume",
+                    value: draft.resumeFileName ?? "Upload a resume in your profile first",
+                    isRequired: true,
+                    isSelected: draft.resumeFilePath != nil
+                )
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Pitch video")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(PassportTheme.textPrimary)
+                            Text(draft.pitchVideoURL == nil ? "Optional. No pitch video on your profile yet." : "Optional. Share your current pitch video with this application.")
+                                .font(.footnote)
+                                .foregroundStyle(PassportTheme.textSecondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { draft.includePitchVideo && draft.pitchVideoURL != nil },
+                            set: { draft.includePitchVideo = $0 }
+                        ))
+                        .labelsHidden()
+                        .disabled(draft.pitchVideoURL == nil)
+                    }
+                }
+                .padding(16)
+                .background(PassportTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Shared social link")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    TextField("Paste LinkedIn, Instagram, or TikTok link", text: $draft.sharedSocialLink)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled(true)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(PassportTheme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Text("If it isn’t on your profile yet, JobTok will save it for next time.")
+                        .font(.footnote)
+                        .foregroundStyle(PassportTheme.textSecondary)
+                }
+                .padding(16)
+                .background(PassportTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                 Button {
+                    guard canApply else { return }
                     onApply()
                     dismiss()
                 } label: {
@@ -1512,6 +1573,8 @@ private struct ApplySheet: View {
                         .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
+                .disabled(!canApply)
+                .opacity(canApply ? 1 : 0.5)
 
                 Spacer()
             }
@@ -1526,6 +1589,42 @@ private struct ApplySheet: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func applyAssetRow(title: String, value: String, isRequired: Bool, isSelected: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(isSelected ? PassportTheme.accent : PassportTheme.textSecondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    if isRequired {
+                        Text("Required")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(PassportTheme.accentSoft)
+                            .foregroundStyle(.black)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(value)
+                    .font(.footnote)
+                    .foregroundStyle(PassportTheme.textSecondary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(PassportTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -2236,61 +2335,6 @@ private struct SavedJobCard: View {
             return "Up to \(max)\(suffix)"
         case (nil, nil):
             return nil
-        }
-    }
-}
-
-private struct SimpleProfileCard: View {
-    let title: String
-    let details: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(PassportTheme.textPrimary)
-
-            Text(details)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
-    }
-}
-
-private struct EmptyStateView: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 14) {
-            Text(title)
-                .font(.title3.bold())
-                .foregroundStyle(PassportTheme.textPrimary)
-            Text(message)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .padding(24)
-    }
-}
-
-private struct JobSeekerSelectedMovie: Transferable {
-    let url: URL
-    let fileName: String
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let temporaryDirectory = URL(filePath: NSTemporaryDirectory())
-            let copiedURL = temporaryDirectory.appending(path: received.file.lastPathComponent)
-
-            if FileManager.default.fileExists(atPath: copiedURL.path) {
-                try FileManager.default.removeItem(at: copiedURL)
-            }
-
-            try FileManager.default.copyItem(at: received.file, to: copiedURL)
-            return JobSeekerSelectedMovie(url: copiedURL, fileName: received.file.lastPathComponent)
         }
     }
 }

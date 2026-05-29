@@ -1,6 +1,4 @@
 import SwiftUI
-import PhotosUI
-import CoreTransferable
 
 struct EmployerHomeView: View {
     let profile: EmployerProfileDraft
@@ -23,15 +21,11 @@ struct EmployerHomeView: View {
     @State private var currentCandidateID: String?
     @State private var selectedCandidateForOutreach: DiscoverableCandidateRecord?
     @State private var isEditingProfile = false
-    @State private var isCreatingJob = false
+    @State private var showingVideoStudio = false
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
     @State private var selectedProfileTab: EmployerProfileTab = .videos
     @State private var selectedManagedJob: JobPostingRecord?
-    @State private var selectedCreateVideoItem: PhotosPickerItem?
-    @State private var selectedCreateVideoURL: URL?
-    @State private var createVideoName = ""
-    @State private var createVideoImportError: String?
 
     init(
         profile: EmployerProfileDraft,
@@ -114,15 +108,19 @@ struct EmployerHomeView: View {
             }
             .presentationDetents([.large])
         }
-        .sheet(isPresented: $isCreatingJob) {
-            EmployerCreateJobSheet(
+        .fullScreenCover(isPresented: $showingVideoStudio) {
+            JobTokEmployerRoleWorkflow(
                 profile: workingProfile,
                 accountEmail: accountEmail,
-                selectedVideoURL: selectedCreateVideoURL,
-                videoName: createVideoName,
-                onCreateJob: onCreateJob
+                onCancel: {
+                    showingVideoStudio = false
+                },
+                onCreateJob: { draft, url in
+                    onCreateJob(draft, url)
+                    showingVideoStudio = false
+                }
             )
-            .presentationDetents([.large])
+            .preferredColorScheme(.light)
         }
         .sheet(item: $selectedManagedJob) { job in
             EmployerRoleVideoDetailSheet(
@@ -145,24 +143,6 @@ struct EmployerHomeView: View {
         } message: {
             Text("This permanently deletes your JobTok account and employer profile data.")
         }
-        .onChange(of: selectedCreateVideoItem) { _, newItem in
-            guard let newItem else { return }
-            Task {
-                await loadCreateVideo(item: newItem)
-            }
-        }
-        .alert("Issue", isPresented: Binding(
-            get: { createVideoImportError != nil },
-            set: { newValue in
-                if !newValue {
-                    createVideoImportError = nil
-                }
-            }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(createVideoImportError ?? "")
-        }
     }
 
     private var discoverView: some View {
@@ -172,7 +152,7 @@ struct EmployerHomeView: View {
 
             ZStack(alignment: .top) {
                 if filteredCandidates.isEmpty {
-                    EmployerEmptyStateView(
+                    FeedEmptyState(
                         title: "No candidate videos yet",
                         message: discoverableCandidates.isEmpty
                             ? "Candidates who make themselves discoverable will appear here."
@@ -237,7 +217,7 @@ struct EmployerHomeView: View {
                     )
 
                     if applications.isEmpty {
-                        EmployerInfoCard(
+                        InfoCard(
                             title: "No applicants yet",
                             details: "Once candidates apply to your roles, their profile snapshot and pitch video will appear here."
                         )
@@ -392,9 +372,9 @@ struct EmployerHomeView: View {
             .frame(maxWidth: .infinity)
 
             HStack(spacing: 12) {
-                employerProfileStat(title: "Jobs", value: "\(jobs.count)")
-                employerProfileStat(title: "Live", value: "\(publishedJobsCount)")
-                employerProfileStat(title: "Applicants", value: "\(applications.count)")
+                ProfileStatCell(title: "Jobs", value: "\(jobs.count)")
+                ProfileStatCell(title: "Live", value: "\(publishedJobsCount)")
+                ProfileStatCell(title: "Applicants", value: "\(applications.count)")
             }
         }
         .frame(maxWidth: .infinity)
@@ -473,11 +453,9 @@ struct EmployerHomeView: View {
                 columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
                 spacing: 8
             ) {
-                PhotosPicker(
-                    selection: $selectedCreateVideoItem,
-                    matching: .videos,
-                    photoLibrary: .shared()
-                ) {
+                Button {
+                    showingVideoStudio = true
+                } label: {
                     EmployerAddVideoTile()
                 }
                 .buttonStyle(.plain)
@@ -627,25 +605,6 @@ struct EmployerHomeView: View {
         return value.isEmpty ? "JT" : value.uppercased()
     }
 
-    private func employerProfileStat(title: String, value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(PassportTheme.textPrimary)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(PassportTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(PassportTheme.border.opacity(0.65), lineWidth: 1)
-        )
-    }
-
     private func employerMetaRow(title: String, value: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(title)
@@ -656,21 +615,6 @@ struct EmployerHomeView: View {
             Text(value)
                 .foregroundStyle(PassportTheme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    @MainActor
-    private func loadCreateVideo(item: PhotosPickerItem) async {
-        do {
-            guard let movie = try await item.loadTransferable(type: EmployerSelectedMovie.self) else {
-                createVideoImportError = "The selected video could not be loaded."
-                return
-            }
-            selectedCreateVideoURL = movie.url
-            createVideoName = movie.url.lastPathComponent
-            isCreatingJob = true
-        } catch {
-            createVideoImportError = error.localizedDescription
         }
     }
 
@@ -709,147 +653,123 @@ private struct EmployerCandidateFeedCard: View {
     let isActive: Bool
     let onReachOut: () -> Void
 
+    @State private var isMuted = false
+
     var body: some View {
         ZStack {
-            RemoteVideoSurface(urlString: candidate.videoURL, isActive: isActive)
-                .ignoresSafeArea()
+            RemoteVideoSurface(
+                urlString: candidate.videoURL,
+                isActive: isActive,
+                allowsTapToTogglePlayback: true,
+                showsPlayOverlayWhenPaused: true,
+                isMuted: isMuted
+            )
+            .ignoresSafeArea()
 
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.02),
-                    Color.black.opacity(0.12),
-                    Color.black.opacity(0.92)
+                    Color.black.opacity(0.0),
+                    Color.black.opacity(0.18),
+                    Color.black.opacity(0.90)
                 ],
-                startPoint: .top,
+                startPoint: .center,
                 endPoint: .bottom
             )
             .ignoresSafeArea()
 
-            VStack {
+            VStack(spacing: 0) {
                 Spacer()
 
-                VStack(alignment: .leading, spacing: 12) {
-                    if let jobFunction = candidate.jobFunction {
-                        Text(jobFunction.title.uppercased())
-                            .font(.caption.weight(.bold))
-                            .tracking(1.1)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(PassportTheme.accentSoft.opacity(0.95))
-                            .foregroundStyle(PassportTheme.accent)
-                            .clipShape(Capsule())
+                HStack(alignment: .bottom, spacing: 0) {
+                    // Left: candidate info
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let jobFunction = candidate.jobFunction {
+                            feedTag(jobFunction.title.uppercased(), accent: true)
+                        }
+
+                        Text(candidate.fullName ?? "Candidate")
+                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+
+                        if let headline = candidate.headline, !headline.isEmpty {
+                            Text(headline)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                        }
+
+                        if let school = candidate.schoolName, !school.isEmpty {
+                            Label(school, systemImage: "building.columns")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+
+                        if !candidate.previousEmployers.isEmpty {
+                            Text(candidate.previousEmployers.joined(separator: " · "))
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.7))
+                                .lineLimit(1)
+                        }
+
+                        if let comp = candidate.desiredCompensationRange, !comp.isEmpty {
+                            feedTag(comp, accent: false)
+                        }
+
+                        SocialLinksRow(
+                            linkedInURLString: candidate.linkedInURL,
+                            instagramUsername: candidate.instagramUsername,
+                            tiktokUsername: candidate.tiktokUsername
+                        )
+
+                        if let latestOutreach {
+                            Text("Last contact \(relativeDate(latestOutreach.createdAt))")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+
+                        Button(action: onReachOut) {
+                            Text(latestOutreach == nil ? "Reach Out" : "Reach Out Again")
+                                .font(.subheadline.weight(.bold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(PassportTheme.accent)
+                                .foregroundStyle(.black)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
                     }
+                    .padding(.trailing, 14)
 
-                    Text(candidate.fullName ?? "Candidate")
-                        .font(.system(size: 34, weight: .black, design: .rounded))
-                        .foregroundStyle(PassportTheme.textPrimary)
-
-                    if let headline = candidate.headline, !headline.isEmpty {
-                        Text(headline)
-                            .font(.headline)
-                            .foregroundStyle(PassportTheme.textPrimary)
+                    // Right: action column (TikTok-style)
+                    VStack(spacing: 18) {
+                        FeedActionButton(
+                            symbol: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                            label: isMuted ? "Muted" : "Sound",
+                            action: { isMuted.toggle() }
+                        )
                     }
-
-                    if let schoolName = candidate.schoolName, !schoolName.isEmpty {
-                        Text(schoolName)
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
-
-                    if let dreamRole = candidate.dreamRole, !dreamRole.isEmpty {
-                        Text("Dream role: \(dreamRole)")
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
-
-                    if !candidate.previousEmployers.isEmpty {
-                        Text("Previous employers: \(candidate.previousEmployers.joined(separator: ", "))")
-                            .font(.subheadline)
-                            .foregroundStyle(PassportTheme.textPrimary)
-                            .lineLimit(3)
-                    }
-
-                    if let compensationRange = candidate.desiredCompensationRange, !compensationRange.isEmpty {
-                        Text("Comp: \(compensationRange)")
-                            .font(.subheadline)
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
-
-                    candidateLinksRow(
-                        linkedInURLString: candidate.linkedInURL,
-                        instagramUsername: candidate.instagramUsername,
-                        tiktokUsername: candidate.tiktokUsername
-                    )
-
-                    if let latestOutreach {
-                        Text("Last outreach: \(formattedDate(latestOutreach.createdAt))")
-                            .font(.footnote)
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
-
-                    Button(action: onReachOut) {
-                        Text(latestOutreach == nil ? "Reach Out" : "Reach Out Again")
-                            .font(.subheadline.weight(.bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(PassportTheme.accent)
-                            .foregroundStyle(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
+                    .frame(width: 56)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 72)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 84)
             }
         }
     }
 
-    private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+    private func feedTag(_ title: String, accent: Bool) -> some View {
+        Text(title)
+            .font(.caption.weight(.bold))
+            .tracking(accent ? 0.8 : 0)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(accent ? PassportTheme.accentSoft.opacity(0.95) : Color.black.opacity(0.45))
+            .foregroundStyle(accent ? PassportTheme.accent : .white)
+            .clipShape(Capsule())
     }
 
-    @ViewBuilder
-    private func candidateLinksRow(
-        linkedInURLString: String?,
-        instagramUsername: String?,
-        tiktokUsername: String?
-    ) -> some View {
-        let linkedInURL = linkedInURLString.flatMap(URL.init(string:))
-        let normalizedInstagram = normalizeUsername(instagramUsername)
-        let normalizedTikTok = normalizeUsername(tiktokUsername)
-
-        if linkedInURL != nil || normalizedInstagram != nil || normalizedTikTok != nil {
-            HStack(spacing: 8) {
-                if let linkedInURL {
-                    candidateLinkTag(title: "LinkedIn", url: linkedInURL)
-                }
-                if let normalizedInstagram, let url = URL(string: "https://instagram.com/\(normalizedInstagram)") {
-                    candidateLinkTag(title: "@\(normalizedInstagram)", url: url)
-                }
-                if let normalizedTikTok, let url = URL(string: "https://www.tiktok.com/@\(normalizedTikTok)") {
-                    candidateLinkTag(title: "@\(normalizedTikTok)", url: url)
-                }
-            }
-        }
-    }
-
-    private func candidateLinkTag(title: String, url: URL) -> some View {
-        Link(destination: url) {
-            Label(title, systemImage: "at")
-                .font(.caption.weight(.bold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(PassportTheme.card.opacity(0.94))
-                .foregroundStyle(PassportTheme.textSecondary)
-                .clipShape(Capsule())
-        }
-    }
-
-    private func normalizeUsername(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "^@", with: "", options: .regularExpression)
-        return trimmed.isEmpty ? nil : trimmed
+    private func relativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
     }
 }
 
@@ -904,7 +824,7 @@ private struct EmployerApplicantCard: View {
                         .foregroundStyle(PassportTheme.textSecondary)
                 }
 
-                applicantLinksRow(
+                SocialLinksRow(
                     linkedInURLString: application.candidateLinkedInURL,
                     instagramUsername: application.candidateInstagramUsername,
                     tiktokUsername: application.candidateTiktokUsername
@@ -944,49 +864,6 @@ private struct EmployerApplicantCard: View {
             .clipShape(Capsule())
     }
 
-    @ViewBuilder
-    private func applicantLinksRow(
-        linkedInURLString: String?,
-        instagramUsername: String?,
-        tiktokUsername: String?
-    ) -> some View {
-        let linkedInURL = linkedInURLString.flatMap(URL.init(string:))
-        let normalizedInstagram = normalizeUsername(instagramUsername)
-        let normalizedTikTok = normalizeUsername(tiktokUsername)
-
-        if linkedInURL != nil || normalizedInstagram != nil || normalizedTikTok != nil {
-            HStack(spacing: 8) {
-                if let linkedInURL {
-                    candidateLinkTag(title: "LinkedIn", url: linkedInURL)
-                }
-                if let normalizedInstagram, let url = URL(string: "https://instagram.com/\(normalizedInstagram)") {
-                    candidateLinkTag(title: "@\(normalizedInstagram)", url: url)
-                }
-                if let normalizedTikTok, let url = URL(string: "https://www.tiktok.com/@\(normalizedTikTok)") {
-                    candidateLinkTag(title: "@\(normalizedTikTok)", url: url)
-                }
-            }
-        }
-    }
-
-    private func candidateLinkTag(title: String, url: URL) -> some View {
-        Link(destination: url) {
-            Label(title, systemImage: "at")
-                .font(.caption.weight(.bold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(PassportTheme.card.opacity(0.94))
-                .foregroundStyle(PassportTheme.textSecondary)
-                .clipShape(Capsule())
-        }
-    }
-
-    private func normalizeUsername(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "^@", with: "", options: .regularExpression)
-        return trimmed.isEmpty ? nil : trimmed
-    }
 }
 
 private struct EmployerProfileEditor: View {
@@ -1152,7 +1029,7 @@ private struct EmployerCreateJobSheet: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         }
                     } else {
-                        Text("Select a video from your camera roll first, then add the job title, location, description, compensation, and role type.")
+                        Text("Start with a recorded or selected video, then add the job title, location, description, compensation, and role type.")
                             .font(.footnote)
                             .foregroundStyle(PassportTheme.textSecondary)
                             .padding(.horizontal, 4)
@@ -1599,61 +1476,6 @@ private enum EmployerProfileTab: String, CaseIterable, Identifiable {
     }
 }
 
-private struct EmployerInfoCard: View {
-    let title: String
-    let details: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(PassportTheme.textPrimary)
-
-            Text(details)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
-    }
-}
-
-private struct EmployerEmptyStateView: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 14) {
-            Text(title)
-                .font(.title3.bold())
-                .foregroundStyle(PassportTheme.textPrimary)
-            Text(message)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(PassportTheme.textSecondary)
-        }
-        .padding(24)
-    }
-}
-
-private struct EmployerSelectedMovie: Transferable {
-    let url: URL
-    let fileName: String
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let temporaryDirectory = URL(filePath: NSTemporaryDirectory())
-            let copiedURL = temporaryDirectory.appending(path: received.file.lastPathComponent)
-
-            if FileManager.default.fileExists(atPath: copiedURL.path) {
-                try FileManager.default.removeItem(at: copiedURL)
-            }
-
-            try FileManager.default.copyItem(at: received.file, to: copiedURL)
-            return EmployerSelectedMovie(url: copiedURL, fileName: received.file.lastPathComponent)
-        }
-    }
-}
-
 private struct EmployerOutreachSheet: View {
     let candidate: DiscoverableCandidateRecord
     let jobs: [JobPostingRecord]
@@ -1669,7 +1491,7 @@ private struct EmployerOutreachSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    EmployerInfoCard(
+                    InfoCard(
                         title: candidate.fullName ?? "Candidate",
                         details: [
                             candidate.headline,
@@ -1681,7 +1503,7 @@ private struct EmployerOutreachSheet: View {
                     )
 
                     if let latestOutreach {
-                        EmployerInfoCard(
+                        InfoCard(
                             title: "Latest outreach",
                             details: "\(latestOutreach.subject)\nSent \(formattedDate(latestOutreach.createdAt)) • \(latestOutreach.deliveryStatus.capitalized)"
                         )

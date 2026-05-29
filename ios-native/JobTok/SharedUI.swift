@@ -139,3 +139,145 @@ extension View {
             .shadow(color: PassportTheme.shadow, radius: 14, y: 8)
     }
 }
+
+// MARK: - Feed Components
+
+struct FeedActionButton: View {
+    let symbol: String
+    var isActive: Bool = false
+    var label: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isActive ? PassportTheme.accent : .white)
+                    .frame(width: 48, height: 48)
+                    .background(.black.opacity(0.38))
+                    .clipShape(Circle())
+                if let label {
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct FeedEmptyState: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(PassportTheme.textPrimary)
+            Text(message)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .padding(24)
+    }
+}
+
+// MARK: - Card Components
+
+struct InfoCard: View {
+    let title: String
+    let details: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+            Text(details)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+    }
+}
+
+struct ProfileStatCell: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(PassportTheme.textPrimary)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(PassportTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(PassportTheme.border.opacity(0.65), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Social Links
+
+struct SocialLinkTag: View {
+    let title: String
+    let url: URL
+
+    var body: some View {
+        Link(destination: url) {
+            Label(title, systemImage: "at")
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(PassportTheme.card.opacity(0.94))
+                .foregroundStyle(PassportTheme.textSecondary)
+                .clipShape(Capsule())
+        }
+    }
+}
+
+struct SocialLinksRow: View {
+    let linkedInURLString: String?
+    let instagramUsername: String?
+    let tiktokUsername: String?
+
+    private var linkedInURL: URL? { linkedInURLString.flatMap(URL.init(string:)) }
+    private var normalizedInstagram: String? { normalizeHandle(instagramUsername) }
+    private var normalizedTikTok: String? { normalizeHandle(tiktokUsername) }
+
+    var body: some View {
+        if linkedInURL != nil || normalizedInstagram != nil || normalizedTikTok != nil {
+            HStack(spacing: 8) {
+                if let url = linkedInURL {
+                    SocialLinkTag(title: "LinkedIn", url: url)
+                }
+                if let ig = normalizedInstagram, let url = URL(string: "https://instagram.com/\(ig)") {
+                    SocialLinkTag(title: "@\(ig)", url: url)
+                }
+                if let tt = normalizedTikTok, let url = URL(string: "https://www.tiktok.com/@\(tt)") {
+                    SocialLinkTag(title: "@\(tt)", url: url)
+                }
+            }
+        }
+    }
+
+    private func normalizeHandle(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "^@", with: "", options: .regularExpression)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}

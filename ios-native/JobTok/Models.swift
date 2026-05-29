@@ -70,6 +70,25 @@ enum EmploymentTypeOption: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum SocialSourcePlatform: String, CaseIterable, Identifiable, Codable {
+    case tiktok
+    case instagram
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tiktok:
+            return "TikTok"
+        case .instagram:
+            return "Instagram"
+        case .other:
+            return "External"
+        }
+    }
+}
+
 enum CandidateVisibility: String, CaseIterable, Identifiable, Codable {
     case `private`
     case appliedRolesOnly = "applied_roles_only"
@@ -94,6 +113,76 @@ enum CandidateVisibility: String, CaseIterable, Identifiable, Codable {
         case .discoverableToHiringEmployers:
             return "Any hiring employer can discover your profile."
         }
+    }
+}
+
+struct SharedImportItem: Codable, Equatable {
+    let id: UUID
+    let sourceURL: String
+    let sourceAppBundleID: String?
+    let createdAt: Date
+}
+
+enum SharedImportInbox {
+    static let appGroupIdentifier = "group.com.jobtok.shared"
+
+    private static let defaults = UserDefaults(suiteName: appGroupIdentifier)
+    private static let queueKey = "shared_import_queue_v1"
+    private static let roleKey = "shared_import_last_known_role_v1"
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    static func enqueueURL(_ sourceURL: String, sourceAppBundleID: String?) {
+        let trimmed = sourceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var queue = pendingItems()
+        queue.append(
+            SharedImportItem(
+                id: UUID(),
+                sourceURL: trimmed,
+                sourceAppBundleID: sourceAppBundleID,
+                createdAt: Date()
+            )
+        )
+        persist(queue)
+    }
+
+    static func consumePendingURL() -> SharedImportItem? {
+        var queue = pendingItems()
+        guard !queue.isEmpty else { return nil }
+        let item = queue.removeFirst()
+        persist(queue)
+        return item
+    }
+
+    static func pendingItems() -> [SharedImportItem] {
+        guard let data = defaults?.data(forKey: queueKey),
+              let items = try? decoder.decode([SharedImportItem].self, from: data) else {
+            return []
+        }
+        return items
+    }
+
+    static func updateCurrentRole(_ role: UserRole?) {
+        defaults?.set(role?.rawValue, forKey: roleKey)
+    }
+
+    static func clearCurrentRole() {
+        defaults?.removeObject(forKey: roleKey)
+    }
+
+    private static func persist(_ items: [SharedImportItem]) {
+        guard let data = try? encoder.encode(items) else { return }
+        defaults?.set(data, forKey: queueKey)
     }
 }
 
@@ -237,7 +326,7 @@ struct NotificationRecord: Codable, Identifiable {
 
 struct JobPostingRecord: Codable, Identifiable {
     let id: String
-    let employerProfileID: String
+    let employerProfileID: String?
     let postedByProfileID: String
     let title: String
     let companyName: String
@@ -252,6 +341,14 @@ struct JobPostingRecord: Codable, Identifiable {
     let applicationEmail: String
     let videoURL: String
     let sourceURL: String?
+    let sourcePlatform: SocialSourcePlatform?
+    let sourceCreatorName: String?
+    let sourceCreatorURL: String?
+    let sourceThumbnailURL: String?
+    let sourceCaption: String?
+    let sourceCaptionRaw: String?
+    let sourcePostedAt: Date?
+    let sourceApplyEmailExtracted: String?
     let isPublished: Bool
     let createdAt: Date
 
@@ -272,6 +369,14 @@ struct JobPostingRecord: Codable, Identifiable {
         case applicationEmail = "application_email"
         case videoURL = "video_url"
         case sourceURL = "source_url"
+        case sourcePlatform = "source_platform"
+        case sourceCreatorName = "source_creator_name"
+        case sourceCreatorURL = "source_creator_url"
+        case sourceThumbnailURL = "source_thumbnail_url"
+        case sourceCaption = "source_caption"
+        case sourceCaptionRaw = "source_caption_raw"
+        case sourcePostedAt = "source_posted_at"
+        case sourceApplyEmailExtracted = "source_apply_email_extracted"
         case isPublished = "is_published"
         case createdAt = "created_at"
     }
@@ -411,6 +516,15 @@ struct SavedJobRecord: Codable, Identifiable {
     }
 }
 
+struct JobApplicationDraft: Equatable {
+    var jobID: String = ""
+    var resumeFileName: String?
+    var resumeFilePath: String?
+    var includePitchVideo = false
+    var pitchVideoURL: String?
+    var sharedSocialLink: String = ""
+}
+
 struct EmployerDirectoryItem: Identifiable, Hashable {
     let id: String
     let fullName: String
@@ -465,7 +579,79 @@ struct JobPostingDraft {
     var description: String = ""
     var applicationEmail: String = ""
     var sourceURL: String = ""
+    var sourcePlatform: SocialSourcePlatform?
+    var sourceCreatorName: String = ""
+    var sourceCreatorURL: String = ""
+    var sourceThumbnailURL: String = ""
+    var sourceCaption: String = ""
+    var sourceCaptionRaw: String = ""
+    var sourcePostedAt: Date?
+    var sourceApplyEmailExtracted: String = ""
+    var sourceCompensationText: String = ""
+    var sourceHowToApplyText: String = ""
     var isPublished = true
+}
+
+struct ImportedJobSuggestion: Codable, Equatable {
+    var sourcePlatform: SocialSourcePlatform?
+    var sourceURL: String
+    var sourceCreatorName: String?
+    var sourceCreatorURL: String?
+    var sourceThumbnailURL: String?
+    var sourceCaption: String
+    var sourceCaptionRaw: String
+    var sourcePostedAt: Date?
+    var sourceApplyEmailExtracted: String?
+    var company: String?
+    var title: String?
+    var location: String?
+    var compensation: String?
+    var howToApply: String?
+    var description: String?
+    var applicationEmail: String?
+    var diagnostics: ImportDiagnostics?
+
+    enum CodingKeys: String, CodingKey {
+        case sourcePlatform = "source_platform"
+        case sourceURL = "source_url"
+        case sourceCreatorName = "source_creator_name"
+        case sourceCreatorURL = "source_creator_url"
+        case sourceThumbnailURL = "source_thumbnail_url"
+        case sourceCaption = "source_caption"
+        case sourceCaptionRaw = "source_caption_raw"
+        case sourcePostedAt = "source_posted_at"
+        case sourceApplyEmailExtracted = "source_apply_email_extracted"
+        case company
+        case title
+        case location
+        case compensation
+        case howToApply = "how_to_apply"
+        case description
+        case applicationEmail = "application_email"
+        case diagnostics
+    }
+}
+
+struct ImportDiagnostics: Codable, Equatable {
+    var fetchStatus: Int?
+    var fetchContentType: String?
+    var htmlLength: Int?
+    var sourceTextLength: Int?
+    var metadataKeysWithValues: [String]
+    var openAIEnabled: Bool?
+    var llmUsed: Bool?
+    var scrapedMetadata: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case fetchStatus = "fetch_status"
+        case fetchContentType = "fetch_content_type"
+        case htmlLength = "html_length"
+        case sourceTextLength = "source_text_length"
+        case metadataKeysWithValues = "metadata_keys_with_values"
+        case openAIEnabled = "openai_enabled"
+        case llmUsed = "llm_used"
+        case scrapedMetadata = "scraped_metadata"
+    }
 }
 
 enum DemoData {
@@ -511,6 +697,14 @@ enum DemoData {
             applicationEmail: "talent@figma.com",
             videoURL: "https://example.com/jobs/figma-designer.mp4",
             sourceURL: "https://www.tiktok.com/@figma",
+            sourcePlatform: .tiktok,
+            sourceCreatorName: "Figma",
+            sourceCreatorURL: "https://www.tiktok.com/@figma",
+            sourceThumbnailURL: nil,
+            sourceCaption: nil,
+            sourceCaptionRaw: nil,
+            sourcePostedAt: nil,
+            sourceApplyEmailExtracted: nil,
             isPublished: true,
             createdAt: .now
         ),
@@ -531,6 +725,14 @@ enum DemoData {
             applicationEmail: "jobs@ramp.com",
             videoURL: "https://example.com/jobs/ramp-pm.mp4",
             sourceURL: nil,
+            sourcePlatform: nil,
+            sourceCreatorName: nil,
+            sourceCreatorURL: nil,
+            sourceThumbnailURL: nil,
+            sourceCaption: nil,
+            sourceCaptionRaw: nil,
+            sourcePostedAt: nil,
+            sourceApplyEmailExtracted: nil,
             isPublished: true,
             createdAt: .now
         ),

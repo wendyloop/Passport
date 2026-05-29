@@ -446,35 +446,67 @@ final class AppSessionStore: ObservableObject {
         )
     }
 
-    func applyToJob(jobID: String, coverNote: String?) async {
+    func applyToJob(_ draft: JobApplicationDraft) async {
         await runBusyTask { [self] in
             let session = try await requireSession()
-            _ = try await service.applyToJob(jobID: jobID, coverNote: coverNote, session: session)
-            try await refreshJobSeekerData()
-            try await loadNotifications()
+            _ = try await service.applyToJob(draft: draft, session: session)
+            try await loadCurrentUserState()
         }
     }
 
-    func createJob(draft: JobPostingDraft, localVideoURL: URL) async {
-        await runBusyTask { [self] in
+    func createJob(draft: JobPostingDraft, localVideoURL: URL?) async -> String? {
+        let error = await runBusyTaskReturningError { [self] in
             let session = try await requireSession()
             let userID = try requireUserID()
-            let uploadURL = try await prepareVideoForUpload(localVideoURL)
-            let fileName = uploadURL.lastPathComponent
-            let videoData = try Data(contentsOf: uploadURL)
+            let resolvedVideoURL: String
 
-            let upload = try await service.uploadFile(
-                bucket: "job-videos",
-                path: "\(userID)/\(Int(Date().timeIntervalSince1970))-\(fileName)",
-                data: videoData,
-                contentType: mimeType(for: uploadURL) ?? "video/mp4",
-                session: session
-            )
+            if let localVideoURL {
+                let uploadURL = try await prepareVideoForUpload(localVideoURL)
+                let fileName = uploadURL.lastPathComponent
+                let videoData = try Data(contentsOf: uploadURL)
+
+                let upload = try await service.uploadFile(
+                    bucket: "job-videos",
+                    path: "\(userID)/\(Int(Date().timeIntervalSince1970))-\(fileName)",
+                    data: videoData,
+                    contentType: mimeType(for: uploadURL) ?? "video/mp4",
+                    session: session
+                )
+                resolvedVideoURL = upload.publicURL
+            } else if let sourceURL = draft.sourceURL.nonEmptyValue {
+                resolvedVideoURL = sourceURL
+            } else {
+                throw SupabaseServiceError.apiError("Select a video or import a social post link before publishing.")
+            }
+
+            // Link-import posts don't belong to a registered employer; video uploads must have one.
+            let resolvedEmployerID: String?
+            if localVideoURL != nil {
+                guard !draft.employerProfileID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw SupabaseServiceError.apiError("Select an employer before publishing.")
+                }
+                resolvedEmployerID = draft.employerProfileID
+            } else {
+                resolvedEmployerID = draft.employerProfileID.nonEmptyValue
+            }
+
+            let trimmedCompanyName = draft.companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedDescription = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            let derivedCompanyName = trimmedCompanyName.isEmpty ? "Imported JobTok" : trimmedCompanyName
+            let derivedTitle = !trimmedTitle.isEmpty
+                ? trimmedTitle
+                : (draft.sourceCreatorName.nonEmptyValue.map { "\($0) hiring" } ?? "Imported JobTok")
+            let derivedDescription = !trimmedDescription.isEmpty
+                ? trimmedDescription
+                : (draft.sourceCaptionRaw.nonEmptyValue
+                    ?? draft.sourceCaption.nonEmptyValue
+                    ?? "Imported from \(draft.sourcePlatform?.title ?? "external source").")
 
             try await service.createJob(
-                employerProfileID: draft.employerProfileID,
-                title: draft.title,
-                companyName: draft.companyName,
+                employerProfileID: resolvedEmployerID,
+                title: derivedTitle,
+                companyName: derivedCompanyName,
                 location: draft.location,
                 compensationMinAnnual: normalizedAnnualCompensation(from: draft.compensationMinAnnual),
                 compensationMaxAnnual: normalizedAnnualCompensation(from: draft.compensationMaxAnnual),
@@ -482,16 +514,26 @@ final class AppSessionStore: ObservableObject {
                 compensationMaxHourly: normalizedHourlyCompensation(from: draft.compensationMaxHourly),
                 employmentType: draft.employmentType,
                 jobFunction: draft.jobFunction,
-                description: draft.description,
+                description: derivedDescription,
                 applicationEmail: draft.applicationEmail,
-                videoURL: upload.publicURL,
+                videoURL: resolvedVideoURL,
                 sourceURL: draft.sourceURL,
+                sourcePlatform: draft.sourcePlatform,
+                sourceCreatorName: draft.sourceCreatorName.nonEmptyValue,
+                sourceCreatorURL: draft.sourceCreatorURL.nonEmptyValue,
+                sourceThumbnailURL: draft.sourceThumbnailURL.nonEmptyValue,
+                sourceCaption: draft.sourceCaption.nonEmptyValue,
+                sourceCaptionRaw: draft.sourceCaptionRaw.nonEmptyValue,
+                sourcePostedAt: draft.sourcePostedAt,
+                sourceApplyEmailExtracted: draft.sourceApplyEmailExtracted.nonEmptyValue,
                 isPublished: draft.isPublished,
                 session: session
             )
-
-            try await refreshAdminData()
         }
+        if error == nil {
+            Task { try? await refreshAdminData() }
+        }
+        return error
     }
 
     func createEmployerJob(draft: JobPostingDraft, localVideoURL: URL) async {
@@ -525,6 +567,14 @@ final class AppSessionStore: ObservableObject {
                 applicationEmail: draft.applicationEmail,
                 videoURL: upload.publicURL,
                 sourceURL: draft.sourceURL,
+                sourcePlatform: draft.sourcePlatform,
+                sourceCreatorName: draft.sourceCreatorName.nonEmptyValue,
+                sourceCreatorURL: draft.sourceCreatorURL.nonEmptyValue,
+                sourceThumbnailURL: draft.sourceThumbnailURL.nonEmptyValue,
+                sourceCaption: draft.sourceCaption.nonEmptyValue,
+                sourceCaptionRaw: draft.sourceCaptionRaw.nonEmptyValue,
+                sourcePostedAt: draft.sourcePostedAt,
+                sourceApplyEmailExtracted: draft.sourceApplyEmailExtracted.nonEmptyValue,
                 isPublished: draft.isPublished,
                 session: session
             )
@@ -570,6 +620,11 @@ final class AppSessionStore: ObservableObject {
         }
     }
 
+    func parseSharedJobPosting(sourceURL: String) async throws -> ImportedJobSuggestion {
+        let session = try await requireSession()
+        return try await service.parseSharedJobPosting(sourceURL: sourceURL, session: session)
+    }
+
     func markNotificationsRead() async {
         await runBusyTask { [self] in
             let session = try await requireSession()
@@ -595,6 +650,7 @@ final class AppSessionStore: ObservableObject {
         try await loadNotifications()
 
         if let role = profile?.role {
+            SharedImportInbox.updateCurrentRole(role)
             switch role {
             case .jobSeeker:
                 try await refreshJobSeekerData()
@@ -605,9 +661,11 @@ final class AppSessionStore: ObservableObject {
             }
             phase = .signedIn
         } else if profile != nil {
+            SharedImportInbox.updateCurrentRole(.jobSeeker)
             try await refreshJobSeekerData()
             phase = .signedIn
         } else {
+            SharedImportInbox.clearCurrentRole()
             phase = .signedOut
         }
     }
@@ -722,6 +780,7 @@ final class AppSessionStore: ObservableObject {
         employerOutreachMessages = []
         adminJobs = []
         employerDirectoryItems = []
+        SharedImportInbox.clearCurrentRole()
         defaults.removeObject(forKey: sessionKey)
     }
 
@@ -736,8 +795,29 @@ final class AppSessionStore: ObservableObject {
         isBusy = false
     }
 
+    private func runBusyTaskReturningError(_ operation: @escaping () async throws -> Void) async -> String? {
+        isBusy = true
+        errorMessage = nil
+        do {
+            try await operation()
+            isBusy = false
+            return nil
+        } catch {
+            let message = friendlyErrorMessage(for: error)
+            errorMessage = message
+            isBusy = false
+            return message
+        }
+    }
+
     private func friendlyErrorMessage(for error: Error) -> String {
         let message = error.localizedDescription
+
+        if message.localizedCaseInsensitiveContains("jobs_source_url_unique")
+            || (message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
+                && message.localizedCaseInsensitiveContains("source_url")) {
+            return "This post has already been imported."
+        }
 
         if message.localizedCaseInsensitiveContains("profiles_handle_unique_idx")
             || message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
@@ -755,6 +835,12 @@ final class AppSessionStore: ObservableObject {
 
         if message.localizedCaseInsensitiveContains("profiles_handle_format") {
             return "Handles can only use lowercase letters, numbers, and underscores."
+        }
+
+        if message.localizedCaseInsensitiveContains("job_applications_job_id_candidate_profile_id_key")
+            || message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
+                && message.localizedCaseInsensitiveContains("job_applications") {
+            return "You already applied to this job."
         }
 
         return message
@@ -863,10 +949,6 @@ final class AppSessionStore: ObservableObject {
         let digits = rawValue.filter(\.isNumber)
         guard let value = Int(digits), value > 0 else { return nil }
         return value
-    }
-
-    private func draftCompensationValue(from rawValue: String) -> Int? {
-        normalizedAnnualCompensation(from: rawValue)
     }
 
     private func mappedCompensationRange(from annualValue: Int?) -> String {

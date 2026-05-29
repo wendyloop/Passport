@@ -3,7 +3,9 @@ import { createAdminClient, createUserClient } from "../_shared/client.ts";
 
 type ApplyRequest = {
   jobId?: string;
-  coverNote?: string;
+  resumeFilePath?: string;
+  selectedVideoURL?: string;
+  socialLink?: string;
 };
 
 const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -18,6 +20,50 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
+function normalizedSocialPayload(rawValue?: string | null) {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) {
+    return {
+      linkedInURL: null,
+      instagramUsername: null,
+      tiktokUsername: null,
+    };
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("linkedin.com")) {
+    return {
+      linkedInURL: trimmed,
+      instagramUsername: null,
+      tiktokUsername: null,
+    };
+  }
+
+  if (lower.includes("instagram.com")) {
+    const match = trimmed.match(/instagram\.com\/([^/?#]+)/i);
+    return {
+      linkedInURL: null,
+      instagramUsername: match?.[1]?.replace(/^@/, "") ?? null,
+      tiktokUsername: null,
+    };
+  }
+
+  if (lower.includes("tiktok.com")) {
+    const match = trimmed.match(/tiktok\.com\/@?([^/?#]+)/i);
+    return {
+      linkedInURL: null,
+      instagramUsername: null,
+      tiktokUsername: match?.[1]?.replace(/^@/, "") ?? null,
+    };
+  }
+
+  return {
+    linkedInURL: lower.startsWith("http://") || lower.startsWith("https://") ? trimmed : null,
+    instagramUsername: null,
+    tiktokUsername: null,
+  };
+}
+
 async function sendEmployerEmail(params: {
   to: string;
   employerCompany: string;
@@ -27,9 +73,11 @@ async function sendEmployerEmail(params: {
   schoolName?: string | null;
   dreamRole?: string | null;
   previousEmployers: string[];
-  coverNote?: string | null;
   pitchVideoURL?: string | null;
   resumeSignedURL?: string | null;
+  linkedInURL?: string | null;
+  instagramUsername?: string | null;
+  tiktokUsername?: string | null;
 }) {
   if (!resendApiKey) {
     return {
@@ -47,6 +95,13 @@ async function sendEmployerEmail(params: {
   const resumeLine = params.resumeSignedURL
     ? `Resume: ${params.resumeSignedURL}`
     : "Resume: No resume uploaded";
+  const socialLine = params.linkedInURL
+    ? `LinkedIn: ${params.linkedInURL}`
+    : params.instagramUsername
+      ? `Instagram: https://instagram.com/${params.instagramUsername}`
+      : params.tiktokUsername
+        ? `TikTok: https://www.tiktok.com/@${params.tiktokUsername}`
+        : "Social link: Not provided";
 
   const text = [
     `New JobTok application for ${params.jobTitle} at ${params.employerCompany}.`,
@@ -56,7 +111,7 @@ async function sendEmployerEmail(params: {
     params.schoolName ? `School: ${params.schoolName}` : null,
     params.dreamRole ? `Dream role: ${params.dreamRole}` : null,
     `Previous employers: ${previousEmployers}`,
-    params.coverNote ? `Cover note: ${params.coverNote}` : null,
+    socialLine,
     pitchLine,
     resumeLine,
   ].filter(Boolean).join("\n");
@@ -70,7 +125,9 @@ async function sendEmployerEmail(params: {
         ${params.schoolName ? `<li><strong>School:</strong> ${escapeHtml(params.schoolName)}</li>` : ""}
         ${params.dreamRole ? `<li><strong>Dream role:</strong> ${escapeHtml(params.dreamRole)}</li>` : ""}
         <li><strong>Previous employers:</strong> ${escapeHtml(previousEmployers)}</li>
-        ${params.coverNote ? `<li><strong>Cover note:</strong> ${escapeHtml(params.coverNote)}</li>` : ""}
+        ${params.linkedInURL ? `<li><strong>LinkedIn:</strong> <a href="${escapeHtml(params.linkedInURL)}">${escapeHtml(params.linkedInURL)}</a></li>` : ""}
+        ${params.instagramUsername ? `<li><strong>Instagram:</strong> @${escapeHtml(params.instagramUsername)}</li>` : ""}
+        ${params.tiktokUsername ? `<li><strong>TikTok:</strong> @${escapeHtml(params.tiktokUsername)}</li>` : ""}
       </ul>
       <p>${params.pitchVideoURL ? `<a href="${escapeHtml(params.pitchVideoURL)}">Watch candidate pitch video</a>` : "No pitch video uploaded."}</p>
       <p>${params.resumeSignedURL ? `<a href="${escapeHtml(params.resumeSignedURL)}">Open candidate resume</a>` : "No resume uploaded."}</p>
@@ -126,7 +183,9 @@ Deno.serve(async (request) => {
 
     const body = (await request.json().catch(() => ({}))) as ApplyRequest;
     const jobId = body.jobId?.trim();
-    const coverNote = body.coverNote?.trim() || null;
+    const requestedResumePath = body.resumeFilePath?.trim() || null;
+    const selectedVideoURL = body.selectedVideoURL?.trim() || null;
+    const socialPayload = normalizedSocialPayload(body.socialLink);
 
     if (!jobId) {
       return new Response(JSON.stringify({ error: "Missing jobId" }), {
@@ -135,29 +194,27 @@ Deno.serve(async (request) => {
       });
     }
 
-    const [{ data: profile, error: profileError }, { data: candidateProfile, error: candidateProfileError }, { data: candidateEmployers, error: candidateEmployersError }, { data: latestResume, error: latestResumeError }, { data: job, error: jobError }] = await Promise.all([
+    const [
+      { data: profile, error: profileError },
+      { data: candidateProfile, error: candidateProfileError },
+      { data: candidateEmployers, error: candidateEmployersError },
+      { data: job, error: jobError },
+    ] = await Promise.all([
       adminClient
         .from("profiles")
-        .select("id, role, full_name, headline, onboarding_complete")
+        .select("id, role, full_name, headline")
         .eq("id", user.id)
         .single(),
       adminClient
         .from("job_seeker_profiles")
         .select("profile_id, school_name, job_function, dream_role, intro_video_url, linkedin_url, instagram_username, tiktok_username, desired_compensation_range")
         .eq("profile_id", user.id)
-        .single(),
+        .maybeSingle(),
       adminClient
         .from("job_seeker_employers")
         .select("employer_name, sort_order")
         .eq("profile_id", user.id)
         .order("sort_order", { ascending: true }),
-      adminClient
-        .from("resume_uploads")
-        .select("file_path")
-        .eq("profile_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
       adminClient
         .from("jobs")
         .select("id, employer_profile_id, title, company_name, location, application_email, is_published")
@@ -165,30 +222,66 @@ Deno.serve(async (request) => {
         .single(),
     ]);
 
+    const resumeQuery = adminClient
+      .from("resume_uploads")
+      .select("file_path")
+      .eq("profile_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const { data: resumeRecord, error: resumeError } = requestedResumePath
+      ? await adminClient
+        .from("resume_uploads")
+        .select("file_path")
+        .eq("profile_id", user.id)
+        .eq("file_path", requestedResumePath)
+        .maybeSingle()
+      : await resumeQuery.maybeSingle();
+
     if (profileError || !profile) throw profileError ?? new Error("Profile not found.");
-    if (candidateProfileError || !candidateProfile) throw candidateProfileError ?? new Error("Candidate profile not found.");
+    if (candidateProfileError) throw candidateProfileError;
     if (candidateEmployersError) throw candidateEmployersError;
-    if (latestResumeError) throw latestResumeError;
+    if (resumeError) throw resumeError;
     if (jobError || !job) throw jobError ?? new Error("Job not found.");
 
     if (profile.role !== "job_seeker") {
       throw new Error("Only job seekers can apply.");
     }
 
-    if (!profile.onboarding_complete) {
-      throw new Error("Complete your profile before applying.");
-    }
-
     if (!job.is_published) {
       throw new Error("This job is not open for applications.");
     }
 
-    if (!latestResume?.file_path) {
-      throw new Error("Upload a resume before applying.");
+    if (!job.application_email?.trim()) {
+      throw new Error("Applications are not available for this job yet.");
+    }
+
+    if (!resumeRecord?.file_path) {
+      throw new Error("Select a resume before applying.");
     }
 
     const previousEmployers = (candidateEmployers ?? []).map((row) => row.employer_name);
-    const resumeFileName = latestResume.file_path.split("/").pop() ?? "resume";
+    const resumeFileName = resumeRecord.file_path.split("/").pop() ?? "resume";
+    const resolvedLinkedInURL = candidateProfile?.linkedin_url ?? socialPayload.linkedInURL;
+    const resolvedInstagramUsername = candidateProfile?.instagram_username ?? socialPayload.instagramUsername;
+    const resolvedTiktokUsername = candidateProfile?.tiktok_username ?? socialPayload.tiktokUsername;
+    const resolvedVideoURL = selectedVideoURL ?? candidateProfile?.intro_video_url ?? null;
+
+    if (socialPayload.linkedInURL || socialPayload.instagramUsername || socialPayload.tiktokUsername) {
+      const { error: upsertCandidateProfileError } = await adminClient
+        .from("job_seeker_profiles")
+        .upsert({
+          profile_id: user.id,
+          intro_video_url: candidateProfile?.intro_video_url ?? resolvedVideoURL,
+          linkedin_url: resolvedLinkedInURL,
+          instagram_username: resolvedInstagramUsername,
+          tiktok_username: resolvedTiktokUsername,
+        }, {
+          onConflict: "profile_id",
+        });
+
+      if (upsertCandidateProfileError) throw upsertCandidateProfileError;
+    }
 
     const { data: insertedApplication, error: insertError } = await adminClient
       .from("job_applications")
@@ -196,23 +289,23 @@ Deno.serve(async (request) => {
         job_id: job.id,
         employer_profile_id: job.employer_profile_id,
         candidate_profile_id: user.id,
-        cover_note: coverNote,
+        cover_note: null,
         job_title: job.title,
         company_name: job.company_name,
         job_location: job.location,
         application_email: job.application_email,
         candidate_name: profile.full_name ?? user.email ?? "Candidate",
         candidate_headline: profile.headline,
-        candidate_school_name: candidateProfile.school_name,
-        candidate_job_function: candidateProfile.job_function,
-        candidate_dream_role: candidateProfile.dream_role,
+        candidate_school_name: candidateProfile?.school_name ?? null,
+        candidate_job_function: candidateProfile?.job_function ?? null,
+        candidate_dream_role: candidateProfile?.dream_role ?? null,
         candidate_previous_employers: previousEmployers,
-        candidate_video_url: candidateProfile.intro_video_url,
-        candidate_linkedin_url: candidateProfile.linkedin_url,
-        candidate_instagram_username: candidateProfile.instagram_username,
-        candidate_tiktok_username: candidateProfile.tiktok_username,
-        candidate_compensation_range: candidateProfile.desired_compensation_range,
-        resume_file_path: latestResume.file_path,
+        candidate_video_url: resolvedVideoURL,
+        candidate_linkedin_url: resolvedLinkedInURL,
+        candidate_instagram_username: resolvedInstagramUsername,
+        candidate_tiktok_username: resolvedTiktokUsername,
+        candidate_compensation_range: candidateProfile?.desired_compensation_range ?? null,
+        resume_file_path: resumeRecord.file_path,
         resume_file_name: resumeFileName,
         email_delivery_status: "pending",
       })
@@ -225,7 +318,7 @@ Deno.serve(async (request) => {
 
     const signedResume = await adminClient.storage
       .from("resumes")
-      .createSignedUrl(latestResume.file_path, 60 * 60 * 24 * 7);
+      .createSignedUrl(resumeRecord.file_path, 60 * 60 * 24 * 7);
 
     const emailResult = await sendEmployerEmail({
       to: job.application_email,
@@ -236,9 +329,11 @@ Deno.serve(async (request) => {
       schoolName: insertedApplication.candidate_school_name,
       dreamRole: insertedApplication.candidate_dream_role,
       previousEmployers,
-      coverNote,
       pitchVideoURL: insertedApplication.candidate_video_url,
       resumeSignedURL: signedResume.data?.signedUrl ?? null,
+      linkedInURL: insertedApplication.candidate_linkedin_url,
+      instagramUsername: insertedApplication.candidate_instagram_username,
+      tiktokUsername: insertedApplication.candidate_tiktok_username,
     });
 
     await adminClient

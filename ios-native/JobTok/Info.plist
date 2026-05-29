@@ -35,6 +35,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.business</string>
+	<key>NSCameraUsageDescription</key>
+	<string>JobTok uses your camera so you can record pitch videos and role posts.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>JobTok uses your microphone so your recorded JobToks include audio.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>JobTok may save processed media for your hiring profile experience.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

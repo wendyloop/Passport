@@ -30,17 +30,23 @@ Deno.serve(async (request) => {
     }
 
     const [
+      { data: profiles, error: profilesError },
       { data: resumes, error: resumesError },
       { data: candidateVideos, error: candidateVideosError },
       { data: jobs, error: jobsError },
     ] = await Promise.all([
+      adminClient
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", user.id)
+        .maybeSingle(),
       adminClient
         .from("resume_uploads")
         .select("file_path")
         .eq("profile_id", user.id),
       adminClient
         .from("candidate_videos")
-        .select("public_url")
+        .select("video_url")
         .eq("profile_id", user.id),
       adminClient
         .from("jobs")
@@ -48,20 +54,27 @@ Deno.serve(async (request) => {
         .eq("posted_by_profile_id", user.id),
     ]);
 
+    if (profilesError) throw profilesError;
     if (resumesError) throw resumesError;
     if (candidateVideosError) throw candidateVideosError;
     if (jobsError) throw jobsError;
 
+    const avatarPath = profiles?.avatar_url
+      ? pathFromPublicURL(profiles.avatar_url, "avatars")
+      : null;
     const resumePaths = (resumes ?? [])
       .map((row) => row.file_path?.trim())
       .filter((value): value is string => Boolean(value));
     const candidateVideoPaths = (candidateVideos ?? [])
-      .map((row) => row.public_url ? pathFromPublicURL(row.public_url, "videos") : null)
+      .map((row) => row.video_url ? pathFromPublicURL(row.video_url, "videos") : null)
       .filter((value): value is string => Boolean(value));
     const jobVideoPaths = (jobs ?? [])
       .map((row) => row.video_url ? pathFromPublicURL(row.video_url, "job-videos") : null)
       .filter((value): value is string => Boolean(value));
 
+    if (avatarPath) {
+      await adminClient.storage.from("avatars").remove([avatarPath]);
+    }
     if (resumePaths.length > 0) {
       await adminClient.storage.from("resumes").remove(resumePaths);
     }

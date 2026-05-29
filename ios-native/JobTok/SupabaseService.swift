@@ -574,7 +574,7 @@ final class SupabaseService {
     }
 
     func createJob(
-        employerProfileID: String,
+        employerProfileID: String?,
         title: String,
         companyName: String,
         location: String,
@@ -588,6 +588,14 @@ final class SupabaseService {
         applicationEmail: String,
         videoURL: String,
         sourceURL: String?,
+        sourcePlatform: SocialSourcePlatform?,
+        sourceCreatorName: String?,
+        sourceCreatorURL: String?,
+        sourceThumbnailURL: String?,
+        sourceCaption: String?,
+        sourceCaptionRaw: String?,
+        sourcePostedAt: Date?,
+        sourceApplyEmailExtracted: String?,
         isPublished: Bool,
         session: AuthSession
     ) async throws {
@@ -608,10 +616,36 @@ final class SupabaseService {
             "application_email": AnyEncodable(applicationEmail),
             "video_url": AnyEncodable(videoURL),
             "source_url": AnyEncodable(sourceURL?.isEmpty == true ? nil : sourceURL),
+            "source_platform": AnyEncodable(sourcePlatform?.rawValue),
+            "source_creator_name": AnyEncodable(sourceCreatorName?.isEmpty == true ? nil : sourceCreatorName),
+            "source_creator_url": AnyEncodable(sourceCreatorURL?.isEmpty == true ? nil : sourceCreatorURL),
+            "source_thumbnail_url": AnyEncodable(sourceThumbnailURL?.isEmpty == true ? nil : sourceThumbnailURL),
+            "source_caption": AnyEncodable(sourceCaption?.isEmpty == true ? nil : sourceCaption),
+            "source_caption_raw": AnyEncodable(sourceCaptionRaw?.isEmpty == true ? nil : sourceCaptionRaw),
+            "source_posted_at": AnyEncodable(sourcePostedAt),
+            "source_apply_email_extracted": AnyEncodable(sourceApplyEmailExtracted?.isEmpty == true ? nil : sourceApplyEmailExtracted),
             "is_published": AnyEncodable(isPublished)
         ]]
 
-        _ = try await postgrestWrite(path: "jobs", method: "POST", body: body, session: session) as EmptyPayload
+        _ = try await postgrestWrite(path: "jobs", method: "POST", body: body, session: session, prefer: "return=minimal") as EmptyPayload
+    }
+
+    func parseSharedJobPosting(sourceURL: String, session: AuthSession) async throws -> ImportedJobSuggestion {
+        let request = try makeRequest(
+            url: functionsBaseURL.appendingPathComponent("parse-shared-job-posting"),
+            method: "POST",
+            accessToken: session.accessToken,
+            body: ["sourceURL": AnyEncodable(sourceURL)]
+        )
+        let (data, urlResponse) = try await URLSession.shared.data(for: request)
+        let statusCode = (urlResponse as? HTTPURLResponse)?.statusCode ?? 0
+        do {
+            let envelope = try decoder.decode(ImportedJobSuggestionEnvelope.self, from: data)
+            return envelope.suggestion
+        } catch let decodeError {
+            let rawBody = String(data: data, encoding: .utf8) ?? "<non-utf8 data>"
+            throw SupabaseServiceError.apiError("HTTP \(statusCode)\n\nDecode error: \(decodeError.localizedDescription)\n\nRaw response:\n\(rawBody.prefix(2000))")
+        }
     }
 
     func updateJobPublishState(jobID: String, isPublished: Bool, session: AuthSession) async throws {
@@ -626,14 +660,16 @@ final class SupabaseService {
         )
     }
 
-    func applyToJob(jobID: String, coverNote: String?, session: AuthSession) async throws -> JobApplicationRecord {
+    func applyToJob(draft: JobApplicationDraft, session: AuthSession) async throws -> JobApplicationRecord {
         let request = try makeRequest(
             url: functionsBaseURL.appendingPathComponent("apply-to-job"),
             method: "POST",
             accessToken: session.accessToken,
             body: [
-                "jobId": AnyEncodable(jobID),
-                "coverNote": AnyEncodable(coverNote)
+                "jobId": AnyEncodable(draft.jobID),
+                "resumeFilePath": AnyEncodable(draft.resumeFilePath),
+                "selectedVideoURL": AnyEncodable(draft.includePitchVideo ? draft.pitchVideoURL : nil),
+                "socialLink": AnyEncodable(draft.sharedSocialLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : draft.sharedSocialLink.trimmingCharacters(in: .whitespacesAndNewlines))
             ]
         )
         let response = try await execute(request, decode: JobApplicationEnvelope.self)
@@ -1020,6 +1056,10 @@ private struct JobApplicationEnvelope: Codable {
 
 private struct CandidateOutreachEnvelope: Codable {
     let outreach: CandidateOutreachRecord
+}
+
+private struct ImportedJobSuggestionEnvelope: Codable {
+    let suggestion: ImportedJobSuggestion
 }
 
 private struct StorageSignedURLEnvelope: Codable {

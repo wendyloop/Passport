@@ -1,28 +1,89 @@
 import SwiftUI
-import PhotosUI
-import CoreTransferable
 
 struct AdminHomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
     let jobs: [JobPostingRecord]
     let employers: [EmployerDirectoryItem]
-    let onCreateJob: (JobPostingDraft, URL) -> Void
+    let onCreateJob: (JobPostingDraft, URL?) async -> String?
+    let onImportSharedPost: (String) async throws -> ImportedJobSuggestion
     let onToggleJobPublishState: (String, Bool) -> Void
     let onRefresh: () -> Void
     let onShowNotifications: () -> Void
     let onSignOut: () -> Void
 
     @State private var showingCreateSheet = false
+    @State private var showingVideoStudio = false
+    @State private var selectedVideoURL: URL?
+    @State private var selectedVideoName = ""
+    @State private var selectedTab: AdminHomeTab = .manage
+    @State private var currentPreviewJobID: String?
+    @State private var prefilledImportURL: String?
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
+            Group {
+                switch selectedTab {
+                case .manage:
+                    manageView
+                case .feedPreview:
+                    feedPreviewView
+                }
+            }
+            .background(PassportTheme.background)
+        }
+        .fullScreenCover(isPresented: $showingVideoStudio) {
+            JobTokVideoStudio(
+                purpose: .adminRole,
+                startMode: .library,
+                onCancel: {
+                    showingVideoStudio = false
+                },
+                onComplete: { composedVideo in
+                    selectedVideoURL = composedVideo.url
+                    selectedVideoName = composedVideo.fileName
+                    showingVideoStudio = false
+                    showingCreateSheet = true
+                }
+            )
+        }
+        .sheet(isPresented: $showingCreateSheet) {
+            AdminCreateJobSheet(
+                employers: employers,
+                selectedVideoURL: selectedVideoURL,
+                videoName: selectedVideoName,
+                initialSourceURL: prefilledImportURL,
+                onImportSharedPost: onImportSharedPost,
+                onCreateJob: onCreateJob
+            )
+            .presentationDetents([.large])
+        }
+        .onAppear {
+            consumePendingSharedImportIfPossible()
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            if newValue == .active {
+                consumePendingSharedImportIfPossible()
+            }
+        }
+    }
 
+    private var publishedJobs: [JobPostingRecord] {
+        jobs.filter(\.isPublished)
+    }
+
+    private var manageView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                tabSelector
+
+                VStack(spacing: 12) {
                     Button {
+                        selectedVideoURL = nil
+                        selectedVideoName = ""
                         showingCreateSheet = true
                     } label: {
-                        Text("Create JobTok Post")
+                        Text("Import from Link")
                             .font(.headline.weight(.bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
@@ -31,63 +92,153 @@ struct AdminHomeView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
 
-                    if jobs.isEmpty {
-                        AdminInfoCard(
-                            title: "No jobs yet",
-                            details: "Create the first role, attach a vertical video, and assign it to an employer portal."
-                        )
-                    } else {
-                        ForEach(jobs) { job in
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(job.title)
-                                    .font(.headline)
-                                    .foregroundStyle(PassportTheme.textPrimary)
-                                Text("\(job.companyName) • \(job.location ?? "Remote")")
-                                    .foregroundStyle(PassportTheme.textSecondary)
-                                Text(job.description)
-                                    .foregroundStyle(PassportTheme.textPrimary)
-                                    .lineLimit(4)
+                    Button {
+                        showingVideoStudio = true
+                    } label: {
+                        Text("Select Local Video")
+                            .font(.headline.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(PassportTheme.card)
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                }
 
-                                HStack {
-                                    Text(job.isPublished ? "Published" : "Draft")
+                if jobs.isEmpty {
+                    AdminInfoCard(
+                        title: "No jobs yet",
+                        details: "Paste a TikTok or Instagram link to import a post directly, or upload a local video if you want to host the media inside JobTok."
+                    )
+                } else {
+                    ForEach(jobs) { job in
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .top, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(job.title)
+                                        .font(.headline)
+                                        .foregroundStyle(PassportTheme.textPrimary)
+                                    Text("\(job.companyName) • \(job.location ?? "Remote")")
+                                        .foregroundStyle(PassportTheme.textSecondary)
+                                }
+
+                                Spacer()
+
+                                if let sourcePlatform = job.sourcePlatform {
+                                    Text(sourcePlatform.title)
+                                        .font(.caption.weight(.bold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(PassportTheme.card)
+                                        .foregroundStyle(PassportTheme.textPrimary)
+                                        .clipShape(Capsule())
+                                }
+                            }
+
+                            Text(job.description)
+                                .foregroundStyle(PassportTheme.textPrimary)
+                                .lineLimit(4)
+
+                            if let sourceURL = job.sourceURL, !sourceURL.isEmpty {
+                                Text(sourceURL)
+                                    .font(.footnote)
+                                    .foregroundStyle(PassportTheme.textSecondary)
+                                    .lineLimit(1)
+                            }
+
+                            HStack {
+                                Text(job.isPublished ? "Published" : "Draft")
+                                    .font(.caption.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(job.isPublished ? PassportTheme.accent : PassportTheme.card)
+                                    .foregroundStyle(job.isPublished ? .black : PassportTheme.textPrimary)
+                                    .clipShape(Capsule())
+
+                                if job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text("Missing apply route")
                                         .font(.caption.weight(.bold))
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 8)
-                                        .background(job.isPublished ? PassportTheme.accent : PassportTheme.card)
-                                        .foregroundStyle(job.isPublished ? .black : PassportTheme.textPrimary)
+                                        .background(Color.orange.opacity(0.18))
+                                        .foregroundStyle(Color.orange)
                                         .clipShape(Capsule())
-
-                                    Spacer()
-
-                                    Button(job.isPublished ? "Unpublish" : "Publish") {
-                                        onToggleJobPublishState(job.id, !job.isPublished)
-                                    }
-                                    .font(.subheadline.weight(.bold))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background(PassportTheme.card)
-                                    .foregroundStyle(PassportTheme.textPrimary)
-                                    .clipShape(Capsule())
                                 }
+
+                                Spacer()
+
+                                Button(job.isPublished ? "Unpublish" : "Publish") {
+                                    onToggleJobPublishState(job.id, !job.isPublished)
+                                }
+                                .font(.subheadline.weight(.bold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(PassportTheme.card)
+                                .foregroundStyle(PassportTheme.textPrimary)
+                                .clipShape(Capsule())
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(18)
-                            .jobTokCard(cornerRadius: 22)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(18)
+                        .jobTokCard(cornerRadius: 22)
+                    }
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    private var feedPreviewView: some View {
+        GeometryReader { proxy in
+            let pageWidth = proxy.size.width
+            let pageHeight = proxy.size.height
+
+            ZStack(alignment: .top) {
+                if publishedJobs.isEmpty {
+                    VStack(spacing: 16) {
+                        header
+                            .padding(.horizontal, 20)
+                            .padding(.top, 20)
+                        tabSelector
+                            .padding(.horizontal, 20)
+                        Spacer()
+                        AdminInfoCard(
+                            title: "No published feed yet",
+                            details: "Publish a job post and it will appear here exactly where candidates see it."
+                        )
+                        .padding(.horizontal, 20)
+                        Spacer()
+                    }
+                } else {
+                    ScrollView(.vertical) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(publishedJobs) { job in
+                                AdminFeedPreviewCard(
+                                    job: job,
+                                    isActive: currentPreviewJobID == job.id
+                                )
+                                .frame(width: pageWidth, height: pageHeight)
+                                .id(job.id)
+                            }
+                        }
+                        .scrollTargetLayout()
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: $currentPreviewJobID)
+                    .ignoresSafeArea()
+                    .onAppear {
+                        currentPreviewJobID = publishedJobs.first?.id
                     }
 
-                    AdminInfoCard(
-                        title: "Phase 2 note",
-                        details: "The schema already carries candidate visibility and dream-role data so employer discovery can be added without reworking applications."
-                    )
+                    VStack(spacing: 14) {
+                        header
+                        tabSelector
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
                 }
-                .padding(20)
             }
-            .background(PassportTheme.background)
-        }
-        .sheet(isPresented: $showingCreateSheet) {
-            AdminCreateJobSheet(employers: employers, onCreateJob: onCreateJob)
-                .presentationDetents([.large])
         }
     }
 
@@ -98,7 +249,7 @@ struct AdminHomeView: View {
                     Text("Admin")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundStyle(PassportTheme.textPrimary)
-                    Text("Upload job videos, assign them to employers, and publish the feed.")
+                    Text("Import sourced social posts, publish the live feed, and route applications to company inboxes.")
                         .foregroundStyle(PassportTheme.textSecondary)
                 }
                 Spacer()
@@ -108,102 +259,177 @@ struct AdminHomeView: View {
             }
         }
     }
+
+    private var tabSelector: some View {
+        HStack(spacing: 10) {
+            ForEach(AdminHomeTab.allCases) { tab in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedTab = tab
+                    }
+                } label: {
+                    Text(tab.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(selectedTab == tab ? .black : PassportTheme.textSecondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(selectedTab == tab ? PassportTheme.accent : PassportTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func consumePendingSharedImportIfPossible() {
+        guard !showingCreateSheet, !showingVideoStudio else { return }
+        guard let pending = SharedImportInbox.consumePendingURL() else { return }
+        selectedVideoURL = nil
+        selectedVideoName = ""
+        prefilledImportURL = pending.sourceURL
+        selectedTab = .manage
+        showingCreateSheet = true
+    }
+}
+
+private enum AdminHomeTab: String, CaseIterable, Identifiable {
+    case manage
+    case feedPreview
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .manage:
+            return "Manage"
+        case .feedPreview:
+            return "Feed Preview"
+        }
+    }
 }
 
 private struct AdminCreateJobSheet: View {
     let employers: [EmployerDirectoryItem]
-    let onCreateJob: (JobPostingDraft, URL) -> Void
+    let selectedVideoURL: URL?
+    let videoName: String
+    let initialSourceURL: String?
+    let onImportSharedPost: (String) async throws -> ImportedJobSuggestion
+    let onCreateJob: (JobPostingDraft, URL?) async -> String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft = JobPostingDraft()
-    @State private var selectedVideoItem: PhotosPickerItem?
-    @State private var selectedVideoURL: URL?
-    @State private var videoName = ""
     @State private var errorMessage: String?
+    @State private var isImportingMetadata = false
+    @State private var isPublishing = false
+    @State private var didAttemptInitialImport = false
+    @State private var importDiagnostics: ImportDiagnostics?
+
+    private var isLinkImportMode: Bool {
+        selectedVideoURL == nil
+    }
+
+    private var hasImportedPayload: Bool {
+        !draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var videoStatusTitle: String {
+        selectedVideoURL == nil ? "Using imported social embed" : "Job video selected"
+    }
+
+    private var videoStatusMessage: String {
+        selectedVideoURL == nil
+            ? "This post will render from the imported TikTok or Instagram link in the candidate feed."
+            : videoName
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    employerPicker
-
-                    field(title: "Job title", text: $draft.title)
-                    field(title: "Company name", text: $draft.companyName)
-                    field(title: "Location", text: $draft.location)
-                    compensationFields
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Job function")
-                            .font(.headline)
-                            .foregroundStyle(PassportTheme.textPrimary)
-
-                        Picker("Job function", selection: $draft.jobFunction) {
-                            ForEach(JobFunctionOption.allCases) { option in
-                                Text(option.title).tag(option)
-                            }
+                    if !isLinkImportMode {
+                        employerPicker
+                    }
+                    if isLinkImportMode {
+                        importSection
+                        if hasImportedPayload {
+                            importedSummarySection
                         }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(PassportTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
+                    } else {
+                        field(title: "Job title", text: $draft.title)
+                        field(title: "Company name", text: $draft.companyName)
+                        field(title: "Location", text: $draft.location)
+                        compensationFields
 
-                    field(title: "Application email", text: $draft.applicationEmail)
-                    field(title: "Source URL (optional)", text: $draft.sourceURL)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Description")
-                            .font(.headline)
-                            .foregroundStyle(PassportTheme.textPrimary)
-
-                        TextField("Describe the opening", text: $draft.description, axis: .vertical)
-                            .lineLimit(5...8)
-                            .textFieldStyle(PassportTextFieldStyle())
-                    }
-
-                    Toggle(isOn: $draft.isPublished) {
-                        Text("Publish immediately")
-                            .foregroundStyle(PassportTheme.textPrimary)
-                    }
-                    .tint(PassportTheme.accent)
-
-                    PhotosPicker(
-                        selection: $selectedVideoItem,
-                        matching: .videos,
-                        photoLibrary: .shared()
-                    ) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(selectedVideoURL == nil ? "Upload job video" : "Job video selected")
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Job function")
                                 .font(.headline)
                                 .foregroundStyle(PassportTheme.textPrimary)
-                            Text(selectedVideoURL == nil ? "Choose the short-form job clip to publish." : videoName)
-                                .font(.footnote)
-                                .foregroundStyle(PassportTheme.textSecondary)
+
+                            Picker("Job function", selection: $draft.jobFunction) {
+                                ForEach(JobFunctionOption.allCases) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .background(PassportTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .background(PassportTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                        field(title: "Application email", text: $draft.applicationEmail)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Job description")
+                                .font(.headline)
+                                .foregroundStyle(PassportTheme.textPrimary)
+
+                            TextField("Paste or review the job description", text: $draft.description, axis: .vertical)
+                                .lineLimit(6...10)
+                                .textFieldStyle(PassportTextFieldStyle())
+                        }
+
+                        Toggle(isOn: $draft.isPublished) {
+                            Text("Publish immediately")
+                                .foregroundStyle(PassportTheme.textPrimary)
+                        }
+                        .tint(PassportTheme.accent)
                     }
 
-                    Button {
-                        guard let selectedVideoURL else {
-                            errorMessage = "Select a job video before publishing."
-                            return
-                        }
-                        onCreateJob(draft, selectedVideoURL)
-                        dismiss()
-                    } label: {
-                        Text("Create Job")
-                            .fontWeight(.bold)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                            .background(PassportTheme.accent)
-                            .foregroundStyle(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(videoStatusTitle)
+                            .font(.headline)
+                            .foregroundStyle(PassportTheme.textPrimary)
+                        Text(videoStatusMessage)
+                            .font(.footnote)
+                            .foregroundStyle(PassportTheme.textSecondary)
                     }
-                    .disabled(employers.isEmpty)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(PassportTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    Button {
+                        Task {
+                            await publishJob()
+                        }
+                    } label: {
+                        HStack {
+                            if isPublishing {
+                                ProgressView()
+                                    .tint(.black)
+                            }
+                            Text(isPublishing ? "Publishing…" : (isLinkImportMode ? "Publish Imported JobTok" : "Create Job"))
+                                .fontWeight(.bold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(PassportTheme.accent)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .disabled(isPublishing || isImportingMetadata)
                 }
                 .padding(20)
             }
@@ -220,22 +446,31 @@ private struct AdminCreateJobSheet: View {
             }
         }
         .onAppear {
+            if draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.sourceURL = initialSourceURL ?? ""
+            }
             if draft.employerProfileID.isEmpty {
                 draft.employerProfileID = employers.first?.id ?? ""
                 draft.companyName = employers.first?.companyName ?? ""
-                draft.applicationEmail = employers.first?.email ?? ""
+                if !isLinkImportMode {
+                    draft.applicationEmail = employers.first?.email ?? ""
+                }
             }
-        }
-        .onChange(of: selectedVideoItem) { _, newItem in
-            guard let newItem else { return }
-            Task {
-                await loadVideo(newItem)
+            if isLinkImportMode,
+               !didAttemptInitialImport,
+               !draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                didAttemptInitialImport = true
+                Task {
+                    await importSharedPost()
+                }
             }
         }
         .onChange(of: draft.employerProfileID) { _, newValue in
             guard let employer = employers.first(where: { $0.id == newValue }) else { return }
             draft.companyName = employer.companyName
-            draft.applicationEmail = employer.email
+            if !isLinkImportMode && draft.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.applicationEmail = employer.email
+            }
         }
         .alert("Issue", isPresented: Binding(
             get: { errorMessage != nil },
@@ -247,6 +482,88 @@ private struct AdminCreateJobSheet: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var importSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Import from TikTok / Instagram")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Text("Paste the shared post link. JobTok will fetch the source page and scrape the description, posting date, and apply route automatically. If the apply route is missing, the post can still be created and will be flagged in admin.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+
+            field(title: "Source link", text: $draft.sourceURL)
+
+            Button {
+                Task {
+                    await importSharedPost()
+                }
+            } label: {
+                HStack {
+                    if isImportingMetadata {
+                        ProgressView()
+                            .tint(.black)
+                    }
+                    Text(isImportingMetadata ? "Importing…" : "Auto-fill from shared post")
+                        .fontWeight(.bold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(PassportTheme.card)
+                .foregroundStyle(PassportTheme.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .disabled(isImportingMetadata || draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+    }
+
+    private var importedSummarySection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Text("Imported details")
+                    .font(.headline)
+                    .foregroundStyle(PassportTheme.textPrimary)
+
+                Spacer()
+
+                if let sourcePlatform = draft.sourcePlatform {
+                    Text(sourcePlatform.title)
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(PassportTheme.card)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .clipShape(Capsule())
+                }
+            }
+
+            importedRow(title: "Company", value: draft.companyName)
+            importedRow(title: "Title", value: draft.title)
+            importedRow(title: "Creator", value: draft.sourceCreatorName)
+            importedRow(title: "Location", value: draft.location)
+            importedRow(title: "Compensation", value: draft.sourceCompensationText)
+            importedRow(title: "Apply route", value: draft.applicationEmail, highlightMissing: true)
+            importedRow(title: "Extracted email", value: draft.sourceApplyEmailExtracted, highlightMissing: true)
+            importedRow(title: "How to apply", value: draft.sourceHowToApplyText)
+            importedRow(title: "Posted", value: draft.sourcePostedAt.map(formattedSourceDate) ?? "")
+            importedRow(title: "Description", value: draft.description)
+
+            if draft.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("No apply email was found in the caption. This post can still be published, but it will be flagged in admin until you source a valid apply route.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.orange)
+            }
+
+            if let importDiagnostics {
+                diagnosticsSection(importDiagnostics)
+            }
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
     }
 
     private var employerPicker: some View {
@@ -295,17 +612,254 @@ private struct AdminCreateJobSheet: View {
         }
     }
 
-    private func loadVideo(_ item: PhotosPickerItem) async {
-        do {
-            guard let movie = try await item.loadTransferable(type: AdminSelectedMovie.self) else {
-                errorMessage = "The selected video could not be loaded."
-                return
+    private func formattedSourceDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    private func importedRow(title: String, value: String, highlightMissing: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PassportTheme.textSecondary)
+            Text(
+                value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (highlightMissing ? "Missing" : "Not found")
+                : value
+            )
+            .font(.subheadline)
+            .foregroundStyle(
+                value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && highlightMissing
+                ? Color.orange
+                : PassportTheme.textPrimary
+            )
+        }
+    }
+
+    @State private var showDiagnostics = false
+
+    private func diagnosticsSection(_ diagnostics: ImportDiagnostics) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { showDiagnostics.toggle() }
+            } label: {
+                HStack {
+                    Text("Scrape diagnostics")
+                        .font(.headline)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    Spacer()
+                    Image(systemName: showDiagnostics ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PassportTheme.textSecondary)
+                }
             }
-            selectedVideoURL = movie.url
-            videoName = movie.fileName
+            .buttonStyle(.plain)
+
+            if showDiagnostics {
+                Group {
+                    diagRow(label: "Fetch status", value: diagnostics.fetchStatus.map(String.init))
+                    diagRow(label: "Content type", value: diagnostics.fetchContentType)
+                    diagRow(label: "HTML length", value: diagnostics.htmlLength.map { "\($0) bytes" })
+                    diagRow(label: "Source text length", value: diagnostics.sourceTextLength.map { "\($0) chars" })
+                    diagRow(label: "OpenAI enabled", value: diagnostics.openAIEnabled.map { $0 ? "Yes" : "No" })
+                    diagRow(label: "LLM used", value: diagnostics.llmUsed.map { $0 ? "Yes" : "No" })
+                }
+
+                if let meta = diagnostics.scrapedMetadata, !meta.isEmpty {
+                    Text("Raw scraped fields")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PassportTheme.textSecondary)
+                        .padding(.top, 4)
+
+                    ForEach(meta.keys.sorted(), id: \.self) { key in
+                        diagRow(label: key, value: meta[key])
+                    }
+                } else {
+                    diagRow(label: "Raw scraped fields", value: "None found")
+                }
+
+                let caption = diagnostics.scrapedMetadata?.values.first(where: { !$0.isEmpty }) ?? ""
+                if caption.isEmpty {
+                    diagRow(label: "Combined source text", value: "Empty — LLM had nothing to work with")
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private func diagRow(label: String, value: String?) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PassportTheme.textSecondary)
+                .frame(width: 140, alignment: .leading)
+            Text(value?.isEmpty == false ? value! : "—")
+                .font(.caption)
+                .foregroundStyle(value?.isEmpty == false ? PassportTheme.textPrimary : PassportTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+    }
+
+    @MainActor
+    private func importSharedPost() async {
+        isImportingMetadata = true
+        defer { isImportingMetadata = false }
+
+        do {
+            let suggestion = try await onImportSharedPost(
+                draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+
+            draft.sourceURL = suggestion.sourceURL
+            draft.sourcePlatform = suggestion.sourcePlatform
+            draft.sourceCreatorName = suggestion.sourceCreatorName ?? ""
+            draft.sourceCreatorURL = suggestion.sourceCreatorURL ?? ""
+            draft.sourceThumbnailURL = suggestion.sourceThumbnailURL ?? ""
+            draft.sourcePostedAt = suggestion.sourcePostedAt
+            draft.sourceCaption = suggestion.sourceCaption
+            draft.sourceCaptionRaw = suggestion.sourceCaptionRaw
+            draft.sourceApplyEmailExtracted = suggestion.sourceApplyEmailExtracted ?? ""
+            draft.sourceCompensationText = suggestion.compensation ?? ""
+            draft.sourceHowToApplyText = suggestion.howToApply ?? ""
+            importDiagnostics = suggestion.diagnostics
+
+            if let company = suggestion.company, !company.isEmpty {
+                draft.companyName = company
+            }
+
+            if draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.title = suggestion.title ?? draft.title
+            } else if let title = suggestion.title, !title.isEmpty {
+                draft.title = title
+            }
+
+            if let location = suggestion.location, !location.isEmpty {
+                draft.location = location
+            }
+            if let description = suggestion.description, !description.isEmpty {
+                draft.description = description
+            }
+            if let applicationEmail = suggestion.applicationEmail, !applicationEmail.isEmpty {
+                draft.applicationEmail = applicationEmail
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func publishJob() async {
+        guard selectedVideoURL != nil || !draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Select a video or import a shared TikTok / Instagram link before publishing."
+            return
+        }
+
+        if !isLinkImportMode && draft.employerProfileID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = employers.isEmpty
+                ? "No employer profiles found. An employer account must be created first."
+                : "Select an employer before publishing."
+            return
+        }
+
+        isPublishing = true
+        defer { isPublishing = false }
+
+        let normalized = draft
+        let error = await onCreateJob(normalized, selectedVideoURL)
+        if let error, !error.isEmpty {
+            errorMessage = error
+            return
+        }
+
+        dismiss()
+    }
+}
+
+private struct AdminFeedPreviewCard: View {
+    let job: JobPostingRecord
+    let isActive: Bool
+
+    var body: some View {
+        ZStack {
+            RemoteVideoSurface(
+                urlString: job.videoURL,
+                isActive: isActive,
+                allowsTapToTogglePlayback: true,
+                showsPlayOverlayWhenPaused: true,
+                isMuted: true
+            )
+            .ignoresSafeArea()
+
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.0),
+                    Color.black.opacity(0.20),
+                    Color.black.opacity(0.88)
+                ],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                HStack(alignment: .bottom, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 6) {
+                            if let sourcePlatform = job.sourcePlatform {
+                                previewTag(sourcePlatform.title, accent: true)
+                            }
+                            if let location = job.location, !location.isEmpty {
+                                previewTag(location, accent: false)
+                            }
+                        }
+
+                        Text(job.title)
+                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Text(job.companyName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+
+                        Text(job.description)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.82))
+                            .lineLimit(3)
+
+                        Text("Apply route: \(job.applicationEmail)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.72))
+
+                        if let sourceURL = job.sourceURL, !sourceURL.isEmpty {
+                            Text(sourceURL)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.62))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 34)
+            }
+        }
+        .background(Color.black)
+    }
+
+    private func previewTag(_ text: String, accent: Bool) -> some View {
+        Text(text)
+            .font(.caption.weight(.bold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(accent ? PassportTheme.accentSoft.opacity(0.95) : Color.black.opacity(0.45))
+            .foregroundStyle(accent ? PassportTheme.accent : .white)
+            .clipShape(Capsule())
     }
 }
 
@@ -324,24 +878,5 @@ private struct AdminInfoCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .jobTokCard(cornerRadius: 22)
-    }
-}
-
-private struct AdminSelectedMovie: Transferable {
-    let url: URL
-    let fileName: String
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let temporaryDirectory = URL(filePath: NSTemporaryDirectory())
-            let copiedURL = temporaryDirectory.appending(path: received.file.lastPathComponent)
-
-            if FileManager.default.fileExists(atPath: copiedURL.path) {
-                try FileManager.default.removeItem(at: copiedURL)
-            }
-
-            try FileManager.default.copyItem(at: received.file, to: copiedURL)
-            return AdminSelectedMovie(url: copiedURL, fileName: received.file.lastPathComponent)
-        }
     }
 }
