@@ -724,6 +724,7 @@ private struct AdminCreateJobSheet: View {
             draft.sourceApplyEmailExtracted = suggestion.sourceApplyEmailExtracted ?? ""
             draft.sourceCompensationText = suggestion.compensation ?? ""
             draft.sourceHowToApplyText = suggestion.howToApply ?? ""
+            draft.importedVideoURL = suggestion.videoPlayURL ?? ""
             importDiagnostics = suggestion.diagnostics
 
             if let company = suggestion.company, !company.isEmpty {

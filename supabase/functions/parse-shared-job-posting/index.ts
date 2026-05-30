@@ -235,18 +235,40 @@ function extractJsonLd(html: string): string | null {
   return null;
 }
 
-function extractTikTokCaption(html: string): string | null {
+type TikTokData = {
+  caption: string | null;
+  videoPlayURL: string | null;
+  thumbnailURL: string | null;
+  authorNickname: string | null;
+  authorHandle: string | null;
+  createTime: number | null;
+  bioLink: string | null;
+};
+
+function extractTikTokData(html: string): TikTokData {
+  const empty: TikTokData = { caption: null, videoPlayURL: null, thumbnailURL: null, authorNickname: null, authorHandle: null, createTime: null, bioLink: null };
   const scriptMatch = html.match(
     /<script[^>]+id=["']__UNIVERSAL_DATA_FOR_REHYDRATION__["'][^>]*>([\s\S]*?)<\/script>/i,
   );
-  if (!scriptMatch) return null;
+  if (!scriptMatch) return empty;
   try {
     const data = JSON.parse(scriptMatch[1]);
-    const desc = data?.["__DEFAULT_SCOPE__"]?.["webapp.video-detail"]
-      ?.itemInfo?.itemStruct?.desc;
-    return typeof desc === "string" && desc.trim() ? desc.trim() : null;
+    const item = data?.["__DEFAULT_SCOPE__"]?.["webapp.video-detail"]?.itemInfo?.itemStruct;
+    if (!item) return empty;
+
+    const caption = typeof item.desc === "string" && item.desc.trim() ? item.desc.trim() : null;
+    // playAddr is the direct CDN video URL — lets AVPlayer play it natively
+    const videoPlayURL = typeof item.video?.playAddr === "string" && item.video.playAddr ? item.video.playAddr : null;
+    const thumbnailURL = typeof item.video?.cover === "string" ? item.video.cover : (typeof item.video?.originCover === "string" ? item.video.originCover : null);
+    const authorNickname = typeof item.author?.nickname === "string" ? item.author.nickname : null;
+    const authorHandle = typeof item.author?.uniqueId === "string" ? item.author.uniqueId : null;
+    const createTime = typeof item.createTime === "number" ? item.createTime : null;
+    // bioLink — the link-in-bio URL where many creators put job application links
+    const bioLink = typeof item.author?.bioLink?.link === "string" ? item.author.bioLink.link : null;
+
+    return { caption, videoPlayURL, thumbnailURL, authorNickname, authorHandle, createTime, bioLink };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -312,7 +334,7 @@ async function extractSourceText(sourceURL: string, sourcePlatform: string | nul
   const canonicalURL = html ? extractCanonicalURL(html) : null;
   const titleTag = html ? extractTitleTag(html) : null;
   const jsonLdDescription = html ? extractJsonLd(html) : null;
-  const tiktokCaption = (html && sourcePlatform === "tiktok") ? extractTikTokCaption(html) : null;
+  const tiktokData = (html && sourcePlatform === "tiktok") ? extractTikTokData(html) : null;
   const instagramCaption = (html && sourcePlatform === "instagram") ? extractInstagramCaption(html) : null;
 
   // For Instagram, also fetch the /embed/captioned/ sub-page which is server-rendered with actual content
@@ -332,17 +354,8 @@ async function extractSourceText(sourceURL: string, sourcePlatform: string | nul
 
   const visibleText = html ? stripTags(html).slice(0, 4000) : "";
 
-  let tiktokTitle: string | null = null;
-  let tiktokAuthorName: string | null = null;
-  let tiktokAuthorURL: string | null = null;
-  let tiktokThumbnailURL: string | null = null;
-  if (sourcePlatform === "tiktok") {
-    const oembed = await fetchTikTokOEmbed(sourceURL);
-    tiktokTitle = typeof oembed?.title === "string" ? oembed.title : null;
-    tiktokAuthorName = typeof oembed?.author_name === "string" ? oembed.author_name : null;
-    tiktokAuthorURL = typeof oembed?.author_url === "string" ? oembed.author_url : null;
-    tiktokThumbnailURL = typeof oembed?.thumbnail_url === "string" ? oembed.thumbnail_url : null;
-  }
+  const tiktokAuthorHandle = tiktokData?.authorHandle ?? null;
+  const tiktokAuthorURL = tiktokAuthorHandle ? `https://www.tiktok.com/@${tiktokAuthorHandle}` : null;
 
   let instagramOEmbedTitle: string | null = null;
   let instagramAuthorName: string | null = null;
@@ -359,8 +372,8 @@ async function extractSourceText(sourceURL: string, sourcePlatform: string | nul
     ogTitle,
     twitterTitle,
     titleTag,
-    tiktokTitle,
-    tiktokCaption,
+    tiktokData?.caption,
+    tiktokData?.bioLink,
     instagramOEmbedTitle,
     instagramEmbedCaption,
     instagramEmbedOgDescription,
@@ -373,17 +386,20 @@ async function extractSourceText(sourceURL: string, sourcePlatform: string | nul
   ].filter((value): value is string => Boolean(value && value.trim()));
 
   const mergedText = textParts.join("\n").trim();
-  const derivedCreatorName = tiktokAuthorName ?? instagramAuthorName ?? guessCreatorName(ogTitle ?? twitterTitle ?? titleTag, ogDescription ?? description ?? twitterDescription, sourcePlatform);
+  const derivedCreatorName = tiktokData?.authorNickname ?? instagramAuthorName ?? guessCreatorName(ogTitle ?? twitterTitle ?? titleTag, ogDescription ?? description ?? twitterDescription, sourcePlatform);
   const derivedCreatorURL = tiktokAuthorURL ?? canonicalURL ?? null;
-  const derivedThumbnailURL = tiktokThumbnailURL ?? instagramThumbnailURL ?? instagramEmbedOgImage ?? ogImage ?? twitterImage ?? null;
-  const derivedPostedAt = articlePublishedAt && !Number.isNaN(new Date(articlePublishedAt).getTime())
-    ? toISO(new Date(articlePublishedAt))
-    : guessPostedAt(mergedText);
+  const derivedThumbnailURL = tiktokData?.thumbnailURL ?? instagramThumbnailURL ?? instagramEmbedOgImage ?? ogImage ?? twitterImage ?? null;
+  const derivedPostedAt = (tiktokData?.createTime != null)
+    ? toISO(new Date(tiktokData.createTime * 1000))
+    : (articlePublishedAt && !Number.isNaN(new Date(articlePublishedAt).getTime())
+        ? toISO(new Date(articlePublishedAt))
+        : guessPostedAt(mergedText));
   const extractedEmail = extractApplicationEmail(mergedText);
 
   return {
     sourceText: mergedText,
-    derivedTitle: guessTitle(mergedText) ?? ogTitle ?? titleTag ?? tiktokTitle ?? instagramOEmbedTitle,
+    videoPlayURL: tiktokData?.videoPlayURL ?? null,
+    derivedTitle: guessTitle(mergedText) ?? ogTitle ?? titleTag ?? tiktokData?.caption ?? instagramOEmbedTitle,
     derivedCreatorName,
     derivedCreatorURL,
     derivedThumbnailURL,
@@ -403,11 +419,12 @@ async function extractSourceText(sourceURL: string, sourcePlatform: string | nul
       og_image: ogImage,
       twitter_image: twitterImage,
       article_published_at: articlePublishedAt,
-      tiktok_title: tiktokTitle,
-      tiktok_author_name: tiktokAuthorName,
+      tiktok_caption: tiktokData?.caption ?? null,
+      tiktok_author_name: tiktokData?.authorNickname ?? null,
       tiktok_author_url: tiktokAuthorURL,
-      tiktok_thumbnail_url: tiktokThumbnailURL,
-      tiktok_caption: tiktokCaption,
+      tiktok_thumbnail_url: tiktokData?.thumbnailURL ?? null,
+      tiktok_video_play_url: tiktokData?.videoPlayURL ?? null,
+      tiktok_bio_link: tiktokData?.bioLink ?? null,
       json_ld_description: jsonLdDescription,
       instagram_caption: instagramCaption,
       instagram_oembed_title: instagramOEmbedTitle,
@@ -718,7 +735,7 @@ Deno.serve(async (request) => {
     const body = (await request.json().catch(() => ({}))) as ParseRequest;
     const sourceURL = normalizeText(body.sourceURL) || "";
     const sourcePlatform = detectPlatform(sourceURL);
-    const { sourceText, derivedTitle, derivedCreatorName, derivedCreatorURL, derivedThumbnailURL, derivedPostedAt, extractedEmail, scrapedMetadata, fetchStatus, fetchContentType, htmlLength } = sourceURL
+    const { sourceText, videoPlayURL, derivedTitle, derivedCreatorName, derivedCreatorURL, derivedThumbnailURL, derivedPostedAt, extractedEmail, scrapedMetadata, fetchStatus, fetchContentType, htmlLength } = sourceURL
       ? await extractSourceText(sourceURL, sourcePlatform)
       : {
         sourceText: "",
@@ -726,6 +743,7 @@ Deno.serve(async (request) => {
         derivedCreatorName: null,
         derivedCreatorURL: null,
         derivedThumbnailURL: null,
+        videoPlayURL: null,
         derivedPostedAt: null,
         extractedEmail: null,
         fetchStatus: null,
@@ -785,6 +803,7 @@ Deno.serve(async (request) => {
       how_to_apply: llmExtraction?.how_to_apply ?? null,
       description: sourceText || null,
       application_email: resolvedApplicationEmail,
+      video_play_url: videoPlayURL ?? null,
       diagnostics,
     };
 

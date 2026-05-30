@@ -589,6 +589,7 @@ struct JobPostingDraft {
     var sourceApplyEmailExtracted: String = ""
     var sourceCompensationText: String = ""
     var sourceHowToApplyText: String = ""
+    var importedVideoURL: String = ""
     var isPublished = true
 }
 
@@ -609,6 +610,7 @@ struct ImportedJobSuggestion: Codable, Equatable {
     var howToApply: String?
     var description: String?
     var applicationEmail: String?
+    var videoPlayURL: String?
     var diagnostics: ImportDiagnostics?
 
     enum CodingKeys: String, CodingKey {
@@ -628,6 +630,7 @@ struct ImportedJobSuggestion: Codable, Equatable {
         case howToApply = "how_to_apply"
         case description
         case applicationEmail = "application_email"
+        case videoPlayURL = "video_play_url"
         case diagnostics
     }
 }

@@ -473,6 +473,8 @@ final class AppSessionStore: ObservableObject {
                     session: session
                 )
                 resolvedVideoURL = upload.publicURL
+            } else if let importedVideoURL = draft.importedVideoURL.nonEmptyValue {
+                resolvedVideoURL = importedVideoURL
             } else if let sourceURL = draft.sourceURL.nonEmptyValue {
                 resolvedVideoURL = sourceURL
             } else {

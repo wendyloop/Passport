@@ -12,10 +12,14 @@ struct RemoteVideoSurface: View {
     var showsPlayOverlayWhenPaused: Bool = false
     var isMuted: Bool = false
 
+    @State private var embedBroken = false
+
     var body: some View {
-        if let urlString, let embed = SocialEmbedConfiguration(urlString: urlString) {
-            SocialEmbedSurface(configuration: embed, isActive: isActive)
-        } else if let urlString, let url = URL(string: urlString) {
+        if let urlString, let embed = SocialEmbedConfiguration(urlString: urlString), !embedBroken {
+            SocialEmbedSurface(configuration: embed, isActive: isActive, onBroken: {
+                embedBroken = true
+            })
+        } else if let urlString, let url = URL(string: urlString), !embedBroken {
             LoopingVideoSurface(
                 url: url,
                 isActive: isActive,
@@ -27,11 +31,7 @@ struct RemoteVideoSurface: View {
             )
         } else {
             LinearGradient(
-                colors: [
-                    PassportTheme.card,
-                    PassportTheme.accentSoft,
-                    Color.black
-                ],
+                colors: [PassportTheme.card, PassportTheme.accentSoft, Color.black],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -39,127 +39,160 @@ struct RemoteVideoSurface: View {
     }
 }
 
+// MARK: - Social embed
+
 private struct SocialEmbedConfiguration: Equatable {
-    enum Platform {
-        case tiktok
-        case instagram
-    }
+    enum Platform { case tiktok, instagram }
 
     let platform: Platform
-    let url: URL
+    let originalURL: URL
+    let embedURL: URL
 
     init?(urlString: String) {
-        guard let url = URL(string: urlString), let host = url.host?.lowercased() else {
-            return nil
-        }
+        guard let url = URL(string: urlString), let host = url.host?.lowercased() else { return nil }
+
         if host.contains("tiktok.com") {
             self.platform = .tiktok
-            self.url = url
+            self.originalURL = url
+            // Extract numeric video ID from /@user/video/{ID} paths
+            if let id = url.absoluteString
+                .components(separatedBy: "/video/").last?
+                .components(separatedBy: CharacterSet(charactersIn: "?#/")).first,
+               !id.isEmpty, id.allSatisfy(\.isNumber),
+               let playerURL = URL(string: "https://www.tiktok.com/player/v1/\(id)?autoplay=1&loop=1&muted=0&controls=1&music_info=0&description=0&rel=0&native_context_menu=0&fullscreen_button=0") {
+                self.embedURL = playerURL
+            } else {
+                self.embedURL = url
+            }
         } else if host.contains("instagram.com") {
             self.platform = .instagram
-            self.url = url
+            self.originalURL = url
+            // Extract shortcode from /p/{code}/, /reel/{code}/, /tv/{code}/
+            let parts = url.pathComponents
+            if let idx = parts.firstIndex(where: { ["p", "reel", "tv"].contains($0) }),
+               idx + 1 < parts.count,
+               !parts[idx + 1].isEmpty,
+               let embedURL = URL(string: "https://www.instagram.com/p/\(parts[idx + 1])/embed/") {
+                self.embedURL = embedURL
+            } else {
+                self.embedURL = url
+            }
         } else {
             return nil
         }
     }
-
-    var html: String {
-        switch platform {
-        case .tiktok: return tiktokHTML
-        case .instagram: return instagramHTML
-        }
-    }
-
-    private var tiktokHTML: String {
-        // Extract numeric video ID from /@user/video/{ID} or /video/{ID}
-        let embedSrc: String
-        if let id = url.absoluteString
-            .components(separatedBy: "/video/").last?
-            .components(separatedBy: CharacterSet(charactersIn: "?#/")).first,
-           !id.isEmpty, id.allSatisfy(\.isNumber) {
-            // TikTok player v1 API — autoplay=1, loop=1, no extra chrome
-            embedSrc = "https://www.tiktok.com/player/v1/\(id)?autoplay=1&loop=1&muted=0&controls=1&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0&fullscreen_button=0"
-        } else {
-            // Short URL or unknown format — load the page directly
-            embedSrc = url.absoluteString
-        }
-        return iframeHTML(src: embedSrc)
-    }
-
-    private var instagramHTML: String {
-        // Extract shortcode from /p/{code}/, /reel/{code}/, /tv/{code}/
-        let embedSrc: String
-        let pathParts = url.pathComponents
-        if let idx = pathParts.firstIndex(where: { ["p", "reel", "tv"].contains($0) }),
-           idx + 1 < pathParts.count {
-            let shortcode = pathParts[idx + 1]
-            if !shortcode.isEmpty {
-                // Instagram's server-rendered embed — no JS required, works in WKWebView
-                embedSrc = "https://www.instagram.com/p/\(shortcode)/embed/"
-            } else {
-                embedSrc = url.absoluteString
-            }
-        } else {
-            embedSrc = url.absoluteString
-        }
-        return iframeHTML(src: embedSrc)
-    }
-
-    private func iframeHTML(src: String) -> String {
-        """
-        <!doctype html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-            iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-          </style>
-        </head>
-        <body>
-          <iframe
-            src="\(src)"
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            allowfullscreen
-          ></iframe>
-        </body>
-        </html>
-        """
-    }
 }
+
+// Detects Instagram "broken post" error pages and notifies Swift so we can hide them.
+private let instagramBrokenDetectScript = WKUserScript(
+    source: """
+    (function() {
+        if (!location.hostname.includes('instagram.com')) return;
+        function checkBroken() {
+            var bodyText = (document.body && document.body.innerText) || '';
+            if (bodyText.toLowerCase().includes('may be broken') ||
+                bodyText.toLowerCase().includes('post may have been removed') ||
+                bodyText.toLowerCase().includes('this page isn') ||
+                bodyText.toLowerCase().includes('content unavailable')) {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.embedBroken) {
+                    window.webkit.messageHandlers.embedBroken.postMessage('broken');
+                }
+            }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkBroken);
+        } else {
+            checkBroken();
+        }
+        setTimeout(checkBroken, 1500);
+    })();
+    """,
+    injectionTime: .atDocumentEnd,
+    forMainFrameOnly: true,
+    in: .defaultClient
+)
+
+// JavaScript injected into the Instagram embed page (runs in an isolated world,
+// bypassing CSP). Hides all social chrome and makes the video fill the screen.
+private let instagramStripScript = WKUserScript(
+    source: """
+    (function() {
+        if (!location.hostname.includes('instagram.com')) return;
+        function applyVideoFullscreen() {
+            var v = document.querySelector('video');
+            if (!v) { setTimeout(applyVideoFullscreen, 200); return; }
+            var s = document.createElement('style');
+            s.textContent = [
+                'html,body{background:#000!important;overflow:hidden!important;',
+                'margin:0!important;padding:0!important}',
+                '*{visibility:hidden!important}',
+                'video{visibility:visible!important;position:fixed!important;',
+                'inset:0!important;width:100%!important;height:100%!important;',
+                'object-fit:cover!important;z-index:9999!important}'
+            ].join('');
+            document.head.appendChild(s);
+            v.muted = false;
+            v.loop = true;
+            v.play().catch(function(){ v.muted = true; v.play().catch(function(){}); });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', applyVideoFullscreen);
+        } else {
+            applyVideoFullscreen();
+        }
+    })();
+    """,
+    injectionTime: .atDocumentEnd,
+    forMainFrameOnly: true,
+    in: .defaultClient  // isolated world — bypasses page CSP
+)
 
 private struct SocialEmbedSurface: UIViewRepresentable {
     let configuration: SocialEmbedConfiguration
     let isActive: Bool
+    let onBroken: (() -> Void)?
 
-    final class Coordinator {
+    final class Coordinator: NSObject, WKScriptMessageHandler {
         var loadedConfiguration: SocialEmbedConfiguration?
+        var onBroken: (() -> Void)?
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "embedBroken" {
+                DispatchQueue.main.async { self.onBroken?() }
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
+        let coordinator = context.coordinator
+        coordinator.onBroken = onBroken
+
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
 
-        let config = WKWebViewConfiguration()
-        config.defaultWebpagePreferences = prefs
-        config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = []
+        let wkConfig = WKWebViewConfiguration()
+        wkConfig.defaultWebpagePreferences = prefs
+        wkConfig.allowsInlineMediaPlayback = true
+        wkConfig.mediaTypesRequiringUserActionForPlayback = []
+        wkConfig.userContentController.add(coordinator, name: "embedBroken")
+        wkConfig.userContentController.addUserScript(instagramBrokenDetectScript)
+        wkConfig.userContentController.addUserScript(instagramStripScript)
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = WKWebView(frame: .zero, configuration: wkConfig)
         webView.backgroundColor = .black
         webView.isOpaque = false
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
+        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onBroken = onBroken
         let coordinator = context.coordinator
         if !isActive {
-            // Unload when scrolled off — stops audio and releases memory
             if coordinator.loadedConfiguration != nil {
                 coordinator.loadedConfiguration = nil
                 webView.load(URLRequest(url: URL(string: "about:blank")!))
@@ -167,10 +200,14 @@ private struct SocialEmbedSurface: UIViewRepresentable {
         } else {
             guard coordinator.loadedConfiguration != configuration else { return }
             coordinator.loadedConfiguration = configuration
-            webView.loadHTMLString(configuration.html, baseURL: configuration.url)
+            var request = URLRequest(url: configuration.embedURL)
+            request.setValue(configuration.originalURL.absoluteString, forHTTPHeaderField: "Referer")
+            webView.load(request)
         }
     }
 }
+
+// MARK: - Native looping video
 
 struct LoopingVideoSurface: View {
     let url: URL
@@ -192,11 +229,8 @@ struct LoopingVideoSurface: View {
 
     var body: some View {
         ZStack {
-            LoopingPlayerLayerView(
-                player: playerStore.player,
-                videoGravity: videoGravity
-            )
-            .background(Color.black)
+            LoopingPlayerLayerView(player: playerStore.player, videoGravity: videoGravity)
+                .background(Color.black)
 
             if showsPlayOverlayWhenPaused && !shouldPlay {
                 Button {
@@ -207,7 +241,6 @@ struct LoopingVideoSurface: View {
                         Circle()
                             .fill(Color.black.opacity(0.62))
                             .frame(width: 72, height: 72)
-
                         Image(systemName: "play.fill")
                             .font(.system(size: 28, weight: .bold))
                             .foregroundStyle(.white)
@@ -262,27 +295,17 @@ private final class LoopingPlayerStore: ObservableObject {
         player.seek(to: .zero)
     }
 
-    func pause() {
-        player.pause()
-    }
-
-    func setMuted(_ isMuted: Bool) {
-        player.isMuted = isMuted
-    }
+    func pause() { player.pause() }
+    func setMuted(_ isMuted: Bool) { player.isMuted = isMuted }
 
     func setPlaying(_ isPlaying: Bool) {
-        if isPlaying {
-            player.play()
-        } else {
-            player.pause()
-            player.seek(to: .zero)
-        }
+        if isPlaying { player.play() }
+        else { player.pause(); player.seek(to: .zero) }
     }
 
     private func configureAudioSession() {
-        let audioSession = AVAudioSession.sharedInstance()
-        try? audioSession.setCategory(.playback, mode: .moviePlayback, options: [])
-        try? audioSession.setActive(true)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 }
 
@@ -306,8 +329,5 @@ private struct LoopingPlayerLayerView: UIViewRepresentable {
 
 private final class PlayerContainerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
-
-    var playerLayer: AVPlayerLayer {
-        self.layer as! AVPlayerLayer
-    }
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }

@@ -31,6 +31,8 @@ struct JobSeekerHomeView: View {
     @State private var currentJobID: String?
     @State private var applyingJob: JobPostingRecord?
     @State private var applicationDraft = JobApplicationDraft()
+    @State private var easyApplyConfirmation: JobPostingRecord?
+    @State private var easyApplySuccess: String?
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
     @State private var selectedAvatarItem: PhotosPickerItem?
@@ -163,6 +165,36 @@ struct JobSeekerHomeView: View {
                 }
             )
         }
+        .sheet(item: $easyApplyConfirmation) { job in
+            EasyApplyConfirmationSheet(
+                job: job,
+                resumeFileName: workingProfile.resumeFileName ?? "",
+                onConfirm: {
+                    let draft = makeApplicationDraft(for: job)
+                    onApply(draft)
+                    easyApplyConfirmation = nil
+                    easyApplySuccess = job.title
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        easyApplySuccess = nil
+                    }
+                },
+                onAdvanced: {
+                    applicationDraft = makeApplicationDraft(for: job)
+                    easyApplyConfirmation = nil
+                    applyingJob = job
+                }
+            )
+            .presentationDetents([.height(320)])
+        }
+        .overlay(alignment: .top) {
+            if let title = easyApplySuccess {
+                EasyApplySuccessBanner(jobTitle: title)
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(response: 0.4), value: easyApplySuccess)
+            }
+        }
+        .animation(.spring(response: 0.4), value: easyApplySuccess)
         .fullScreenCover(isPresented: $showingVideoStudio) {
             JobTokVideoStudio(
                 purpose: .candidatePitch,
@@ -264,8 +296,12 @@ struct JobSeekerHomeView: View {
                                         onToggleSavedJob(job.id)
                                     },
                                     onApply: {
-                                        applicationDraft = makeApplicationDraft(for: job)
-                                        applyingJob = job
+                                        if workingProfile.resumeStoragePath != nil {
+                                            easyApplyConfirmation = job
+                                        } else {
+                                            applicationDraft = makeApplicationDraft(for: job)
+                                            applyingJob = job
+                                        }
                                     }
                                 )
                                 .frame(width: pageWidth, height: pageHeight)
@@ -719,8 +755,12 @@ struct JobSeekerHomeView: View {
                         isApplied: appliedJobIDs.contains(job.id),
                         isSaved: savedJobIDs.contains(job.id),
                         onApply: {
-                            applicationDraft = makeApplicationDraft(for: job)
-                            applyingJob = job
+                            if workingProfile.resumeStoragePath != nil {
+                                easyApplyConfirmation = job
+                            } else {
+                                applicationDraft = makeApplicationDraft(for: job)
+                                applyingJob = job
+                            }
                         },
                         onToggleSaved: {
                             onToggleSavedJob(job.id)
@@ -2455,5 +2495,93 @@ private enum JobPayFilter: String, CaseIterable, Identifiable {
             let upper = maximum ?? minimum ?? 0
             return upper >= 150_000 || lower >= 150_000
         }
+    }
+}
+
+// MARK: - Easy Apply
+
+private struct EasyApplyConfirmationSheet: View {
+    let job: JobPostingRecord
+    let resumeFileName: String
+    let onConfirm: () -> Void
+    let onAdvanced: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Easy Apply")
+                    .font(.title3.bold())
+                Text("\(job.title) · \(job.companyName)")
+                    .font(.subheadline)
+                    .foregroundStyle(PassportTheme.textSecondary)
+            }
+
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(PassportTheme.accent)
+                    .font(.title3)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Resume attached")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    Text(resumeFileName)
+                        .font(.caption)
+                        .foregroundStyle(PassportTheme.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(14)
+            .background(PassportTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            Button(action: onConfirm) {
+                Text("Submit Application")
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(PassportTheme.accent)
+                    .foregroundStyle(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            Button(action: onAdvanced) {
+                Text("Add pitch video or social link")
+                    .font(.subheadline)
+                    .foregroundStyle(PassportTheme.textSecondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(24)
+        .background(PassportTheme.background)
+    }
+}
+
+private struct EasyApplySuccessBanner: View {
+    let jobTitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Application submitted!")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                Text(jobTitle)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
     }
 }
