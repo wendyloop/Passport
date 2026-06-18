@@ -11,6 +11,7 @@ struct RemoteVideoSurface: View {
     var allowsTapToTogglePlayback: Bool = false
     var showsPlayOverlayWhenPaused: Bool = false
     var isMuted: Bool = false
+    var onBroken: (() -> Void)? = nil
 
     @State private var embedBroken = false
 
@@ -18,6 +19,7 @@ struct RemoteVideoSurface: View {
         if let urlString, let embed = SocialEmbedConfiguration(urlString: urlString), !embedBroken {
             SocialEmbedSurface(configuration: embed, isActive: isActive, onBroken: {
                 embedBroken = true
+                onBroken?()
             })
         } else if let urlString, let url = URL(string: urlString), !embedBroken {
             LoopingVideoSurface(
@@ -83,35 +85,6 @@ private struct SocialEmbedConfiguration: Equatable {
     }
 }
 
-// Detects Instagram "broken post" error pages and notifies Swift so we can hide them.
-private let instagramBrokenDetectScript = WKUserScript(
-    source: """
-    (function() {
-        if (!location.hostname.includes('instagram.com')) return;
-        function checkBroken() {
-            var bodyText = (document.body && document.body.innerText) || '';
-            if (bodyText.toLowerCase().includes('may be broken') ||
-                bodyText.toLowerCase().includes('post may have been removed') ||
-                bodyText.toLowerCase().includes('this page isn') ||
-                bodyText.toLowerCase().includes('content unavailable')) {
-                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.embedBroken) {
-                    window.webkit.messageHandlers.embedBroken.postMessage('broken');
-                }
-            }
-        }
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', checkBroken);
-        } else {
-            checkBroken();
-        }
-        setTimeout(checkBroken, 1500);
-    })();
-    """,
-    injectionTime: .atDocumentEnd,
-    forMainFrameOnly: true,
-    in: .defaultClient
-)
-
 // JavaScript injected into the Instagram embed page (runs in an isolated world,
 // bypassing CSP). Hides all social chrome and makes the video fill the screen.
 private let instagramStripScript = WKUserScript(
@@ -152,14 +125,69 @@ private struct SocialEmbedSurface: UIViewRepresentable {
     let isActive: Bool
     let onBroken: (() -> Void)?
 
-    final class Coordinator: NSObject, WKScriptMessageHandler {
+    private static let sharedProcessPool = WKProcessPool()
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
         var loadedConfiguration: SocialEmbedConfiguration?
         var onBroken: (() -> Void)?
+        private var brokenFired = false
 
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "embedBroken" {
-                DispatchQueue.main.async { self.onBroken?() }
+        func reset() { brokenFired = false }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            probe(webView, delay: 0)
+            probe(webView, delay: 2.5)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            fireBroken()
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            fireBroken()
+        }
+
+        private func probe(_ webView: WKWebView, delay: TimeInterval) {
+            let work = { [weak self, weak webView] in
+                guard let self, let webView, !self.brokenFired else { return }
+
+                // Instagram redirects removed posts to its root/login — not an embed URL.
+                if let url = webView.url {
+                    let s = url.absoluteString
+                    if !s.hasPrefix("about:") && !s.isEmpty {
+                        let isEmbed = s.contains("/p/") || s.contains("/reel/") || s.contains("/tv/")
+                            || s.contains("/embed") || s.contains("tiktok.com/player")
+                            || s.contains("tiktok.com/@")
+                        if !isEmbed { self.fireBroken(); return }
+                    }
+                }
+
+                // evaluateJavaScript runs in the page's main world — no isolated-world limitations.
+                webView.evaluateJavaScript("document.body ? document.body.innerText : ''") { [weak self] result, _ in
+                    let text = (result as? String ?? "").lowercased()
+                    if self?.isBrokenText(text) == true { self?.fireBroken() }
+                }
             }
+            delay == 0 ? work() : DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+
+        private func isBrokenText(_ text: String) -> Bool {
+            guard !text.isEmpty else { return false }
+            return text.contains("may be broken")
+                || text.contains("post may have been removed")
+                || text.contains("sorry, this page")
+                || text.contains("page isn't available")
+                || text.contains("content isn't available")
+                || text.contains("content unavailable")
+                || text.contains("video not available")
+                || text.contains("this video is unavailable")
+                || text.contains("page not found")
+        }
+
+        private func fireBroken() {
+            guard !brokenFired else { return }
+            brokenFired = true
+            DispatchQueue.main.async { self.onBroken?() }
         }
     }
 
@@ -173,14 +201,14 @@ private struct SocialEmbedSurface: UIViewRepresentable {
         prefs.allowsContentJavaScript = true
 
         let wkConfig = WKWebViewConfiguration()
+        wkConfig.processPool = SocialEmbedSurface.sharedProcessPool
         wkConfig.defaultWebpagePreferences = prefs
         wkConfig.allowsInlineMediaPlayback = true
         wkConfig.mediaTypesRequiringUserActionForPlayback = []
-        wkConfig.userContentController.add(coordinator, name: "embedBroken")
-        wkConfig.userContentController.addUserScript(instagramBrokenDetectScript)
         wkConfig.userContentController.addUserScript(instagramStripScript)
 
         let webView = WKWebView(frame: .zero, configuration: wkConfig)
+        webView.navigationDelegate = coordinator
         webView.backgroundColor = .black
         webView.isOpaque = false
         webView.scrollView.isScrollEnabled = false
@@ -190,8 +218,8 @@ private struct SocialEmbedSurface: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        context.coordinator.onBroken = onBroken
         let coordinator = context.coordinator
+        coordinator.onBroken = onBroken
         if !isActive {
             if coordinator.loadedConfiguration != nil {
                 coordinator.loadedConfiguration = nil
@@ -200,6 +228,7 @@ private struct SocialEmbedSurface: UIViewRepresentable {
         } else {
             guard coordinator.loadedConfiguration != configuration else { return }
             coordinator.loadedConfiguration = configuration
+            coordinator.reset()
             var request = URLRequest(url: configuration.embedURL)
             request.setValue(configuration.originalURL.absoluteString, forHTTPHeaderField: "Referer")
             webView.load(request)

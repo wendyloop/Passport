@@ -99,20 +99,6 @@ final class SupabaseService {
         )
     }
 
-    func sendMagicLink(email: String, redirectTo: URL) async throws {
-        try validateConfiguration()
-        let request = try makeRequest(
-            url: authBaseURL.appendingPathComponent("otp"),
-            method: "POST",
-            body: [
-                "email": AnyEncodable(email),
-                "create_user": AnyEncodable(true),
-                "email_redirect_to": AnyEncodable(redirectTo.absoluteString)
-            ] as [String : AnyEncodable]
-        )
-        _ = try await executeData(request)
-    }
-
     func session(fromAuthRedirectURL url: URL) async throws -> AuthSession {
         let parameters = authCallbackParameters(from: url)
 
@@ -240,18 +226,6 @@ final class SupabaseService {
             query: [
                 ("id", "in.(\(ids.joined(separator: ",")))"),
                 ("select", "id,role,full_name,email,headline,onboarding_complete")
-            ],
-            session: session
-        )
-    }
-
-    func fetchProfiles(role: UserRole, session: AuthSession) async throws -> [AppProfileRecord] {
-        try await selectArray(
-            path: "profiles",
-            query: [
-                ("role", "eq.\(role.rawValue)"),
-                ("select", "id,role,full_name,email,headline,onboarding_complete"),
-                ("order", "full_name.asc")
             ],
             session: session
         )
@@ -401,6 +375,10 @@ final class SupabaseService {
         tiktokUsername: String?,
         introVideoURL: String?,
         visibility: CandidateVisibility,
+        githubURL: String? = nil,
+        portfolioURL: String? = nil,
+        city: String? = nil,
+        phone: String? = nil,
         session: AuthSession
     ) async throws {
         let body: [[String: AnyEncodable]] = [[
@@ -414,7 +392,11 @@ final class SupabaseService {
             "instagram_username": AnyEncodable(instagramUsername),
             "tiktok_username": AnyEncodable(tiktokUsername),
             "intro_video_url": AnyEncodable(introVideoURL),
-            "discovery_visibility": AnyEncodable(visibility.rawValue)
+            "discovery_visibility": AnyEncodable(visibility.rawValue),
+            "github_url": AnyEncodable(githubURL),
+            "portfolio_url": AnyEncodable(portfolioURL),
+            "city": AnyEncodable(city),
+            "phone": AnyEncodable(phone),
         ]]
 
         _ = try await postgrestWrite(
@@ -425,6 +407,59 @@ final class SupabaseService {
             session: session,
             prefer: "resolution=merge-duplicates"
         ) as EmptyPayload
+    }
+
+    func logApplicationEvent(
+        jobID: String,
+        eventType: String,
+        applicationID: String? = nil,
+        atsType: String? = nil,
+        applyURL: String? = nil,
+        session: AuthSession
+    ) async throws -> String {
+        var body: [String: AnyEncodable] = [
+            "jobId": AnyEncodable(jobID),
+            "eventType": AnyEncodable(eventType),
+            "atsType": AnyEncodable(atsType),
+            "applyUrl": AnyEncodable(applyURL),
+        ]
+        if let applicationID { body["applicationId"] = AnyEncodable(applicationID) }
+
+        let request = try makeRequest(
+            url: functionsBaseURL.appendingPathComponent("log-application-event"),
+            method: "POST",
+            accessToken: session.accessToken,
+            body: body
+        )
+        let response = try await execute(request, decode: ApplicationEventIDEnvelope.self)
+        return response.id
+    }
+
+    func storeApplicationFields(
+        eventID: String,
+        fields: [String: String],
+        session: AuthSession
+    ) async throws {
+        let body: [String: AnyEncodable] = [
+            "eventId": AnyEncodable(eventID),
+            "fields": AnyEncodable(fields),
+        ]
+        let request = try makeRequest(
+            url: functionsBaseURL.appendingPathComponent("store-application-fields"),
+            method: "POST",
+            accessToken: session.accessToken,
+            body: body
+        )
+        _ = try await executeData(request)
+    }
+
+    func getPrefillProfile(session: AuthSession) async throws -> PrefillResponse {
+        let request = try makeRequest(
+            url: functionsBaseURL.appendingPathComponent("get-prefill-profile"),
+            method: "GET",
+            accessToken: session.accessToken
+        )
+        return try await execute(request, decode: PrefillResponse.self)
     }
 
     func upsertEmployerProfile(
@@ -1068,6 +1103,10 @@ private struct StorageSignedURLEnvelope: Codable {
     enum CodingKeys: String, CodingKey {
         case signedURL = "signedURL"
     }
+}
+
+private struct ApplicationEventIDEnvelope: Codable {
+    let id: String
 }
 
 struct AnyEncodable: Encodable {

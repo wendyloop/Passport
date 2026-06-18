@@ -1,12 +1,6 @@
 # JobTok Native iOS
 
-This folder contains a standalone SwiftUI iOS app for JobTok.
-
-It is intentionally separate from the Expo app in `frontend/` so you can:
-
-- keep `frontend/` for Android or cross-platform work
-- open a native iOS project directly in Xcode
-- iterate on iOS UI without Expo / CocoaPods / React Native build issues
+This folder contains the primary SwiftUI iOS app for JobTok.
 
 ## Open in Xcode
 
@@ -21,13 +15,15 @@ Then choose the `JobTok` scheme and run it on an iPhone simulator.
 - Native SwiftUI iPhone app
 - Supabase email/password auth
 - Google OAuth entry point using a native web auth session
+- Apple OAuth entry point using a native web auth session
 - Onboarding for `job_seeker` and `employer`
 - Resume upload to Supabase Storage
-- Intro video upload to Supabase Storage
-- Employer feed / liked / schedule tabs backed by Supabase
-- Job seeker profile / interview requests tabs backed by Supabase
-- Manual availability flow is active
-- Google Calendar linkage is intentionally deferred for later
+- Resume parsing enrichment
+- Intro video creation and upload
+- Candidate jobs feed with saved jobs and applications
+- Employer jobs, applicants, candidate discovery, and outreach
+- Admin social post import and job publishing
+- ATS apply prefill and field history capture
 
 ## Native app setup
 
@@ -54,6 +50,6 @@ Push the SQL migrations in `supabase/migrations/` to your hosted project, then d
 At minimum:
 
 1. `supabase db push`
-2. deploy `parse-resume`
+2. deploy the active edge functions used by the native app
 
 You also need the `videos` and `resumes` buckets from the migration.

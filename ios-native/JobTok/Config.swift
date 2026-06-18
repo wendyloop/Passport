@@ -13,12 +13,6 @@ struct PassportConfig {
         supabaseAnonKey.contains("YOUR_SUPABASE_ANON_KEY") || supabaseAnonKey.contains("Set SUPABASE_ANON_KEY")
     }
 
-    var debugSummary: String {
-        let shortenedURL = supabaseURL.isEmpty ? "<empty>" : supabaseURL
-        let keyLength = supabaseAnonKey.count
-        return "url=\(shortenedURL) keyLength=\(keyLength) redirect=\(redirectScheme)"
-    }
-
     static func load() -> PassportConfig {
         let rawProjectRef = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_PROJECT_REF") as? String
         guard

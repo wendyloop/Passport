@@ -1,13 +1,13 @@
 # Passport
 
-Passport is an iOS-first mobile app for job discovery and candidate screening. Job seekers create a short profile and intro video, while employers browse a vertical video feed, like candidates, send interview requests, manage referral invites, and coordinate scheduling through Google Calendar.
+Passport is the repo for the native JobTok iOS app and its backend services. Job seekers create a short profile, upload a resume and intro video, browse jobs, and apply. Employers publish jobs, review applicants, discover candidates, and send outreach. Admins can import and manage social job posts.
 
 ## Project layout
 
 ```text
 Passport/
-├── frontend/
 ├── ios-native/
+├── services/
 ├── supabase/
 ├── README.md
 ├── .gitignore
@@ -15,30 +15,28 @@ Passport/
 
 ## Stack
 
-- `frontend/`: Expo + React Native + Expo Router
 - `ios-native/`: standalone SwiftUI iOS app for running directly in Xcode
+- `services/`: supporting Node services for carousel rendering and scrape workers
 - `supabase/`: database migrations, RLS policies, seeds, and Edge Functions
 - Supabase Auth for email/password and Google sign-in
 - Supabase Storage for resumes, videos, and avatars
-- Google Calendar integration via Supabase Edge Functions
+- Social import and scrape pipelines for admin-managed job ingestion
 
 ## Local setup
 
 1. Start Supabase locally from the repo root.
-2. Copy `frontend/.env.example` to `frontend/.env`.
-3. Fill in the Supabase URL and anon key.
-4. Install dependencies in `frontend/`.
-5. Start the Expo app with `npm run ios`.
+2. Open `ios-native/JobTok.xcodeproj` in Xcode.
+3. Set the Supabase build settings for the `JobTok` target.
+4. Run the `JobTok` scheme in the simulator.
 
-## What is scaffolded
+## Current product surface
 
-- Role-based mobile navigation for job seekers and employers
-- Supabase schema for profiles, likes, interviews, referrals, availability, videos, and notifications
-- RLS policies and RPC functions for the core product flow
-- Edge Function scaffolding for referrals, resume parsing, availability sync, and interview approval
-- A separate native SwiftUI iOS shell for Xcode-based iPhone simulator work
+- Native SwiftUI iPhone app for job seekers, employers, and admins
+- Supabase schema for profiles, jobs, applications, saved jobs, outreach, notifications, videos, and resume parsing
+- Edge functions for applying, outreach, resume parsing, ATS autofill telemetry, account deletion, social import, and scrape ingestion
+- Carousel rendering and scrape worker service in `services/carousel-service`
 
 ## Notes
 
 - Resume parsing is scaffolded as a backend entry point, but real PDF/DOCX extraction still needs a production parser service.
-- Google Calendar approval flow is scaffolded end-to-end, but you still need to wire real Google OAuth client credentials in Supabase and production secrets for calendar writes.
+- The legacy Expo Passport client and the older referral/interview scheduling backend flow have been removed from this repo.

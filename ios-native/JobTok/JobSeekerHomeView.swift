@@ -11,6 +11,7 @@ struct JobSeekerHomeView: View {
     let savedJobs: [JobPostingRecord]
     let savedJobIDs: Set<String>
     let applications: [JobApplicationRecord]
+    let session: AuthSession?
     let onSaveProfile: (CandidateProfileDraft) -> Void
     let onUploadAvatar: (Data) -> Void
     let onUploadResume: (URL) -> Void
@@ -30,9 +31,11 @@ struct JobSeekerHomeView: View {
     @State private var importErrorMessage: String?
     @State private var currentJobID: String?
     @State private var applyingJob: JobPostingRecord?
+    @State private var applyDrawerJob: JobPostingRecord?
     @State private var applicationDraft = JobApplicationDraft()
     @State private var easyApplyConfirmation: JobPostingRecord?
     @State private var easyApplySuccess: String?
+    @State private var brokenJobIDs: Set<String> = []
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
     @State private var selectedAvatarItem: PhotosPickerItem?
@@ -50,6 +53,7 @@ struct JobSeekerHomeView: View {
         savedJobs: [JobPostingRecord],
         savedJobIDs: Set<String>,
         applications: [JobApplicationRecord],
+        session: AuthSession? = nil,
         onSaveProfile: @escaping (CandidateProfileDraft) -> Void,
         onUploadAvatar: @escaping (Data) -> Void,
         onUploadResume: @escaping (URL) -> Void,
@@ -67,6 +71,7 @@ struct JobSeekerHomeView: View {
         self.savedJobs = savedJobs
         self.savedJobIDs = savedJobIDs
         self.applications = applications
+        self.session = session
         self.onSaveProfile = onSaveProfile
         self.onUploadAvatar = onUploadAvatar
         self.onUploadResume = onUploadResume
@@ -119,7 +124,7 @@ struct JobSeekerHomeView: View {
             }()
 
             let payMatches = selectedPayFilter.matches(job)
-            return locationMatches && functionMatches && payMatches
+            return !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
         }
     }
 
@@ -164,6 +169,14 @@ struct JobSeekerHomeView: View {
                     applyingJob = nil
                 }
             )
+        }
+        .sheet(item: $applyDrawerJob) { job in
+            if let session {
+                ApplyDrawerView(job: job, session: session, isPresented: Binding(
+                    get: { applyDrawerJob != nil },
+                    set: { if !$0 { applyDrawerJob = nil } }
+                ))
+            }
         }
         .sheet(item: $easyApplyConfirmation) { job in
             EasyApplyConfirmationSheet(
@@ -273,7 +286,7 @@ struct JobSeekerHomeView: View {
     private var jobsFeed: some View {
         GeometryReader { proxy in
             let pageWidth = proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing
-            let pageHeight = proxy.size.height + proxy.safeAreaInsets.top
+            let pageHeight = proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
 
             ZStack(alignment: .top) {
                 if filteredJobs.isEmpty {
@@ -287,26 +300,12 @@ struct JobSeekerHomeView: View {
                     ScrollView(.vertical) {
                         LazyVStack(spacing: 0) {
                             ForEach(filteredJobs) { job in
-                                JobFeedCard(
+                                feedCard(
                                     job: job,
-                                    alreadyApplied: appliedJobIDs.contains(job.id),
-                                    isSaved: savedJobIDs.contains(job.id),
-                                    isActive: currentJobID == job.id,
-                                    onToggleSaved: {
-                                        onToggleSavedJob(job.id)
-                                    },
-                                    onApply: {
-                                        if workingProfile.resumeStoragePath != nil {
-                                            easyApplyConfirmation = job
-                                        } else {
-                                            applicationDraft = makeApplicationDraft(for: job)
-                                            applyingJob = job
-                                        }
-                                    }
+                                    pageWidth: pageWidth,
+                                    pageHeight: pageHeight,
+                                    safeAreaBottom: proxy.safeAreaInsets.bottom
                                 )
-                                .frame(width: pageWidth, height: pageHeight)
-                                .clipped()
-                                .id(job.id)
                             }
                         }
                         .scrollTargetLayout()
@@ -320,8 +319,7 @@ struct JobSeekerHomeView: View {
 
                 topBar
                     .padding(.horizontal, 10)
-                    .padding(.top, max(proxy.safeAreaInsets.top - 2, 0))
-                    .offset(y: -24)
+                    .padding(.top, 8)
             }
             .onAppear {
                 if currentJobID == nil {
@@ -338,6 +336,51 @@ struct JobSeekerHomeView: View {
                 }
                 self.currentJobID = first
             }
+        }
+    }
+
+    @ViewBuilder
+    private func feedCard(
+        job: JobPostingRecord,
+        pageWidth: CGFloat,
+        pageHeight: CGFloat,
+        safeAreaBottom: CGFloat
+    ) -> some View {
+        Group {
+            if let slides = job.carouselSlideUrls, !slides.isEmpty {
+                CarouselFeedCard(
+                    job: job,
+                    safeAreaBottom: safeAreaBottom,
+                    onApply: { handleApplyTap(for: job) },
+                    onSave: { onToggleSavedJob(job.id) },
+                    isSaved: savedJobIDs.contains(job.id)
+                )
+            } else {
+                JobFeedCard(
+                    job: job,
+                    safeAreaBottom: safeAreaBottom,
+                    alreadyApplied: appliedJobIDs.contains(job.id),
+                    isSaved: savedJobIDs.contains(job.id),
+                    isActive: currentJobID == job.id,
+                    onToggleSaved: { onToggleSavedJob(job.id) },
+                    onApply: { handleApplyTap(for: job) },
+                    onBroken: { brokenJobIDs.insert(job.id) }
+                )
+            }
+        }
+        .frame(width: pageWidth, height: pageHeight)
+        .clipped()
+        .id(job.id)
+    }
+
+    private func handleApplyTap(for job: JobPostingRecord) {
+        if job.canApplyViaDrawer {
+            applyDrawerJob = job
+        } else if workingProfile.resumeStoragePath != nil {
+            easyApplyConfirmation = job
+        } else {
+            applicationDraft = makeApplicationDraft(for: job)
+            applyingJob = job
         }
     }
 
@@ -1360,11 +1403,13 @@ struct JobSeekerHomeView: View {
 
 private struct JobFeedCard: View {
     let job: JobPostingRecord
+    let safeAreaBottom: CGFloat
     let alreadyApplied: Bool
     let isSaved: Bool
     let isActive: Bool
     let onToggleSaved: () -> Void
     let onApply: () -> Void
+    let onBroken: () -> Void
 
     @State private var isMuted = false
 
@@ -1385,7 +1430,8 @@ private struct JobFeedCard: View {
                 isActive: isActive,
                 allowsTapToTogglePlayback: true,
                 showsPlayOverlayWhenPaused: true,
-                isMuted: isMuted
+                isMuted: isMuted,
+                onBroken: onBroken
             )
             .ignoresSafeArea()
 
@@ -1418,18 +1464,25 @@ private struct JobFeedCard: View {
                             }
                         }
 
-                        Text(job.title)
-                            .font(.system(size: 26, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.5), radius: 4)
+                        let genericNames: Set<String> = ["unknown", "tiktok", "instagram"]
+                        if !job.companyName.isEmpty && !genericNames.contains(job.companyName.lowercased()) {
+                            Text(job.companyName)
+                                .font(.system(size: 26, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.5), radius: 4)
+                        }
 
                         HStack(spacing: 6) {
-                            Text(job.companyName)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.9))
+                            if let jobFunction = job.jobFunction {
+                                Text(jobFunction.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
                             if let location = job.location, !location.isEmpty {
-                                Text("·")
-                                    .foregroundStyle(.white.opacity(0.5))
+                                if job.jobFunction != nil {
+                                    Text("·")
+                                        .foregroundStyle(.white.opacity(0.5))
+                                }
                                 Label(location, systemImage: "mappin")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.white.opacity(0.7))
@@ -1473,7 +1526,7 @@ private struct JobFeedCard: View {
                     .frame(width: 56)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 84)
+                .padding(.bottom, safeAreaBottom + 20)
             }
         }
     }

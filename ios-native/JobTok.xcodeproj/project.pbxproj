@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -25,9 +25,17 @@
 		A10000010000000000000018 /* VideoStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* VideoStudio.swift */; };
 		A10000010000000000000020 /* JobTokShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000010000000000000021 /* JobTokShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A10000010000000000000021 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ShareViewController.swift */; };
+		A2D918232FD8BC580087EF97 /* JobTokShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		A2D918212FD8BC580087EF97 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A2D918182FD8BC580087EF97;
+			remoteInfo = JobTokShareExtension;
+		};
 		A90000010000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A60000010000000000000001 /* Project object */;
@@ -45,6 +53,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				A10000010000000000000020 /* JobTokShare.appex in Embed App Extensions */,
+				A2D918232FD8BC580087EF97 /* JobTokShareExtension.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -75,9 +84,31 @@
 		A20000010000000000000022 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		A20000010000000000000023 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000010000000000000024 /* JobTokShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JobTokShare.entitlements; sourceTree = "<group>"; };
+		A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobTokShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A2D918242FD8BC580087EF97 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A2D918182FD8BC580087EF97 /* JobTokShareExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A2D9181A2FD8BC580087EF97 /* JobTokShareExtension */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A2D918242FD8BC580087EF97 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = JobTokShareExtension; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		A2D918162FD8BC580087EF97 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A30000010000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -100,6 +131,7 @@
 			children = (
 				A40000010000000000000001 /* JobTok */,
 				A40000010000000000000003 /* JobTokShare */,
+				A2D9181A2FD8BC580087EF97 /* JobTokShareExtension */,
 				A40000010000000000000002 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -134,6 +166,7 @@
 			children = (
 				A20000000000000000000000 /* JobTok.app */,
 				A20000010000000000000021 /* JobTokShare.appex */,
+				A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -151,6 +184,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A2D918182FD8BC580087EF97 /* JobTokShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A2D918252FD8BC580087EF97 /* Build configuration list for PBXNativeTarget "JobTokShareExtension" */;
+			buildPhases = (
+				A2D918152FD8BC580087EF97 /* Sources */,
+				A2D918162FD8BC580087EF97 /* Frameworks */,
+				A2D918172FD8BC580087EF97 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A2D9181A2FD8BC580087EF97 /* JobTokShareExtension */,
+			);
+			name = JobTokShareExtension;
+			packageProductDependencies = (
+			);
+			productName = JobTokShareExtension;
+			productReference = A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		A50000010000000000000001 /* JobTok */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000001 /* Build configuration list for PBXNativeTarget "JobTok" */;
@@ -164,6 +219,7 @@
 			);
 			dependencies = (
 				A90000010000000000000002 /* PBXTargetDependency */,
+				A2D918222FD8BC580087EF97 /* PBXTargetDependency */,
 			);
 			name = JobTok;
 			productName = JobTok;
@@ -194,9 +250,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1600;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					A2D918182FD8BC580087EF97 = {
+						CreatedOnToolsVersion = 26.4;
+					};
 					A50000010000000000000001 = {
 						CreatedOnToolsVersion = 16.0;
 					};
@@ -220,11 +279,19 @@
 			targets = (
 				A50000010000000000000001 /* JobTok */,
 				A50000010000000000000002 /* JobTokShare */,
+				A2D918182FD8BC580087EF97 /* JobTokShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A2D918172FD8BC580087EF97 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A30000010000000000000003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -245,6 +312,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A2D918152FD8BC580087EF97 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A30000010000000000000002 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -276,6 +350,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A2D918222FD8BC580087EF97 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A2D918182FD8BC580087EF97 /* JobTokShareExtension */;
+			targetProxy = A2D918212FD8BC580087EF97 /* PBXContainerItemProxy */;
+		};
 		A90000010000000000000002 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A50000010000000000000002 /* JobTokShare */;
@@ -284,6 +363,63 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A2D918262FD8BC580087EF97 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = JobTokShareExtension/JobTokShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 42AKPHSLM9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JobTokShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jobtok.jobtok.JobTokShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A2D918272FD8BC580087EF97 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = JobTokShareExtension/JobTokShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 42AKPHSLM9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JobTokShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jobtok.jobtok.JobTokShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		A80000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A20000010000000000000014 /* JobTok.xcconfig */;
@@ -440,6 +576,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A2D918252FD8BC580087EF97 /* Build configuration list for PBXNativeTarget "JobTokShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A2D918262FD8BC580087EF97 /* Debug */,
+				A2D918272FD8BC580087EF97 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A70000010000000000000001 /* Build configuration list for PBXNativeTarget "JobTok" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -10,6 +10,11 @@ type ApplyRequest = {
 
 const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
 const fromEmail = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "JobTok <applications@jobtok.app>";
+// INSTAGRAM MESSAGING API (DM on apply) — disabled until Meta app review is complete.
+// To enable: set INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_BUSINESS_ACCOUNT_ID in Supabase edge function secrets,
+// then uncomment sendInstagramDM, the isInstagramReel routing block, and the canApply change in iOS.
+// const instagramAccessToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
+// const instagramAccountId = Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ?? "";
 
 function escapeHtml(value: string) {
   return value
@@ -160,6 +165,40 @@ async function sendEmployerEmail(params: {
   return { status: "sent", error: null };
 }
 
+// async function sendInstagramDM(params: {
+//   creatorHandle: string;
+//   candidateName: string;
+//   jobTitle: string;
+//   headline: string | null;
+//   resumeURL: string | null;
+// }): Promise<{ status: string; error: string | null }> {
+//   const lines = [
+//     `Hi @${params.creatorHandle}! 👋`,
+//     ``,
+//     `${params.candidateName} just applied to your hiring post on JobTok.`,
+//     params.headline ? `"${params.headline}"` : null,
+//     params.resumeURL ? `\nResume: ${params.resumeURL}` : null,
+//     `\nReply to this message to connect with them directly.`,
+//   ].filter(Boolean).join("\n");
+//   const resp = await fetch(
+//     `https://graph.facebook.com/v18.0/${instagramAccountId}/messages`,
+//     {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({
+//         recipient: { username: params.creatorHandle },
+//         message: { text: lines },
+//         access_token: instagramAccessToken,
+//       }),
+//     },
+//   );
+//   if (!resp.ok) {
+//     const err = await resp.text().catch(() => `HTTP ${resp.status}`);
+//     return { status: "failed", error: err };
+//   }
+//   return { status: "sent", error: null };
+// }
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -217,7 +256,7 @@ Deno.serve(async (request) => {
         .order("sort_order", { ascending: true }),
       adminClient
         .from("jobs")
-        .select("id, employer_profile_id, title, company_name, location, application_email, is_published")
+        .select("id, employer_profile_id, title, company_name, location, application_email, is_published, source_platform, source_creator_name")
         .eq("id", jobId)
         .single(),
     ]);
@@ -255,6 +294,7 @@ Deno.serve(async (request) => {
     if (!job.application_email?.trim()) {
       throw new Error("Applications are not available for this job yet.");
     }
+    // const isInstagramReel = job.source_platform === "instagram" && !!job.source_creator_name;
 
     if (!resumeRecord?.file_path) {
       throw new Error("Select a resume before applying.");
@@ -320,8 +360,10 @@ Deno.serve(async (request) => {
       .from("resumes")
       .createSignedUrl(resumeRecord.file_path, 60 * 60 * 24 * 7);
 
-    const emailResult = await sendEmployerEmail({
-      to: job.application_email,
+    const resumeURL = signedResume.data?.signedUrl ?? null;
+
+    const deliveryResult = await sendEmployerEmail({
+      to: job.application_email!,
       employerCompany: job.company_name,
       jobTitle: job.title,
       candidateName: insertedApplication.candidate_name,
@@ -330,7 +372,7 @@ Deno.serve(async (request) => {
       dreamRole: insertedApplication.candidate_dream_role,
       previousEmployers,
       pitchVideoURL: insertedApplication.candidate_video_url,
-      resumeSignedURL: signedResume.data?.signedUrl ?? null,
+      resumeSignedURL: resumeURL,
       linkedInURL: insertedApplication.candidate_linkedin_url,
       instagramUsername: insertedApplication.candidate_instagram_username,
       tiktokUsername: insertedApplication.candidate_tiktok_username,
@@ -339,8 +381,8 @@ Deno.serve(async (request) => {
     await adminClient
       .from("job_applications")
       .update({
-        email_delivery_status: emailResult.status,
-        email_delivery_error: emailResult.error,
+        email_delivery_status: deliveryResult.status,
+        email_delivery_error: deliveryResult.error,
       })
       .eq("id", insertedApplication.id);
 
@@ -371,8 +413,8 @@ Deno.serve(async (request) => {
     return new Response(JSON.stringify({
       application: {
         ...insertedApplication,
-        email_delivery_status: emailResult.status,
-        email_delivery_error: emailResult.error,
+        email_delivery_status: deliveryResult.status,
+        email_delivery_error: deliveryResult.error,
       },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

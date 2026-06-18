@@ -1,0 +1,3 @@
+-- Daily Apify scrape schedule is configured via Supabase Dashboard:
+-- Edge Functions → trigger-apify-scrape → Schedule → 0 9 * * *
+-- (Do not add service role keys here — they would be exposed in git history.)

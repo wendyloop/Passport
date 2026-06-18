@@ -228,8 +228,6 @@ struct JobSeekerProfileRecord: Codable {
     let profileID: String
     var schoolName: String?
     var jobFunction: JobFunctionOption?
-    var referralBadge: Bool
-    var referralInviteID: String?
     var introVideoURL: String?
     var dreamRole: String?
     var desiredCompensationAnnual: Int?
@@ -238,13 +236,15 @@ struct JobSeekerProfileRecord: Codable {
     var instagramUsername: String?
     var tiktokUsername: String?
     var discoveryVisibility: CandidateVisibility
+    var githubURL: String?
+    var portfolioURL: String?
+    var city: String?
+    var phone: String?
 
     enum CodingKeys: String, CodingKey {
         case profileID = "profile_id"
         case schoolName = "school_name"
         case jobFunction = "job_function"
-        case referralBadge = "referral_badge"
-        case referralInviteID = "referral_invite_id"
         case introVideoURL = "intro_video_url"
         case dreamRole = "dream_role"
         case desiredCompensationAnnual = "desired_compensation_annual"
@@ -253,6 +253,10 @@ struct JobSeekerProfileRecord: Codable {
         case instagramUsername = "instagram_username"
         case tiktokUsername = "tiktok_username"
         case discoveryVisibility = "discovery_visibility"
+        case githubURL = "github_url"
+        case portfolioURL = "portfolio_url"
+        case city
+        case phone
     }
 }
 
@@ -261,16 +265,12 @@ struct EmployerProfileRecord: Codable {
     var companyName: String?
     var companyDomain: String?
     var positionTitle: String?
-    var calendarConnected: Bool
-    var monthlyReferralLimit: Int
 
     enum CodingKeys: String, CodingKey {
         case profileID = "profile_id"
         case companyName = "company_name"
         case companyDomain = "company_domain"
         case positionTitle = "position_title"
-        case calendarConnected = "calendar_connected"
-        case monthlyReferralLimit = "monthly_referral_limit"
     }
 }
 
@@ -327,7 +327,7 @@ struct NotificationRecord: Codable, Identifiable {
 struct JobPostingRecord: Codable, Identifiable {
     let id: String
     let employerProfileID: String?
-    let postedByProfileID: String
+    let postedByProfileID: String?
     let title: String
     let companyName: String
     let location: String?
@@ -351,6 +351,10 @@ struct JobPostingRecord: Codable, Identifiable {
     let sourceApplyEmailExtracted: String?
     let isPublished: Bool
     let createdAt: Date
+    // ATS apply flow
+    let applyUrl: String?
+    let atsType: String?
+    let carouselSlideUrls: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -379,6 +383,44 @@ struct JobPostingRecord: Codable, Identifiable {
         case sourceApplyEmailExtracted = "source_apply_email_extracted"
         case isPublished = "is_published"
         case createdAt = "created_at"
+        case applyUrl = "apply_url"
+        case atsType = "ats_type"
+        case carouselSlideUrls = "carousel_slide_urls"
+    }
+}
+
+extension JobPostingRecord {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                        = try c.decode(String.self,                       forKey: .id)
+        employerProfileID         = try c.decodeIfPresent(String.self,              forKey: .employerProfileID)
+        postedByProfileID         = try c.decodeIfPresent(String.self,              forKey: .postedByProfileID)
+        title                     = try c.decode(String.self,                       forKey: .title)
+        companyName               = try c.decodeIfPresent(String.self,              forKey: .companyName) ?? ""
+        location                  = try c.decodeIfPresent(String.self,              forKey: .location)
+        compensationMinAnnual     = try c.decodeIfPresent(Int.self,                 forKey: .compensationMinAnnual)
+        compensationMaxAnnual     = try c.decodeIfPresent(Int.self,                 forKey: .compensationMaxAnnual)
+        compensationMinHourly     = try c.decodeIfPresent(Int.self,                 forKey: .compensationMinHourly)
+        compensationMaxHourly     = try c.decodeIfPresent(Int.self,                 forKey: .compensationMaxHourly)
+        employmentType            = try c.decodeIfPresent(EmploymentTypeOption.self, forKey: .employmentType)
+        jobFunction               = try c.decodeIfPresent(JobFunctionOption.self,    forKey: .jobFunction)
+        description               = try c.decodeIfPresent(String.self,              forKey: .description)     ?? ""
+        applicationEmail          = try c.decodeIfPresent(String.self,              forKey: .applicationEmail) ?? ""
+        videoURL                  = try c.decode(String.self,                       forKey: .videoURL)
+        sourceURL                 = try c.decodeIfPresent(String.self,              forKey: .sourceURL)
+        sourcePlatform            = try c.decodeIfPresent(SocialSourcePlatform.self, forKey: .sourcePlatform)
+        sourceCreatorName         = try c.decodeIfPresent(String.self,              forKey: .sourceCreatorName)
+        sourceCreatorURL          = try c.decodeIfPresent(String.self,              forKey: .sourceCreatorURL)
+        sourceThumbnailURL        = try c.decodeIfPresent(String.self,              forKey: .sourceThumbnailURL)
+        sourceCaption             = try c.decodeIfPresent(String.self,              forKey: .sourceCaption)
+        sourceCaptionRaw          = try c.decodeIfPresent(String.self,              forKey: .sourceCaptionRaw)
+        sourcePostedAt            = try c.decodeIfPresent(Date.self,                forKey: .sourcePostedAt)
+        sourceApplyEmailExtracted = try c.decodeIfPresent(String.self,              forKey: .sourceApplyEmailExtracted)
+        isPublished               = try c.decode(Bool.self,                         forKey: .isPublished)
+        createdAt                 = try c.decode(Date.self,                         forKey: .createdAt)
+        applyUrl                  = try c.decodeIfPresent(String.self,              forKey: .applyUrl)
+        atsType                   = try c.decodeIfPresent(String.self,              forKey: .atsType)
+        carouselSlideUrls         = try c.decodeIfPresent([String].self,            forKey: .carouselSlideUrls)
     }
 }
 
@@ -709,7 +751,10 @@ enum DemoData {
             sourcePostedAt: nil,
             sourceApplyEmailExtracted: nil,
             isPublished: true,
-            createdAt: .now
+            createdAt: .now,
+            applyUrl: nil,
+            atsType: nil,
+            carouselSlideUrls: nil
         ),
         JobPostingRecord(
             id: "demo-job-2",
@@ -737,7 +782,10 @@ enum DemoData {
             sourcePostedAt: nil,
             sourceApplyEmailExtracted: nil,
             isPublished: true,
-            createdAt: .now
+            createdAt: .now,
+            applyUrl: nil,
+            atsType: nil,
+            carouselSlideUrls: nil
         ),
     ]
 }

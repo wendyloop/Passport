@@ -37,6 +37,7 @@ final class AppSessionStore: ObservableObject {
     private let service = SupabaseService.shared
     private let defaults = UserDefaults.standard
     private let sessionKey = "jobtok.supabase.session"
+    private let sharedDefaults = UserDefaults(suiteName: "group.com.jobtok.shared")
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -162,15 +163,6 @@ final class AppSessionStore: ObservableObject {
             clearSession()
             phase = .signedOut
         }
-    }
-
-    func sendEmailLogin(email: String, redirectTo: URL) async -> Bool {
-        var didSucceed = false
-        await runBusyTask { [self] in
-            try await service.sendMagicLink(email: email, redirectTo: redirectTo)
-            didSucceed = true
-        }
-        return didSucceed
     }
 
     func handleAuthRedirect(url: URL) async {
@@ -653,6 +645,7 @@ final class AppSessionStore: ObservableObject {
 
         if let role = profile?.role {
             SharedImportInbox.updateCurrentRole(role)
+            sharedDefaults?.set(role.rawValue, forKey: "jobtok.shared.userRole")
             switch role {
             case .jobSeeker:
                 try await refreshJobSeekerData()
@@ -754,10 +747,13 @@ final class AppSessionStore: ObservableObject {
     private func persistSessionIfNeeded() throws {
         guard let session else {
             defaults.removeObject(forKey: sessionKey)
+            sharedDefaults?.removeObject(forKey: "jobtok.shared.accessToken")
             return
         }
         let data = try encoder.encode(session)
         defaults.set(data, forKey: sessionKey)
+        sharedDefaults?.set(session.accessToken, forKey: "jobtok.shared.accessToken")
+        sharedDefaults?.set(PassportConfig.load().supabaseURL, forKey: "jobtok.shared.supabaseURL")
     }
 
     private func loadPersistedSession() -> AuthSession? {
@@ -784,6 +780,8 @@ final class AppSessionStore: ObservableObject {
         employerDirectoryItems = []
         SharedImportInbox.clearCurrentRole()
         defaults.removeObject(forKey: sessionKey)
+        sharedDefaults?.removeObject(forKey: "jobtok.shared.accessToken")
+        sharedDefaults?.removeObject(forKey: "jobtok.shared.userRole")
     }
 
     private func runBusyTask(_ operation: @escaping () async throws -> Void) async {
