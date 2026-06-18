@@ -386,7 +386,9 @@ Deno.serve(async (request) => {
       })
       .eq("id", insertedApplication.id);
 
-    await adminClient.from("notifications").insert([
+    // Scraped reels have no employer_profile_id, so skip the employer
+    // notification when there's no one to notify. The candidate always gets one.
+    const notifications: Array<Record<string, unknown>> = [
       {
         profile_id: user.id,
         type: "job_application_submitted",
@@ -397,7 +399,10 @@ Deno.serve(async (request) => {
           job_id: job.id,
         },
       },
-      {
+    ];
+
+    if (job.employer_profile_id) {
+      notifications.push({
         profile_id: job.employer_profile_id,
         type: "job_application_received",
         title: "New applicant received",
@@ -407,8 +412,10 @@ Deno.serve(async (request) => {
           job_id: job.id,
           candidate_profile_id: user.id,
         },
-      },
-    ]);
+      });
+    }
+
+    await adminClient.from("notifications").insert(notifications);
 
     return new Response(JSON.stringify({
       application: {
