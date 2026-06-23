@@ -268,12 +268,17 @@ final class SupabaseService {
     }
 
     func fetchJobs(publishedOnly: Bool = false, employerID: String? = nil, session: AuthSession) async throws -> [JobPostingRecord] {
+        // Embed the companies row via PostgREST foreign-key expansion so each
+        // ATS-sourced job arrives with its logo + display name pre-joined.
+        // Costs nothing for reel/employer_post rows — `company` simply decodes to nil.
         var query: [(String, String)] = [
-            ("select", "*"),
+            ("select", "*,company:companies(id,name,domain,logo_url)"),
             ("order", "created_at.desc")
         ]
         if publishedOnly {
             query.append(("is_published", "eq.true"))
+            // Soft-expired ATS rows should disappear from the feed.
+            query.append(("is_active", "eq.true"))
         }
         if let employerID {
             query.append(("employer_profile_id", "eq.\(employerID)"))

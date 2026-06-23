@@ -158,7 +158,12 @@ struct ApplyDrawerView: View {
     private func handleSubmission(fields: [String: String]) {
         submittedSuccessfully = true
         Task {
-            let eid = eventId ?? (await logEvent(type: "submitted", applicationId: nil))
+            let eid: String?
+            if let existing = eventId {
+                eid = existing
+            } else {
+                eid = await logEvent(type: "submitted", applicationId: nil)
+            }
             if let eid, !fields.isEmpty {
                 await storeFields(eventId: eid, fields: fields)
             }

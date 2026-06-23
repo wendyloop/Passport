@@ -347,7 +347,11 @@ struct JobSeekerHomeView: View {
         safeAreaBottom: CGFloat
     ) -> some View {
         Group {
-            if let slides = job.carouselSlideUrls, !slides.isEmpty {
+            // ATS-sourced rows have no video; they always render the carousel/
+            // splash card. Reels + employer posts with generated slides also
+            // prefer the carousel.
+            let hasSlides = !(job.carouselSlideUrls ?? []).isEmpty
+            if job.sourceKind == .ats || hasSlides {
                 CarouselFeedCard(
                     job: job,
                     safeAreaBottom: safeAreaBottom,
@@ -1418,7 +1422,7 @@ private struct JobFeedCard: View {
     }
 
     private var isSocialEmbed: Bool {
-        guard let url = job.videoURL.isEmpty ? nil : job.videoURL,
+        guard let url = job.videoURL, !url.isEmpty,
               let host = URL(string: url)?.host?.lowercased() else { return false }
         return host.contains("tiktok.com") || host.contains("instagram.com")
     }

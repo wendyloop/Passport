@@ -163,10 +163,20 @@ final class ShareViewController: UIViewController {
             DispatchQueue.main.async {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if error != nil || status >= 400 {
-                    var message = "Failed to add reel (error \(status))."
-                    if let data, let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let errMsg = body["error"] as? String {
+                    // Share extensions can't run our refresh-token flow — the
+                    // Supabase JWT cached in the App Group eventually expires.
+                    // Tell the user to bounce into the main app, which calls
+                    // ensureValidSession on launch and rewrites the fresh
+                    // token back to the App Group.
+                    let message: String
+                    if status == 401 {
+                        message = "Your JobTok sign-in expired. Open the JobTok app, then try sharing again."
+                    } else if let data,
+                              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let errMsg = body["error"] as? String {
                         message = errMsg
+                    } else {
+                        message = "Failed to add reel (error \(status))."
                     }
                     self?.finish(success: false, message: message)
                 } else {

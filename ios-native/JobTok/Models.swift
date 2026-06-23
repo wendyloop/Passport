@@ -324,6 +324,33 @@ struct NotificationRecord: Codable, Identifiable {
     }
 }
 
+// Source taxonomy for a job row. Drives feed-card routing and badge display.
+//   * employerPost — employer- or admin-created posting (has video)
+//   * reel         — scraped TikTok/Instagram post (has video, source_platform set)
+//   * ats          — Pitch ingestion from a portfolio company's ATS (no video,
+//                    typically rendered with company logo + carousel)
+enum JobSourceKind: String, Codable {
+    case employerPost = "employer_post"
+    case reel
+    case ats
+}
+
+// Embedded slice of the companies row, returned by PostgREST when fetchJobs
+// requests `select=*,company:companies(...)`. Only present for ATS rows.
+struct CompanyRef: Codable, Equatable {
+    let id: String
+    let name: String?
+    let domain: String?
+    let logoUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case domain
+        case logoUrl = "logo_url"
+    }
+}
+
 struct JobPostingRecord: Codable, Identifiable {
     let id: String
     let employerProfileID: String?
@@ -335,11 +362,13 @@ struct JobPostingRecord: Codable, Identifiable {
     let compensationMaxAnnual: Int?
     let compensationMinHourly: Int?
     let compensationMaxHourly: Int?
+    let compensationText: String?
     let employmentType: EmploymentTypeOption?
     let jobFunction: JobFunctionOption?
     let description: String
     let applicationEmail: String
-    let videoURL: String
+    // Null for ATS rows (no video). Reel + employer_post rows always have one.
+    let videoURL: String?
     let sourceURL: String?
     let sourcePlatform: SocialSourcePlatform?
     let sourceCreatorName: String?
@@ -355,6 +384,13 @@ struct JobPostingRecord: Codable, Identifiable {
     let applyUrl: String?
     let atsType: String?
     let carouselSlideUrls: [String]?
+    // Pitch fields — populated by sync-jobs for source_kind = 'ats'.
+    let sourceKind: JobSourceKind
+    let sourceAts: String?
+    let applyFlow: String?
+    let companyID: String?
+    // PostgREST-embedded company slice (only present when select asks for it).
+    let company: CompanyRef?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -367,6 +403,7 @@ struct JobPostingRecord: Codable, Identifiable {
         case compensationMaxAnnual = "compensation_max_annual"
         case compensationMinHourly = "compensation_min_hourly"
         case compensationMaxHourly = "compensation_max_hourly"
+        case compensationText = "compensation_text"
         case employmentType = "employment_type"
         case jobFunction = "job_function"
         case description
@@ -386,6 +423,11 @@ struct JobPostingRecord: Codable, Identifiable {
         case applyUrl = "apply_url"
         case atsType = "ats_type"
         case carouselSlideUrls = "carousel_slide_urls"
+        case sourceKind = "source_kind"
+        case sourceAts = "source_ats"
+        case applyFlow = "apply_flow"
+        case companyID = "company_id"
+        case company
     }
 }
 
@@ -406,7 +448,7 @@ extension JobPostingRecord {
         jobFunction               = try c.decodeIfPresent(JobFunctionOption.self,    forKey: .jobFunction)
         description               = try c.decodeIfPresent(String.self,              forKey: .description)     ?? ""
         applicationEmail          = try c.decodeIfPresent(String.self,              forKey: .applicationEmail) ?? ""
-        videoURL                  = try c.decode(String.self,                       forKey: .videoURL)
+        videoURL                  = try c.decodeIfPresent(String.self,              forKey: .videoURL)
         sourceURL                 = try c.decodeIfPresent(String.self,              forKey: .sourceURL)
         sourcePlatform            = try c.decodeIfPresent(SocialSourcePlatform.self, forKey: .sourcePlatform)
         sourceCreatorName         = try c.decodeIfPresent(String.self,              forKey: .sourceCreatorName)
@@ -421,6 +463,14 @@ extension JobPostingRecord {
         applyUrl                  = try c.decodeIfPresent(String.self,              forKey: .applyUrl)
         atsType                   = try c.decodeIfPresent(String.self,              forKey: .atsType)
         carouselSlideUrls         = try c.decodeIfPresent([String].self,            forKey: .carouselSlideUrls)
+        compensationText          = try c.decodeIfPresent(String.self,              forKey: .compensationText)
+        // source_kind is NOT NULL in the DB but older clients hitting in-flight
+        // data may see absent/null; default to the safe legacy value.
+        sourceKind                = try c.decodeIfPresent(JobSourceKind.self,       forKey: .sourceKind) ?? .employerPost
+        sourceAts                 = try c.decodeIfPresent(String.self,              forKey: .sourceAts)
+        applyFlow                 = try c.decodeIfPresent(String.self,              forKey: .applyFlow)
+        companyID                 = try c.decodeIfPresent(String.self,              forKey: .companyID)
+        company                   = try c.decodeIfPresent(CompanyRef.self,          forKey: .company)
     }
 }
 
@@ -736,6 +786,7 @@ enum DemoData {
             compensationMaxAnnual: 180000,
             compensationMinHourly: nil,
             compensationMaxHourly: nil,
+            compensationText: nil,
             employmentType: .fullTime,
             jobFunction: .design,
             description: "Own the candidate application experience and create product surfaces that convert attention into applications.",
@@ -754,7 +805,12 @@ enum DemoData {
             createdAt: .now,
             applyUrl: nil,
             atsType: nil,
-            carouselSlideUrls: nil
+            carouselSlideUrls: nil,
+            sourceKind: .reel,
+            sourceAts: nil,
+            applyFlow: nil,
+            companyID: nil,
+            company: nil
         ),
         JobPostingRecord(
             id: "demo-job-2",
@@ -767,6 +823,7 @@ enum DemoData {
             compensationMaxAnnual: 165000,
             compensationMinHourly: nil,
             compensationMaxHourly: nil,
+            compensationText: nil,
             employmentType: .contract,
             jobFunction: .product,
             description: "Build creator-native acquisition and activation loops across mobile and web hiring funnels.",
@@ -785,7 +842,12 @@ enum DemoData {
             createdAt: .now,
             applyUrl: nil,
             atsType: nil,
-            carouselSlideUrls: nil
+            carouselSlideUrls: nil,
+            sourceKind: .employerPost,
+            sourceAts: nil,
+            applyFlow: nil,
+            companyID: nil,
+            company: nil
         ),
     ]
 }
