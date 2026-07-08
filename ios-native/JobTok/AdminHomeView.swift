@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AdminHomeView: View {
-    @Environment(\.scenePhase) private var scenePhase
     let jobs: [JobPostingRecord]
     let employers: [EmployerDirectoryItem]
     let onCreateJob: (JobPostingDraft, URL?) async -> String?
@@ -17,7 +16,6 @@ struct AdminHomeView: View {
     @State private var selectedVideoName = ""
     @State private var selectedTab: AdminHomeTab = .manage
     @State private var currentPreviewJobID: String?
-    @State private var prefilledImportURL: String?
 
     var body: some View {
         NavigationStack {
@@ -51,19 +49,11 @@ struct AdminHomeView: View {
                 employers: employers,
                 selectedVideoURL: selectedVideoURL,
                 videoName: selectedVideoName,
-                initialSourceURL: prefilledImportURL,
+                initialSourceURL: nil,
                 onImportSharedPost: onImportSharedPost,
                 onCreateJob: onCreateJob
             )
             .presentationDetents([.large])
-        }
-        .onAppear {
-            consumePendingSharedImportIfPossible()
-        }
-        .onChange(of: scenePhase) { _, newValue in
-            if newValue == .active {
-                consumePendingSharedImportIfPossible()
-            }
         }
     }
 
@@ -282,15 +272,6 @@ struct AdminHomeView: View {
         }
     }
 
-    private func consumePendingSharedImportIfPossible() {
-        guard !showingCreateSheet, !showingVideoStudio else { return }
-        guard let pending = SharedImportInbox.consumePendingURL() else { return }
-        selectedVideoURL = nil
-        selectedVideoName = ""
-        prefilledImportURL = pending.sourceURL
-        selectedTab = .manage
-        showingCreateSheet = true
-    }
 }
 
 private enum AdminHomeTab: String, CaseIterable, Identifiable {

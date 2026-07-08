@@ -176,7 +176,7 @@ struct JobSeekerHomeView: View {
         }
         .sheet(item: $applyDrawerJob) { job in
             if let session {
-                ApplyDrawerView(job: job, session: session, isPresented: Binding(
+                ApplyDrawerView(job: job, session: session, service: SupabaseService.shared.candidate, isPresented: Binding(
                     get: { applyDrawerJob != nil },
                     set: { if !$0 { applyDrawerJob = nil } }
                 ))

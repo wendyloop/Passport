@@ -116,76 +116,6 @@ enum CandidateVisibility: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-struct SharedImportItem: Codable, Equatable {
-    let id: UUID
-    let sourceURL: String
-    let sourceAppBundleID: String?
-    let createdAt: Date
-}
-
-enum SharedImportInbox {
-    static let appGroupIdentifier = "group.com.jobtok.shared"
-
-    private static let defaults = UserDefaults(suiteName: appGroupIdentifier)
-    private static let queueKey = "shared_import_queue_v1"
-    private static let roleKey = "shared_import_last_known_role_v1"
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }()
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }()
-
-    static func enqueueURL(_ sourceURL: String, sourceAppBundleID: String?) {
-        let trimmed = sourceURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        var queue = pendingItems()
-        queue.append(
-            SharedImportItem(
-                id: UUID(),
-                sourceURL: trimmed,
-                sourceAppBundleID: sourceAppBundleID,
-                createdAt: Date()
-            )
-        )
-        persist(queue)
-    }
-
-    static func consumePendingURL() -> SharedImportItem? {
-        var queue = pendingItems()
-        guard !queue.isEmpty else { return nil }
-        let item = queue.removeFirst()
-        persist(queue)
-        return item
-    }
-
-    static func pendingItems() -> [SharedImportItem] {
-        guard let data = defaults?.data(forKey: queueKey),
-              let items = try? decoder.decode([SharedImportItem].self, from: data) else {
-            return []
-        }
-        return items
-    }
-
-    static func updateCurrentRole(_ role: UserRole?) {
-        defaults?.set(role?.rawValue, forKey: roleKey)
-    }
-
-    static func clearCurrentRole() {
-        defaults?.removeObject(forKey: roleKey)
-    }
-
-    private static func persist(_ items: [SharedImportItem]) {
-        guard let data = try? encoder.encode(items) else { return }
-        defaults?.set(data, forKey: queueKey)
-    }
-}
-
 struct AuthSession: Codable {
     let accessToken: String
     let refreshToken: String
@@ -1020,3 +950,52 @@ struct FounderEmailSendResult: Codable {
     let remaining: Int
     let limit: Int
 }
+
+// MARK: - ATS autofill (apply drawer)
+
+struct PrefillProfile: Codable {
+    let firstName: String
+    let lastName: String
+    let fullName: String
+    let email: String
+    let phone: String
+    let city: String
+    let linkedInUrl: String
+    let githubUrl: String
+    let portfolioUrl: String
+}
+
+struct PrefillResponse: Codable {
+    let profile: PrefillProfile
+    // Canonical autofill bundle (label keys without the `canon:` prefix).
+    // Falls back to empty dict for older backend builds.
+    let canonical: [String: String]?
+    let rawHistory: [String: String]?
+    // Legacy union of canonical (still prefixed) + rawHistory.
+    let fieldHistory: [String: String]
+}
+
+// MARK: - Capture + match models
+
+struct ApplicationShortField: Codable {
+    let label: String
+    let value: String
+}
+
+struct ApplicationEssay: Codable {
+    let question: String
+    let answer: String
+}
+
+struct EssayMatch: Codable {
+    let question: String
+    let answer: String
+    let similarity: Double
+    let sourceJobId: String?
+    let updatedAt: String
+}
+
+struct EssayMatchEnvelope: Codable {
+    let match: EssayMatch?
+}
+
