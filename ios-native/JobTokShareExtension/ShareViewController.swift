@@ -3,10 +3,10 @@ import UniformTypeIdentifiers
 
 final class ShareViewController: UIViewController {
 
-    private let appGroupID  = "group.com.jobtok.shared"
-    private let tokenKey    = "jobtok.shared.accessToken"
-    private let supabaseKey = "jobtok.shared.supabaseURL"
-    private let roleKey     = "jobtok.shared.userRole"
+    private let appGroupID  = SharedConstants.appGroupID
+    private let tokenKey    = SharedConstants.AppGroupKeys.accessToken
+    private let supabaseKey = SharedConstants.AppGroupKeys.supabaseURL
+    private let roleKey     = SharedConstants.AppGroupKeys.userRole
 
     // MARK: - UI
 

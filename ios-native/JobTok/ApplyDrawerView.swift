@@ -24,62 +24,13 @@ enum ATSPlatform: String {
     var isBlocked: Bool { self == .rippling }
 }
 
-// MARK: - Prefill model (from get-prefill-profile)
-
-struct PrefillProfile: Codable {
-    let firstName: String
-    let lastName: String
-    let fullName: String
-    let email: String
-    let phone: String
-    let city: String
-    let linkedInUrl: String
-    let githubUrl: String
-    let portfolioUrl: String
-}
-
-struct PrefillResponse: Codable {
-    let profile: PrefillProfile
-    // Canonical autofill bundle (label keys without the `canon:` prefix).
-    // Falls back to empty dict for older backend builds.
-    let canonical: [String: String]?
-    let rawHistory: [String: String]?
-    // Legacy union of canonical (still prefixed) + rawHistory.
-    let fieldHistory: [String: String]
-}
-
-// MARK: - Capture + match models
-
-struct ApplicationShortField: Codable {
-    let label: String
-    let value: String
-}
-
-struct ApplicationEssay: Codable {
-    let question: String
-    let answer: String
-}
-
-struct EssayMatch: Codable {
-    let question: String
-    let answer: String
-    let similarity: Double
-    let sourceJobId: String?
-    let updatedAt: String
-}
-
-struct EssayMatchEnvelope: Codable {
-    let match: EssayMatch?
-}
-
 // MARK: - ApplyDrawerView
 
 struct ApplyDrawerView: View {
     let job: JobPostingRecord
     let session: AuthSession
+    let service: CandidateService
     @Binding var isPresented: Bool
-
-    private let service = SupabaseService.shared
 
     @State private var prefill: PrefillResponse?
     @State private var eventId: String?
@@ -96,6 +47,7 @@ struct ApplyDrawerView: View {
                             url: applyURL,
                             prefill: prefill,
                             session: session,
+                            service: service,
                             onSubmitted: { payload in
                                 handleSubmission(payload: payload)
                             }
@@ -171,11 +123,11 @@ struct ApplyDrawerView: View {
     }
 
     private func fetchPrefill() async -> PrefillResponse? {
-        try? await service.candidate.getPrefillProfile(session: session)
+        try? await service.getPrefillProfile(session: session)
     }
 
     private func logEvent(type: String, applicationId: String?) async -> String? {
-        try? await service.candidate.logApplicationEvent(
+        try? await service.logApplicationEvent(
             jobID: job.id,
             eventType: type,
             applicationID: applicationId,
@@ -195,7 +147,7 @@ struct ApplyDrawerView: View {
                 eid = await logEvent(type: "submitted", applicationId: nil)
             }
             if let eid, (!payload.shortFields.isEmpty || !payload.essays.isEmpty) {
-                try? await service.candidate.storeApplicationFields(
+                try? await service.storeApplicationFields(
                     eventID: eid,
                     shortFields: payload.shortFields,
                     essays: payload.essays,
@@ -221,10 +173,11 @@ struct ApplyWebView: UIViewRepresentable {
     let url: URL
     let prefill: PrefillResponse?
     let session: AuthSession
+    let service: CandidateService
     let onSubmitted: (CapturedSubmission) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(session: session, onSubmitted: onSubmitted)
+        Coordinator(session: session, service: service, onSubmitted: onSubmitted)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -496,6 +449,7 @@ struct ApplyWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let session: AuthSession
+        let service: CandidateService
         let onSubmitted: (CapturedSubmission) -> Void
         var prefillJS: String = ""
         weak var webView: WKWebView?
@@ -504,8 +458,9 @@ struct ApplyWebView: UIViewRepresentable {
         // SPA tick. Keyed by selector+question.
         private var essayLookupsInFlight = Set<String>()
 
-        init(session: AuthSession, onSubmitted: @escaping (CapturedSubmission) -> Void) {
+        init(session: AuthSession, service: CandidateService, onSubmitted: @escaping (CapturedSubmission) -> Void) {
             self.session = session
+            self.service = service
             self.onSubmitted = onSubmitted
         }
 
@@ -551,7 +506,7 @@ struct ApplyWebView: UIViewRepresentable {
         }
 
         private func lookupEssay(question: String, selector: String) async {
-            let match = try? await SupabaseService.shared.candidate.matchEssayAnswer(question: question, session: session)
+            let match = try? await service.matchEssayAnswer(question: question, session: session)
             guard let match else { return }
             let escapedSelector = jsString(selector)
             let escapedValue = jsString(match.answer)

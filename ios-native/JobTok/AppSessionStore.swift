@@ -1,12 +1,7 @@
 import Foundation
-import PDFKit
-@preconcurrency import AVFoundation
 
 @MainActor
 final class AppSessionStore: ObservableObject {
-    private static let preferredUploadLimitBytes: Int64 = 45 * 1_024 * 1_024
-    private static let hardUploadLimitBytes: Int64 = 50 * 1_024 * 1_024
-
     enum Phase {
         case launching
         case signedOut
@@ -38,8 +33,8 @@ final class AppSessionStore: ObservableObject {
     private var auth: AuthService { service.auth }
     private var candidate: CandidateService { service.candidate }
     private let defaults = UserDefaults.standard
-    private let sessionKey = "jobtok.supabase.session"
-    private let sharedDefaults = UserDefaults(suiteName: "group.com.jobtok.shared")
+    private let sessionKey = SharedConstants.sessionDefaultsKey
+    private let sharedDefaults = UserDefaults(suiteName: SharedConstants.appGroupID)
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -227,7 +222,7 @@ final class AppSessionStore: ObservableObject {
                 var uploadedVideoPublicURL: String? = self.jobSeekerProfile?.introVideoURL
 
                 if let introVideoURL {
-                    let uploadURL = try await prepareVideoForUpload(introVideoURL)
+                    let uploadURL = try await VideoProcessing.prepareVideoForUpload(introVideoURL)
                     let videoData = try Data(contentsOf: uploadURL)
                     let fileName = uploadURL.lastPathComponent
                     let result = try await service.uploadFile(
@@ -352,7 +347,7 @@ final class AppSessionStore: ObservableObject {
         await runBusyTask { [self] in
             let session = try await requireSession()
             let userID = try requireUserID()
-            let uploadURL = try await prepareVideoForUpload(fileURL)
+            let uploadURL = try await VideoProcessing.prepareVideoForUpload(fileURL)
             let fileName = uploadURL.lastPathComponent
             let videoData = try Data(contentsOf: uploadURL)
 
@@ -466,7 +461,7 @@ final class AppSessionStore: ObservableObject {
             let resolvedVideoURL: String
 
             if let localVideoURL {
-                let uploadURL = try await prepareVideoForUpload(localVideoURL)
+                let uploadURL = try await VideoProcessing.prepareVideoForUpload(localVideoURL)
                 let fileName = uploadURL.lastPathComponent
                 let videoData = try Data(contentsOf: uploadURL)
 
@@ -547,7 +542,7 @@ final class AppSessionStore: ObservableObject {
         await runBusyTask { [self] in
             let session = try await requireSession()
             let userID = try requireUserID()
-            let uploadURL = try await prepareVideoForUpload(localVideoURL)
+            let uploadURL = try await VideoProcessing.prepareVideoForUpload(localVideoURL)
             let fileName = uploadURL.lastPathComponent
             let videoData = try Data(contentsOf: uploadURL)
 
@@ -657,8 +652,7 @@ final class AppSessionStore: ObservableObject {
         try await loadNotifications()
 
         if let role = profile?.role {
-            SharedImportInbox.updateCurrentRole(role)
-            sharedDefaults?.set(role.rawValue, forKey: "jobtok.shared.userRole")
+            sharedDefaults?.set(role.rawValue, forKey: SharedConstants.AppGroupKeys.userRole)
             switch role {
             case .jobSeeker:
                 try await refreshJobSeekerData()
@@ -669,11 +663,9 @@ final class AppSessionStore: ObservableObject {
             }
             phase = .signedIn
         } else if profile != nil {
-            SharedImportInbox.updateCurrentRole(.jobSeeker)
             try await refreshJobSeekerData()
             phase = .signedIn
         } else {
-            SharedImportInbox.clearCurrentRole()
             phase = .signedOut
         }
     }
@@ -735,7 +727,7 @@ final class AppSessionStore: ObservableObject {
         let resumeRow = try await candidate.insertResumeUpload(userID: userID, filePath: upload.path, session: session)
         try await candidate.invokeParseResume(
             resumeID: resumeRow.id,
-            rawText: extractResumeText(from: fileURL),
+            rawText: ResumeTextExtractor.extractText(from: fileURL),
             session: session
         )
     }
@@ -760,13 +752,13 @@ final class AppSessionStore: ObservableObject {
     private func persistSessionIfNeeded() throws {
         guard let session else {
             defaults.removeObject(forKey: sessionKey)
-            sharedDefaults?.removeObject(forKey: "jobtok.shared.accessToken")
+            sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.accessToken)
             return
         }
         let data = try encoder.encode(session)
         defaults.set(data, forKey: sessionKey)
-        sharedDefaults?.set(session.accessToken, forKey: "jobtok.shared.accessToken")
-        sharedDefaults?.set(PassportConfig.load().supabaseURL, forKey: "jobtok.shared.supabaseURL")
+        sharedDefaults?.set(session.accessToken, forKey: SharedConstants.AppGroupKeys.accessToken)
+        sharedDefaults?.set(PassportConfig.load().supabaseURL, forKey: SharedConstants.AppGroupKeys.supabaseURL)
     }
 
     private func loadPersistedSession() -> AuthSession? {
@@ -791,10 +783,9 @@ final class AppSessionStore: ObservableObject {
         employerOutreachMessages = []
         adminJobs = []
         employerDirectoryItems = []
-        SharedImportInbox.clearCurrentRole()
         defaults.removeObject(forKey: sessionKey)
-        sharedDefaults?.removeObject(forKey: "jobtok.shared.accessToken")
-        sharedDefaults?.removeObject(forKey: "jobtok.shared.userRole")
+        sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.accessToken)
+        sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.userRole)
     }
 
     private func runBusyTask(_ operation: @escaping () async throws -> Void) async {
@@ -803,7 +794,7 @@ final class AppSessionStore: ObservableObject {
         do {
             try await operation()
         } catch {
-            errorMessage = friendlyErrorMessage(for: error)
+            errorMessage = SupabaseErrorMapping.friendlyMessage(for: error)
         }
         isBusy = false
     }
@@ -816,117 +807,11 @@ final class AppSessionStore: ObservableObject {
             isBusy = false
             return nil
         } catch {
-            let message = friendlyErrorMessage(for: error)
+            let message = SupabaseErrorMapping.friendlyMessage(for: error)
             errorMessage = message
             isBusy = false
             return message
         }
-    }
-
-    private func friendlyErrorMessage(for error: Error) -> String {
-        let message = error.localizedDescription
-
-        if message.localizedCaseInsensitiveContains("jobs_source_url_unique")
-            || (message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
-                && message.localizedCaseInsensitiveContains("source_url")) {
-            return "This post has already been imported."
-        }
-
-        if message.localizedCaseInsensitiveContains("profiles_handle_unique_idx")
-            || message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
-                && message.localizedCaseInsensitiveContains("handle") {
-            return "That handle is already taken. Try a different one."
-        }
-
-        if message.localizedCaseInsensitiveContains("handle can only be changed once every 30 days") {
-            return "You can only change your handle once every 30 days."
-        }
-
-        if message.localizedCaseInsensitiveContains("full name can only be changed once every 7 days") {
-            return "You can only change your full name once every 7 days."
-        }
-
-        if message.localizedCaseInsensitiveContains("profiles_handle_format") {
-            return "Handles can only use lowercase letters, numbers, and underscores."
-        }
-
-        if message.localizedCaseInsensitiveContains("job_applications_job_id_candidate_profile_id_key")
-            || message.localizedCaseInsensitiveContains("duplicate key value violates unique constraint")
-                && message.localizedCaseInsensitiveContains("job_applications") {
-            return "You already applied to this job."
-        }
-
-        return message
-    }
-
-    private func prepareVideoForUpload(_ url: URL) async throws -> URL {
-        let originalSize = try fileSize(for: url)
-        if originalSize <= Self.preferredUploadLimitBytes {
-            return url
-        }
-
-        let asset = AVURLAsset(url: url)
-        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetMediumQuality) else {
-            throw SupabaseServiceError.apiError("This video is too large to upload directly and could not be compressed.")
-        }
-
-        let outputURL = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "jobtok-video-\(UUID().uuidString).mp4")
-
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            try FileManager.default.removeItem(at: outputURL)
-        }
-
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = .mp4
-        exportSession.shouldOptimizeForNetworkUse = true
-
-        try await exportCompressedVideo(exportSession)
-
-        let compressedSize = try fileSize(for: outputURL)
-        guard compressedSize <= Self.hardUploadLimitBytes else {
-            throw SupabaseServiceError.apiError("The video is still too large after compression. Keep it under about 50 MB, or raise the Supabase Storage file size limit.")
-        }
-
-        return outputURL
-    }
-
-    private func exportCompressedVideo(_ exportSession: AVAssetExportSession) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            exportSession.exportAsynchronously {
-                switch exportSession.status {
-                case .completed:
-                    continuation.resume()
-                case .failed:
-                    continuation.resume(throwing: exportSession.error ?? SupabaseServiceError.invalidResponse)
-                case .cancelled:
-                    continuation.resume(throwing: SupabaseServiceError.apiError("Video compression was cancelled."))
-                default:
-                    continuation.resume(throwing: SupabaseServiceError.invalidResponse)
-                }
-            }
-        }
-    }
-
-    private func fileSize(for url: URL) throws -> Int64 {
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        return Int64(values.fileSize ?? 0)
-    }
-
-    private func extractResumeText(from url: URL) -> String? {
-        let fileExtension = url.pathExtension.lowercased()
-
-        if fileExtension == "pdf", let document = PDFDocument(url: url) {
-            return (0..<document.pageCount)
-                .compactMap { document.page(at: $0)?.string }
-                .joined(separator: "\n")
-        }
-
-        if ["txt", "rtf"].contains(fileExtension) {
-            return try? String(contentsOf: url)
-        }
-
-        return nil
     }
 
     private func mimeType(for url: URL) -> String? {

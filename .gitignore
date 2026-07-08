@@ -34,3 +34,6 @@ ios-native/JobTok/JobTok.local.xcconfig
 
 # macOS
 .DS_Store
+
+# Xcode build products
+ios-native/build/
