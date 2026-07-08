@@ -25,6 +25,7 @@ import { getAdapter } from "../_shared/ats/adapters/index.ts";
 import type { ATSType, NormalizedJob } from "../_shared/ats/models.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
+import { insertPostingEmailContact } from "../_shared/contacts.ts";
 
 const RUN_BUDGET_MS = 50_000;
 // Each company costs one ATS list-fetch (often hundreds of HTML JD bodies in
@@ -203,6 +204,21 @@ async function enrichCompany(
       continue;
     }
     if ((count ?? 0) > 0) enriched += 1;
+
+    // Tier-2 contact: an email published on the posting itself is a
+    // verified address. Failure-isolated from enrichment.
+    if ((count ?? 0) > 0 && match.contact_email_on_posting) {
+      try {
+        await insertPostingEmailContact(admin, company.id, match.contact_email_on_posting);
+      } catch (contactError) {
+        console.error(JSON.stringify({
+          event: "posting_email_contact_insert_failed",
+          company_id: company.id,
+          job_id: job.id,
+          error: (contactError as Error).message,
+        }));
+      }
+    }
   }
 
   return { ...base, jobs_pending: pending.length, jobs_enriched: enriched };
