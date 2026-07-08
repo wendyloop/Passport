@@ -23,6 +23,7 @@ import { pickTheme } from "../_shared/themes.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
 import { callStructured } from "../_shared/openai.ts";
+import { insertFounderContacts } from "../_shared/contacts.ts";
 
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 
@@ -54,6 +55,7 @@ type JobRow = {
 type CompanyRow = {
   id: string;
   name: string;
+  domain: string | null;
   stage: string | null;
   industry: string | null;
 };
@@ -64,6 +66,14 @@ type LLMContent = {
   responsibilities: string[];
   requirements: string[];
   perks: string[];
+  // Free founder extraction riding the carousel call — JDs sometimes name
+  // founders ("work directly with our co-founder Jane…"). Feeds
+  // company_contacts; never affects slides.
+  founders: Array<{
+    full_name: string;
+    role_title: string | null;
+    confidence: number;
+  }>;
 };
 
 type Slide =
@@ -146,7 +156,7 @@ Deno.serve(async (request) => {
 
   const [carouselsRes, companiesRes, fundsRes] = await Promise.all([
     admin.from("carousels").select("job_id, source_hash").in("job_id", jobIds),
-    admin.from("companies").select("id, name, stage, industry").in("id", companyIds),
+    admin.from("companies").select("id, name, domain, stage, industry").in("id", companyIds),
     admin
       .from("company_funds")
       .select("company_id, funds(name)")
@@ -236,6 +246,26 @@ Deno.serve(async (request) => {
         error: upsertError.message,
       });
       continue;
+    }
+
+    // Tier-1 founder contacts (free — extracted by the same LLM call).
+    // Failure-isolated: a contact insert problem never fails the carousel.
+    if (llmContent && llmContent.founders.length > 0) {
+      try {
+        await insertFounderContacts(admin, {
+          companyId: company.id,
+          domain: company.domain,
+          founders: llmContent.founders,
+          source: "llm_job_listing",
+        });
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "founder_contact_insert_failed",
+          company_id: company.id,
+          job_id: job.id,
+          error: (error as Error).message,
+        }));
+      }
     }
 
     outcomes.push({
@@ -341,6 +371,7 @@ function fallbackContent(job: JobRow): LLMContent {
     responsibilities: [],
     requirements: [],
     perks: [],
+    founders: [],
   };
 }
 
@@ -388,6 +419,9 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     "company_blurb: one sentence on what the company does, ONLY if the JD says so. " +
     "responsibilities: what they'll actually do, as short punchy phrases. " +
     "requirements: the few things that genuinely matter, not the full wishlist. " +
+    "founders: people the JD explicitly names as founder, co-founder, or CEO of THIS company — " +
+    "never guess from context, never include hiring managers or team leads; empty array when none are named. " +
+    "confidence: 0-1, how explicit the naming is. " +
     "No emojis, no hashtags. Sentence case. Return only JSON.";
 
   const userPrompt = JSON.stringify({
@@ -406,16 +440,30 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["hook", "company_blurb", "responsibilities", "requirements", "perks"],
+      required: ["hook", "company_blurb", "responsibilities", "requirements", "perks", "founders"],
       properties: {
         hook: { type: "string", maxLength: 70 },
         company_blurb: { type: "string", maxLength: 120 },
         responsibilities: { type: "array", maxItems: 4, items: { type: "string", maxLength: 70 } },
         requirements: { type: "array", maxItems: 4, items: { type: "string", maxLength: 60 } },
         perks: { type: "array", maxItems: 3, items: { type: "string", maxLength: 50 } },
+        founders: {
+          type: "array",
+          maxItems: 3,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["full_name", "role_title", "confidence"],
+            properties: {
+              full_name: { type: "string", maxLength: 80 },
+              role_title: { type: ["string", "null"], maxLength: 60 },
+              confidence: { type: "number" },
+            },
+          },
+        },
       },
     },
-    maxOutputTokens: 500,
+    maxOutputTokens: 700,
     timeoutMs: OPENAI_TIMEOUT_MS,
   });
   return {
@@ -424,5 +472,6 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     responsibilities: (parsed.responsibilities ?? []).map((s) => s.trim()).filter(Boolean),
     requirements: (parsed.requirements ?? []).map((s) => s.trim()).filter(Boolean),
     perks: (parsed.perks ?? []).map((s) => s.trim()).filter(Boolean),
+    founders: (parsed.founders ?? []).filter((f) => f.full_name?.trim()),
   };
 }
