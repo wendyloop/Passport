@@ -1,126 +1,201 @@
-// Getro-hosted portfolio job boards (Accel, Index, General Catalyst, Insight,
-// Craft, etc.). Every Getro board — both *.getro.com subdomains and custom
-// domains like jobs.accel.com — exposes the same public JSON API on the same
-// host:
-//   GET {board_url}/api/jobs?per_page=200&page=N
+// Getro adapter — Accel, Index, General Catalyst, Insight, Craft.
 //
-// The jobs payload includes a nested `company` object with name/domain/logo
-// plus a per-job apply URL we can run through classifyApplyURL to resolve the
-// ATS provider + token. We dedupe companies by domain (falling back to name).
+// Endpoint: POST https://api.getro.com/api/v2/collections/<id>/search/jobs
+//   body:   { hitsPerPage: N, page: M }
+//   reply:  { results: { jobs: [...], count: N } }
+//
+// Each job payload includes the apply URL plus an embedded `organization`
+// blob (name, logo, stage, head_count, industry_tags). It does NOT include
+// the company's domain — that field stays null and the orchestrator falls
+// back to (source_board, board_external_id) for dedup.
+//
+// Pagination is numeric, 0-indexed. We persist the next page number as
+// the cursor; on drain we return null so the orchestrator clears it.
 
-import { fetchJSON } from "../ats/http.ts";
-import { classifyApplyURL } from "../ats/classify.ts";
-import type { FundRow } from "../ats/models.ts";
-import type { DiscoveredCompany } from "./models.ts";
+import type {
+  AdapterInput,
+  AdapterResult,
+  BoardCompany,
+  BoardJob,
+} from "./types.ts";
 
-type GetroJobsResponse = {
-  meta?: { total_count?: number; total_pages?: number; current_page?: number };
-  jobs?: GetroJob[];
+const API_BASE = "https://api.getro.com/api/v2/collections";
+// Getro hard-caps responses at 20 jobs per page; larger hitsPerPage values
+// are silently ignored. Setting this to the actual cap is essential — if it's
+// higher, the "short last page" drain heuristic fires on page 0.
+const HITS_PER_PAGE = 20;
+const FETCH_TIMEOUT_MS = 20_000;
+
+type GetroSearchResponse = {
+  results?: {
+    jobs?: GetroJob[];
+    count?: number;
+  };
 };
 
 type GetroJob = {
   id?: number | string;
-  url?: string;         // apply / posting URL — fed to classifyApplyURL
   title?: string;
-  company?: GetroCompany;
+  url?: string;
+  searchable_locations?: string[];
+  locations?: Array<{ name?: string }>;
+  created_at?: number; // unix seconds
+  compensation_amount_min_cents?: number | null;
+  compensation_amount_max_cents?: number | null;
+  compensation_currency?: string | null;
+  compensation_period?: string | null;
+  work_mode?: string | null;
+  seniority?: string | null;
+  source?: string;
+  organization?: {
+    id?: number | string;
+    slug?: string;
+    name?: string;
+    logo_url?: string | null;
+    stage?: string | null;
+    head_count?: number | null;
+    industry_tags?: string[] | null;
+  };
 };
 
-type GetroCompany = {
-  id?: number | string;
-  name?: string;
-  domain?: string;
-  website_url?: string;
-  logo_url?: string;
-  stage?: string;
-  team_size?: string;
-  topics?: string[];
-  industry_tags?: string[];
-};
+export async function getroAdapter(input: AdapterInput): Promise<AdapterResult> {
+  const { fund, startCursor, budgetMs } = input;
+  if (!fund.external_collection_id) {
+    throw new Error(
+      `Getro fund ${fund.slug} missing external_collection_id (collection number from api.getro.com)`,
+    );
+  }
 
-const PER_PAGE = 200;
-const MAX_PAGES = 50;
+  const url = `${API_BASE}/${encodeURIComponent(fund.external_collection_id)}/search/jobs`;
+  const startedAt = Date.now();
+  let page = parseStartCursor(startCursor);
 
-export async function crawlGetro(fund: FundRow): Promise<DiscoveredCompany[]> {
-  if (!fund.board_url) return [];
+  // Companies are deduped within this batch by board_external_id so the
+  // orchestrator only has to upsert each once.
+  const companies = new Map<string, BoardCompany>();
+  const jobs: BoardJob[] = [];
 
-  // Companies keyed by domain → first occurrence wins, later jobs only fill
-  // in ATS coords if still missing.
-  const byKey = new Map<string, DiscoveredCompany>();
+  let pagesCompleted = 0;
+  let drained = false;
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = `${stripTrailingSlash(fund.board_url)}/api/jobs?per_page=${PER_PAGE}&page=${page}`;
-    let payload: GetroJobsResponse;
+  for (let safety = 0; safety < 5_000; safety++) {
+    if (Date.now() - startedAt > budgetMs) {
+      console.log(JSON.stringify({
+        event: "getro_budget_reached",
+        fund_slug: fund.slug,
+        page,
+        pages_completed: pagesCompleted,
+        jobs_collected: jobs.length,
+      }));
+      break;
+    }
+
+    let payload: GetroSearchResponse;
     try {
-      payload = await fetchJSON<GetroJobsResponse>(url);
+      payload = await postJSON<GetroSearchResponse>(url, { hitsPerPage: HITS_PER_PAGE, page });
     } catch (error) {
-      // Boards that don't expose the public API surface as 404 — surface the
-      // error so the orchestrator can record it against the fund.
       throw new Error(`Getro fetch failed for ${fund.slug} page ${page}: ${(error as Error).message}`);
     }
 
-    const jobs = payload.jobs ?? [];
-    if (jobs.length === 0) break;
+    const batch = payload.results?.jobs ?? [];
+    if (batch.length === 0) {
+      drained = true;
+      break;
+    }
 
-    for (const job of jobs) {
-      const company = job.company;
-      if (!company?.name) continue;
+    for (const raw of batch) {
+      const org = raw.organization;
+      const orgId = org?.id != null ? String(org.id) : (org?.slug ?? null);
+      const applyUrl = raw.url;
+      const jobId = raw.id != null ? String(raw.id) : null;
+      if (!orgId || !org?.name || !applyUrl || !jobId) continue;
 
-      const domain = normalizeDomain(company.domain ?? company.website_url ?? null);
-      const key = domain ?? company.name.toLowerCase().trim();
-
-      const resolution = classifyApplyURL(job.url ?? null);
-
-      const existing = byKey.get(key);
-      if (existing) {
-        // Backfill ATS coords from a later job if we didn't have them yet.
-        if (!existing.ats_type && resolution) {
-          existing.ats_type = resolution.ats_type;
-          existing.ats_token = resolution.ats_token;
-        }
-        continue;
+      if (!companies.has(orgId)) {
+        companies.set(orgId, {
+          board_external_id: orgId,
+          name: org.name.trim(),
+          domain: null,
+          logo_url: org.logo_url ?? null,
+          stage: org.stage ?? null,
+          headcount: org.head_count != null ? String(org.head_count) : null,
+          industry: org.industry_tags?.[0] ?? null,
+        });
       }
 
-      byKey.set(key, {
-        name: company.name.trim(),
-        domain,
-        logo_url: company.logo_url ?? null,
-        ats_type: resolution?.ats_type ?? null,
-        ats_token: resolution?.ats_token ?? null,
-        stage: company.stage ?? null,
-        headcount: company.team_size ?? null,
-        industry: firstNonEmpty(company.industry_tags, company.topics),
-        source_board: fund.slug,
+      jobs.push({
+        board_external_id: jobId,
+        company_board_external_id: orgId,
+        apply_url: applyUrl,
+        title: raw.title ?? null,
+        location: pickLocation(raw),
+        posted_at: raw.created_at ? new Date(raw.created_at * 1000).toISOString() : null,
+        compensation_text: null,
+        compensation: parseGetroComp(raw),
+        employment_type: null,
       });
     }
 
-    const totalPages = payload.meta?.total_pages ?? null;
-    if (totalPages != null && page >= totalPages) break;
-    if (jobs.length < PER_PAGE) break;
+    pagesCompleted += 1;
+    page += 1;
+    if (batch.length < HITS_PER_PAGE) {
+      // Last page is short of full → no more pages. Saves one wasted call.
+      drained = true;
+      break;
+    }
   }
 
-  return Array.from(byKey.values());
+  return {
+    companies: Array.from(companies.values()),
+    jobs,
+    nextCursor: drained ? null : String(page),
+    pages: pagesCompleted,
+  };
 }
 
-function stripTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url.slice(0, -1) : url;
+function parseStartCursor(cursor: string | null): number {
+  if (!cursor) return 0;
+  const parsed = Number.parseInt(cursor, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-function normalizeDomain(raw: string | null): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) return null;
+function pickLocation(job: GetroJob): string | null {
+  const named = job.locations?.find((l) => l.name)?.name;
+  if (named) return named;
+  return job.searchable_locations?.[0] ?? null;
+}
+
+function parseGetroComp(job: GetroJob) {
+  const period = (job.compensation_period ?? "").toLowerCase();
+  const minCents = job.compensation_amount_min_cents ?? null;
+  const maxCents = job.compensation_amount_max_cents ?? null;
+  const min = minCents != null ? minCents / 100 : null;
+  const max = maxCents != null ? maxCents / 100 : null;
+  if (period.includes("hour")) {
+    return { min_annual: null, max_annual: null, min_hourly: min, max_hourly: max };
+  }
+  if (period.includes("year") || period.includes("annual")) {
+    return { min_annual: min, max_annual: max, min_hourly: null, max_hourly: null };
+  }
+  // Unknown period — drop, don't guess.
+  return { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null };
+}
+
+async function postJSON<T>(url: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const withScheme = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
-    const host = new URL(withScheme).hostname;
-    return host.startsWith("www.") ? host.slice(4) : host;
-  } catch {
-    return trimmed.replace(/^www\./, "");
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status} for ${url}: ${text.slice(0, 200)}`);
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
   }
-}
-
-function firstNonEmpty(...lists: Array<string[] | undefined>): string | null {
-  for (const list of lists) {
-    if (list && list.length > 0) return list[0];
-  }
-  return null;
 }

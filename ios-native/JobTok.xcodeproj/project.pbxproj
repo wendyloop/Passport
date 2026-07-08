@@ -25,6 +25,7 @@
 		A10000010000000000000018 /* VideoStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* VideoStudio.swift */; };
 		A10000010000000000000025 /* ApplyDrawerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* ApplyDrawerView.swift */; };
 		A10000010000000000000026 /* CarouselFeedCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000026 /* CarouselFeedCard.swift */; };
+		A10000010000000000000027 /* CarouselThemes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000027 /* CarouselThemes.swift */; };
 		A10000010000000000000020 /* JobTokShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000010000000000000021 /* JobTokShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A10000010000000000000021 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ShareViewController.swift */; };
 		A2D918232FD8BC580087EF97 /* JobTokShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -83,6 +84,7 @@
 		A20000010000000000000018 /* VideoStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStudio.swift; sourceTree = "<group>"; };
 		A20000010000000000000025 /* ApplyDrawerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplyDrawerView.swift; sourceTree = "<group>"; };
 		A20000010000000000000026 /* CarouselFeedCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselFeedCard.swift; sourceTree = "<group>"; };
+		A20000010000000000000027 /* CarouselThemes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselThemes.swift; sourceTree = "<group>"; };
 		A20000010000000000000020 /* JobTok.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JobTok.entitlements; sourceTree = "<group>"; };
 		A20000010000000000000021 /* JobTokShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobTokShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000010000000000000022 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				A20000010000000000000018 /* VideoStudio.swift */,
 				A20000010000000000000025 /* ApplyDrawerView.swift */,
 				A20000010000000000000026 /* CarouselFeedCard.swift */,
+				A20000010000000000000027 /* CarouselThemes.swift */,
 				A20000010000000000000020 /* JobTok.entitlements */,
 			);
 			path = JobTok;
@@ -344,6 +347,7 @@
 				A10000010000000000000018 /* VideoStudio.swift in Sources */,
 				A10000010000000000000025 /* ApplyDrawerView.swift in Sources */,
 				A10000010000000000000026 /* CarouselFeedCard.swift in Sources */,
+				A10000010000000000000027 /* CarouselThemes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

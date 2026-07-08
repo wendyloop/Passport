@@ -268,18 +268,45 @@ final class SupabaseService {
     }
 
     func fetchJobs(publishedOnly: Bool = false, employerID: String? = nil, session: AuthSession) async throws -> [JobPostingRecord] {
-        // Embed the companies row via PostgREST foreign-key expansion so each
-        // ATS-sourced job arrives with its logo + display name pre-joined.
-        // Costs nothing for reel/employer_post rows — `company` simply decodes to nil.
+        // The candidate feed (publishedOnly) splits into two queries so we never
+        // fetch board/ATS rows that have no carousel — otherwise the 32k+ newly
+        // ingested board rows would crowd out the older reels under PostgREST's
+        // default row cap. Reels/employer posts come back regardless; board/ATS
+        // come back only with an `!inner` join on a generated carousel.
+        if publishedOnly && employerID == nil {
+            async let videos: [JobPostingRecord] = selectArray(
+                path: "jobs",
+                query: [
+                    ("select", "*,company:companies(id,name,domain,logo_url),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("is_published", "eq.true"),
+                    ("is_active", "eq.true"),
+                    ("source_kind", "in.(reel,employer_post)"),
+                    ("order", "created_at.desc"),
+                    ("limit", "200")
+                ],
+                session: session
+            )
+            async let carousels: [JobPostingRecord] = selectArray(
+                path: "jobs",
+                query: [
+                    ("select", "*,company:companies(id,name,domain,logo_url),carousel:carousels!inner(theme_id,slide_count,content,status)"),
+                    ("is_published", "eq.true"),
+                    ("is_active", "eq.true"),
+                    ("source_kind", "in.(ats,board)"),
+                    ("carousel.status", "eq.generated"),
+                    ("order", "created_at.desc"),
+                    ("limit", "200")
+                ],
+                session: session
+            )
+            let merged = try await videos + carousels
+            return merged.sorted { $0.createdAt > $1.createdAt }
+        }
+
         var query: [(String, String)] = [
-            ("select", "*,company:companies(id,name,domain,logo_url)"),
+            ("select", "*,company:companies(id,name,domain,logo_url),carousel:carousels(theme_id,slide_count,content,status)"),
             ("order", "created_at.desc")
         ]
-        if publishedOnly {
-            query.append(("is_published", "eq.true"))
-            // Soft-expired ATS rows should disappear from the feed.
-            query.append(("is_active", "eq.true"))
-        }
         if let employerID {
             query.append(("employer_profile_id", "eq.\(employerID)"))
         }
@@ -442,12 +469,14 @@ final class SupabaseService {
 
     func storeApplicationFields(
         eventID: String,
-        fields: [String: String],
+        shortFields: [ApplicationShortField],
+        essays: [ApplicationEssay],
         session: AuthSession
     ) async throws {
         let body: [String: AnyEncodable] = [
             "eventId": AnyEncodable(eventID),
-            "fields": AnyEncodable(fields),
+            "shortFields": AnyEncodable(shortFields),
+            "essays": AnyEncodable(essays),
         ]
         let request = try makeRequest(
             url: functionsBaseURL.appendingPathComponent("store-application-fields"),
@@ -456,6 +485,20 @@ final class SupabaseService {
             body: body
         )
         _ = try await executeData(request)
+    }
+
+    func matchEssayAnswer(question: String, session: AuthSession) async throws -> EssayMatch? {
+        let body: [String: AnyEncodable] = [
+            "question": AnyEncodable(question),
+        ]
+        let request = try makeRequest(
+            url: functionsBaseURL.appendingPathComponent("match-essay-answer"),
+            method: "POST",
+            accessToken: session.accessToken,
+            body: body
+        )
+        let envelope = try await execute(request, decode: EssayMatchEnvelope.self)
+        return envelope.match
     }
 
     func getPrefillProfile(session: AuthSession) async throws -> PrefillResponse {
@@ -915,6 +958,10 @@ final class SupabaseService {
             if let apiError = try? decoder.decode(SupabaseAPIError.self, from: data) {
                 throw SupabaseServiceError.apiError(apiError.message)
             }
+            let path = request.url?.path ?? "?"
+            let preview = String(data: data.prefix(1500), encoding: .utf8) ?? "<non-utf8>"
+            print("DEBUG decode failed for \(T.self) at \(path): \(error)")
+            print("DEBUG raw response (first 1500B): \(preview)")
             throw error
         }
     }

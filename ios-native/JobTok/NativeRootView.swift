@@ -98,7 +98,7 @@ struct NativeRootView: View {
             Text("💼")
                 .font(.system(size: 70))
 
-            Text("JobTok")
+            Text("scout22")
                 .font(.system(size: 44, weight: .black, design: .rounded))
                 .foregroundStyle(Color.black)
 
@@ -117,7 +117,7 @@ struct NativeRootView: View {
 
                     VStack(spacing: 30) {
                         VStack(spacing: 16) {
-                            Text("JobTok")
+                            Text("scout22")
                                 .font(.system(size: 68, weight: .black, design: .rounded))
                                 .foregroundStyle(Color.black)
                                 .multilineTextAlignment(.center)

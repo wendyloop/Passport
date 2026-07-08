@@ -141,7 +141,7 @@ struct EmployerHomeView: View {
                 onDeleteAccount()
             }
         } message: {
-            Text("This permanently deletes your JobTok account and employer profile data.")
+            Text("This permanently deletes your scout22 account and employer profile data.")
         }
     }
 
@@ -423,7 +423,7 @@ struct EmployerHomeView: View {
 
     private var discoverTopBar: some View {
         HStack(spacing: 10) {
-            Text("JobTok")
+            Text("scout22")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(PassportTheme.textPrimary)
 
@@ -1020,7 +1020,7 @@ private struct EmployerCreateJobSheet: View {
                             onCreateJob(normalizedDraftForSubmit(), selectedVideoURL)
                             dismiss()
                         } label: {
-                            Text("Post JobTok")
+                            Text("Post Video")
                                 .fontWeight(.bold)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 15)
@@ -1595,15 +1595,15 @@ private struct EmployerOutreachSheet: View {
         if let dreamRole = candidate.dreamRole, !dreamRole.isEmpty {
             return "Opportunity for \(dreamRole)"
         }
-        return "Opportunity from JobTok"
+        return "Opportunity from scout22"
     }
 
     private var defaultMessage: String {
         let name = candidate.fullName ?? "there"
         if let relatedJob = jobs.first(where: { $0.id == selectedRelatedJobID }) {
-            return "Hi \(name),\n\nI came across your JobTok profile and think you could be a strong fit for our \(relatedJob.title) role at \(relatedJob.companyName). If you’re interested, reply and we can continue the conversation.\n"
+            return "Hi \(name),\n\nI came across your scout22 profile and think you could be a strong fit for our \(relatedJob.title) role at \(relatedJob.companyName). If you’re interested, reply and we can continue the conversation.\n"
         }
-        return "Hi \(name),\n\nI came across your JobTok profile and wanted to reach out about opportunities on our team. If you’re interested, reply and we can continue the conversation.\n"
+        return "Hi \(name),\n\nI came across your scout22 profile and wanted to reach out about opportunities on our team. If you’re interested, reply and we can continue the conversation.\n"
     }
 
     private func formattedDate(_ date: Date) -> String {

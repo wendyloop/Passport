@@ -124,7 +124,10 @@ struct JobSeekerHomeView: View {
             }()
 
             let payMatches = selectedPayFilter.matches(job)
-            return !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
+            // Carousel-backed rows (ATS + board) without a generated carousel
+            // have nothing to render — hide them until generate-carousel picks them up.
+            let renderable = !job.sourceKind.rendersCarousel || job.carousel != nil
+            return renderable && !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
         }
     }
 
@@ -256,7 +259,7 @@ struct JobSeekerHomeView: View {
                 onDeleteAccount()
             }
         } message: {
-            Text("This permanently deletes your JobTok account and profile data.")
+            Text("This permanently deletes your scout22 account and profile data.")
         }
         .alert("Change visibility mode?", isPresented: Binding(
             get: { pendingVisibilityChange != nil },
@@ -293,7 +296,7 @@ struct JobSeekerHomeView: View {
                     FeedEmptyState(
                         title: jobs.isEmpty ? "No jobs live yet" : "No jobs match your filters",
                         message: jobs.isEmpty
-                            ? "Admins can publish the first JobTok openings from the admin portal."
+                            ? "Admins can publish the first scout22 openings from the admin portal."
                             : "Try widening your location, role type, or pay filters."
                     )
                 } else {
@@ -347,14 +350,15 @@ struct JobSeekerHomeView: View {
         safeAreaBottom: CGFloat
     ) -> some View {
         Group {
-            // ATS-sourced rows have no video; they always render the carousel/
-            // splash card. Reels + employer posts with generated slides also
-            // prefer the carousel.
-            let hasSlides = !(job.carouselSlideUrls ?? []).isEmpty
-            if job.sourceKind == .ats || hasSlides {
+            // Carousel-backed rows (ATS + board) render the structured carousel;
+            // reels + employer posts keep the existing video card. The filter
+            // guarantees a carousel row reaching here has a non-nil carousel.
+            if job.sourceKind.rendersCarousel, let carousel = job.carousel {
                 CarouselFeedCard(
                     job: job,
+                    carousel: carousel,
                     safeAreaBottom: safeAreaBottom,
+                    isActive: currentJobID == job.id,
                     onApply: { handleApplyTap(for: job) },
                     onSave: { onToggleSavedJob(job.id) },
                     isSaved: savedJobIDs.contains(job.id)
@@ -506,7 +510,7 @@ struct JobSeekerHomeView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Text("JobTok")
+            Text("scout22")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(PassportTheme.textPrimary)
 
@@ -1598,7 +1602,7 @@ private struct ApplySheet: View {
                 }
 
                 if job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("Applications are not available for this JobTok yet. The admin still needs to add the company’s apply route.")
+                    Text("Applications are not available for this post yet. The admin still needs to add the company’s apply route.")
                         .font(.footnote)
                         .foregroundStyle(Color.orange)
                         .padding(14)
@@ -1649,7 +1653,7 @@ private struct ApplySheet: View {
                         .padding(.vertical, 12)
                         .background(PassportTheme.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    Text("If it isn’t on your profile yet, JobTok will save it for next time.")
+                    Text("If it isn’t on your profile yet, scout22 will save it for next time.")
                         .font(.footnote)
                         .foregroundStyle(PassportTheme.textSecondary)
                 }
@@ -2166,7 +2170,7 @@ private struct CandidateProfileEditor: View {
             }
             .textFieldStyle(PassportTextFieldStyle())
 
-            Text("Enter just the username. JobTok links it automatically.")
+            Text("Enter just the username. scout22 links it automatically.")
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }

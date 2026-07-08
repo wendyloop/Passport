@@ -76,7 +76,7 @@ final class ShareViewController: UIViewController {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.font = .systemFont(ofSize: 28, weight: .bold)
         statusLabel.textAlignment = .center
-        statusLabel.text = "JobTok"
+        statusLabel.text = "scout22"
 
         descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
         descriptionLabel.font = .systemFont(ofSize: 16, weight: .regular)
@@ -90,7 +90,7 @@ final class ShareViewController: UIViewController {
         primaryButton.configuration?.baseBackgroundColor = UIColor.black
         primaryButton.configuration?.baseForegroundColor = UIColor.white
         primaryButton.configuration?.cornerStyle = .large
-        primaryButton.configuration?.title = "Save to JobTok"
+        primaryButton.configuration?.title = "Save to scout22"
         primaryButton.isEnabled = false
         primaryButton.addTarget(self, action: #selector(handleSave), for: .touchUpInside)
 
@@ -116,16 +116,16 @@ final class ShareViewController: UIViewController {
 
     private func renderResolvedState() {
         guard SharedImportInboxWriter.lastKnownRole == "admin" else {
-            descriptionLabel.text = "Only JobTok admins can import shared posts. Open the JobTok app with an admin account first."
+            descriptionLabel.text = "Only scout22 admins can import shared posts. Open the scout22 app with an admin account first."
             primaryButton.isEnabled = false
             return
         }
 
         if let sharedURLString, !sharedURLString.isEmpty {
-            descriptionLabel.text = "Save this shared TikTok or Instagram link to the JobTok admin import inbox."
+            descriptionLabel.text = "Save this shared TikTok or Instagram link to the scout22 admin import inbox."
             primaryButton.isEnabled = true
         } else {
-            descriptionLabel.text = "This share did not include a usable post link. Share a TikTok or Instagram URL into JobTok instead."
+            descriptionLabel.text = "This share did not include a usable post link. Share a TikTok or Instagram URL into scout22 instead."
             primaryButton.isEnabled = false
         }
     }

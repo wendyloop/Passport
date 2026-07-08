@@ -1,6 +1,6 @@
 # Passport
 
-Passport is the repo for the native JobTok iOS app and its backend services. Job seekers create a short profile, upload a resume and intro video, browse jobs, and apply. Employers publish jobs, review applicants, discover candidates, and send outreach. Admins can import and manage social job posts.
+Passport is the repo for the native scout22 iOS app and its backend services. Job seekers create a short profile, upload a resume and intro video, browse jobs, and apply. Employers publish jobs, review applicants, discover candidates, and send outreach. Admins can import and manage social job posts.
 
 ## Project layout
 

@@ -141,10 +141,24 @@ final class AppSessionStore: ObservableObject {
 
     func signIn(email: String, password: String) async {
         await runBusyTask { [self] in
-            let session = try await service.signIn(email: email, password: password)
+            print("DEBUG signIn: calling service.signIn")
+            let session: AuthSession
+            do {
+                session = try await service.signIn(email: email, password: password)
+                print("DEBUG signIn: auth OK, user=\(session.user.id)")
+            } catch {
+                print("DEBUG signIn: AUTH FAILED \(error)")
+                throw error
+            }
             self.session = session
             try persistSessionIfNeeded()
-            try await loadCurrentUserState()
+            do {
+                try await loadCurrentUserState()
+                print("DEBUG signIn: loadCurrentUserState OK")
+            } catch {
+                print("DEBUG signIn: loadCurrentUserState FAILED \(error)")
+                throw error
+            }
         }
     }
 
@@ -487,10 +501,10 @@ final class AppSessionStore: ObservableObject {
             let trimmedCompanyName = draft.companyName.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedDescription = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
-            let derivedCompanyName = trimmedCompanyName.isEmpty ? "Imported JobTok" : trimmedCompanyName
+            let derivedCompanyName = trimmedCompanyName.isEmpty ? "Imported post" : trimmedCompanyName
             let derivedTitle = !trimmedTitle.isEmpty
                 ? trimmedTitle
-                : (draft.sourceCreatorName.nonEmptyValue.map { "\($0) hiring" } ?? "Imported JobTok")
+                : (draft.sourceCreatorName.nonEmptyValue.map { "\($0) hiring" } ?? "Imported post")
             let derivedDescription = !trimmedDescription.isEmpty
                 ? trimmedDescription
                 : (draft.sourceCaptionRaw.nonEmptyValue

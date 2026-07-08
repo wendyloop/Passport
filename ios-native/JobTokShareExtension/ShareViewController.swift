@@ -21,7 +21,7 @@ final class ShareViewController: UIViewController {
 
     private let iconLabel: UILabel = {
         let l = UILabel()
-        l.text = "JobTok"
+        l.text = "scout22"
         l.font = .systemFont(ofSize: 22, weight: .black)
         l.textColor = .white
         l.translatesAutoresizingMaskIntoConstraints = false
@@ -140,7 +140,7 @@ final class ShareViewController: UIViewController {
         let shared = UserDefaults(suiteName: appGroupID)
 
         guard let token = shared?.string(forKey: tokenKey), !token.isEmpty else {
-            finish(success: false, message: "Sign in to JobTok first, then try again.")
+            finish(success: false, message: "Sign in to scout22 first, then try again.")
             return
         }
         guard let role = shared?.string(forKey: roleKey), role == "admin" else {
@@ -170,7 +170,7 @@ final class ShareViewController: UIViewController {
                     // token back to the App Group.
                     let message: String
                     if status == 401 {
-                        message = "Your JobTok sign-in expired. Open the JobTok app, then try sharing again."
+                        message = "Your scout22 sign-in expired. Open the scout22 app, then try sharing again."
                     } else if let data,
                               let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                               let errMsg = body["error"] as? String {
@@ -180,7 +180,7 @@ final class ShareViewController: UIViewController {
                     }
                     self?.finish(success: false, message: message)
                 } else {
-                    self?.finish(success: true, message: "Reel added to JobTok!")
+                    self?.finish(success: true, message: "Reel added to scout22!")
                 }
             }
         }.resume()

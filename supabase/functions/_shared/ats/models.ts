@@ -69,6 +69,7 @@ export type FundRow = {
   slug: string;
   board_url: string | null;
   platform: "getro" | "consider" | "bespoke" | null;
+  external_collection_id: string | null; // Getro: collection id, Consider: board slug
 };
 
 // Per-company outcome surfaced in the sync summary.

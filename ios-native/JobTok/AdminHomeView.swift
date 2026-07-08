@@ -108,7 +108,7 @@ struct AdminHomeView: View {
                 if jobs.isEmpty {
                     AdminInfoCard(
                         title: "No jobs yet",
-                        details: "Paste a TikTok or Instagram link to import a post directly, or upload a local video if you want to host the media inside JobTok."
+                        details: "Paste a TikTok or Instagram link to import a post directly, or upload a local video if you want to host the media inside scout22."
                     )
                 } else {
                     ForEach(jobs) { job in
@@ -420,7 +420,7 @@ private struct AdminCreateJobSheet: View {
                                 ProgressView()
                                     .tint(.black)
                             }
-                            Text(isPublishing ? "Publishing…" : (isLinkImportMode ? "Publish Imported JobTok" : "Create Job"))
+                            Text(isPublishing ? "Publishing…" : (isLinkImportMode ? "Publish Imported Post" : "Create Job"))
                                 .fontWeight(.bold)
                         }
                         .frame(maxWidth: .infinity)
@@ -490,7 +490,7 @@ private struct AdminCreateJobSheet: View {
                 .font(.headline)
                 .foregroundStyle(PassportTheme.textPrimary)
 
-            Text("Paste the shared post link. JobTok will fetch the source page and scrape the description, posting date, and apply route automatically. If the apply route is missing, the post can still be created and will be flagged in admin.")
+            Text("Paste the shared post link. scout22 will fetch the source page and scrape the description, posting date, and apply route automatically. If the apply route is missing, the post can still be created and will be flagged in admin.")
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
 

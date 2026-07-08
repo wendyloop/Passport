@@ -117,7 +117,9 @@ async function normalizeGreenhouseJob(job: GreenhouseJob): Promise<NormalizedJob
   };
 }
 
-function formatGreenhousePayRange(range: GreenhouseJob["pay_input_ranges"] extends Array<infer T> ? T | undefined : never): string | null {
+type GreenhousePayRange = NonNullable<GreenhouseJob["pay_input_ranges"]>[number];
+
+function formatGreenhousePayRange(range: GreenhousePayRange | undefined): string | null {
   if (!range) return null;
   const min = range.min_cents != null ? range.min_cents / 100 : null;
   const max = range.max_cents != null ? range.max_cents / 100 : null;

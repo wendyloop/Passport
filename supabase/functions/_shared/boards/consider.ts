@@ -1,99 +1,217 @@
-// Consider.com portfolio job boards (a16z, Sequoia, Greylock, Lightspeed,
-// Bessemer, Kleiner Perkins, NEA). Each board is served from the fund's own
-// domain but proxies through Consider's API:
-//   GET {board_url}/api-v2/jobs?per_page=200&page=N
+// Consider adapter — a16z, Sequoia, Greylock, Lightspeed, Bessemer,
+// Kleiner Perkins, NEA.
 //
-// Jobs include a nested `company` object and a per-job `apply_url` we feed to
-// classifyApplyURL. Pagination via `meta.total_pages`.
+// Endpoint: POST {board_url}/api-boards/search-jobs
+//   body: { meta: { size, sequence? }, board: { id, isParent: true },
+//           query: { promoteFeatured: true }, grouped: true }
+//   reply: { jobs: [{ company, jobs: [...], numMatchingJobs }],
+//            meta: { size, sequence }, total }
+//
+// Each job payload carries both the apply URL AND full company info
+// (companyDomain, companyLogos, companyId), so Consider gives us strictly
+// more company metadata than Getro per row. Pagination is via the opaque
+// `meta.sequence` cursor returned by the API.
 
-import { fetchJSON } from "../ats/http.ts";
-import { classifyApplyURL } from "../ats/classify.ts";
-import type { FundRow } from "../ats/models.ts";
-import type { DiscoveredCompany } from "./models.ts";
+import type {
+  AdapterInput,
+  AdapterResult,
+  BoardCompany,
+  BoardJob,
+} from "./types.ts";
 
-type ConsiderJobsResponse = {
-  meta?: { total_count?: number; total_pages?: number; current_page?: number };
+const PAGE_SIZE = 25;
+const MAX_PAGES = 200;
+const FETCH_TIMEOUT_MS = 20_000;
+
+type ConsiderResponse = {
+  jobs?: ConsiderGroup[];
+  meta?: { size?: number; sequence?: string | null };
+  total?: number;
+};
+
+type ConsiderGroup = {
+  company?: Record<string, unknown>;
   jobs?: ConsiderJob[];
+  numMatchingJobs?: number;
 };
 
 type ConsiderJob = {
-  id?: number | string;
-  apply_url?: string;
+  applyUrl?: string;
   url?: string;
+  jobId?: string;
   title?: string;
-  company?: ConsiderCompany;
+  locations?: Array<{ name?: string; label?: string }>;
+  timeStamp?: number; // ms or s — we accept either and normalize
+  postedAt?: string;
+  employmentType?: string;
+  compensation?: string;
+  companyId?: string;
+  companyName?: string;
+  companySlug?: string;
+  companyDomain?: string;
+  companyStaffCount?: number;
+  companyLogos?: {
+    manual?: { url?: string };
+    linkedin?: { url?: string };
+  };
+  stages?: Array<{ value?: string; label?: string }>;
+  markets?: Array<{ value?: string; label?: string }>;
+  jobFunctions?: Array<{ value?: string; label?: string }>;
+  fundingLV?: { value?: string; label?: string };
 };
 
-type ConsiderCompany = {
-  id?: number | string;
-  name?: string;
-  domain?: string;
-  website?: string;
-  logo_url?: string;
-  stage?: string;
-  size?: string;
-  headcount?: string;
-  industry?: string;
-  industries?: string[];
-};
+export async function considerAdapter(input: AdapterInput): Promise<AdapterResult> {
+  const { fund, startCursor, budgetMs } = input;
+  if (!fund.board_url) {
+    throw new Error(`Consider fund ${fund.slug} missing board_url`);
+  }
+  if (!fund.external_collection_id) {
+    throw new Error(
+      `Consider fund ${fund.slug} missing external_collection_id (board id like "sequoia-capital")`,
+    );
+  }
 
-const PER_PAGE = 200;
-const MAX_PAGES = 50;
+  const url = `${stripTrailingSlash(fund.board_url)}/api-boards/search-jobs`;
+  const boardId = fund.external_collection_id;
+  const startedAt = Date.now();
 
-export async function crawlConsider(fund: FundRow): Promise<DiscoveredCompany[]> {
-  if (!fund.board_url) return [];
+  // Companies deduped within this batch by board_external_id (companyId,
+  // or slug/domain/name fallback when companyId is missing).
+  const companies = new Map<string, BoardCompany>();
+  const jobs: BoardJob[] = [];
 
-  const byKey = new Map<string, DiscoveredCompany>();
+  let sequence: string | null = startCursor ?? null;
+  let lastSequence: string | null = sequence;
+  let pagesCompleted = 0;
+  let drained = false;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = `${stripTrailingSlash(fund.board_url)}/api-v2/jobs?per_page=${PER_PAGE}&page=${page}`;
-    let payload: ConsiderJobsResponse;
+    if (Date.now() - startedAt > budgetMs) {
+      console.log(JSON.stringify({
+        event: "consider_budget_reached",
+        fund_slug: fund.slug,
+        pages_completed: pagesCompleted,
+        companies_so_far: companies.size,
+        jobs_so_far: jobs.length,
+        cursor: lastSequence,
+      }));
+      break;
+    }
+
+    const body: Record<string, unknown> = {
+      meta: sequence ? { size: PAGE_SIZE, sequence } : { size: PAGE_SIZE },
+      board: { id: boardId, isParent: true },
+      query: { promoteFeatured: true },
+      grouped: true,
+    };
+
+    let payload: ConsiderResponse;
     try {
-      payload = await fetchJSON<ConsiderJobsResponse>(url);
+      payload = await postJSON<ConsiderResponse>(url, body);
     } catch (error) {
       throw new Error(`Consider fetch failed for ${fund.slug} page ${page}: ${(error as Error).message}`);
     }
 
-    const jobs = payload.jobs ?? [];
-    if (jobs.length === 0) break;
-
-    for (const job of jobs) {
-      const company = job.company;
-      if (!company?.name) continue;
-
-      const domain = normalizeDomain(company.domain ?? company.website ?? null);
-      const key = domain ?? company.name.toLowerCase().trim();
-      const applyURL = job.apply_url ?? job.url ?? null;
-      const resolution = classifyApplyURL(applyURL);
-
-      const existing = byKey.get(key);
-      if (existing) {
-        if (!existing.ats_type && resolution) {
-          existing.ats_type = resolution.ats_type;
-          existing.ats_token = resolution.ats_token;
-        }
-        continue;
-      }
-
-      byKey.set(key, {
-        name: company.name.trim(),
-        domain,
-        logo_url: company.logo_url ?? null,
-        ats_type: resolution?.ats_type ?? null,
-        ats_token: resolution?.ats_token ?? null,
-        stage: company.stage ?? null,
-        headcount: company.headcount ?? company.size ?? null,
-        industry: company.industry ?? company.industries?.[0] ?? null,
-        source_board: fund.slug,
-      });
+    const groups = payload.jobs ?? [];
+    if (groups.length === 0) {
+      drained = true;
+      break;
     }
 
-    const totalPages = payload.meta?.total_pages ?? null;
-    if (totalPages != null && page >= totalPages) break;
-    if (jobs.length < PER_PAGE) break;
+    let newJobsThisPage = 0;
+
+    for (const group of groups) {
+      const groupJobs = group.jobs ?? [];
+      if (groupJobs.length === 0) continue;
+
+      for (const raw of groupJobs) {
+        const applyUrl = raw.applyUrl ?? raw.url;
+        const jobId = raw.jobId ?? null;
+        const orgId = raw.companyId ?? raw.companySlug ?? raw.companyDomain ?? raw.companyName ?? null;
+        if (!applyUrl || !jobId || !orgId || !raw.companyName) continue;
+
+        if (!companies.has(orgId)) {
+          companies.set(orgId, {
+            board_external_id: orgId,
+            name: raw.companyName.trim(),
+            domain: normalizeDomain(raw.companyDomain ?? null),
+            logo_url: raw.companyLogos?.manual?.url ?? raw.companyLogos?.linkedin?.url ?? null,
+            stage: raw.stages?.[0]?.label ?? raw.fundingLV?.label ?? null,
+            headcount: raw.companyStaffCount != null ? String(raw.companyStaffCount) : null,
+            industry: raw.markets?.[0]?.label ?? raw.jobFunctions?.[0]?.label ?? null,
+          });
+        }
+
+        jobs.push({
+          board_external_id: jobId,
+          company_board_external_id: orgId,
+          apply_url: applyUrl,
+          title: raw.title ?? null,
+          location: pickLocation(raw),
+          posted_at: pickPostedAt(raw),
+          compensation_text: raw.compensation ?? null,
+          compensation: { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+          employment_type: raw.employmentType ?? null,
+        });
+        newJobsThisPage += 1;
+      }
+    }
+
+    pagesCompleted += 1;
+    sequence = payload.meta?.sequence ?? null;
+    lastSequence = sequence;
+    if (!sequence) {
+      drained = true;
+      break;
+    }
+    if (newJobsThisPage === 0) {
+      // Some boards keep returning a non-null cursor forever once exhausted.
+      // No new content this page → treat as drained.
+      drained = true;
+      break;
+    }
   }
 
-  return Array.from(byKey.values());
+  return {
+    companies: Array.from(companies.values()),
+    jobs,
+    nextCursor: drained ? null : lastSequence,
+    pages: pagesCompleted,
+  };
+}
+
+function pickLocation(job: ConsiderJob): string | null {
+  const first = job.locations?.[0];
+  return first?.name ?? first?.label ?? null;
+}
+
+function pickPostedAt(job: ConsiderJob): string | null {
+  if (job.postedAt) return job.postedAt;
+  if (job.timeStamp == null) return null;
+  // Some boards return seconds, some ms. Heuristic: ms is > 10^12.
+  const ms = job.timeStamp > 1e12 ? job.timeStamp : job.timeStamp * 1000;
+  const d = new Date(ms);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+async function postJSON<T>(url: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status} for ${url}: ${text.slice(0, 200)}`);
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function stripTrailingSlash(url: string): string {

@@ -1,6 +1,8 @@
-# JobTok Native iOS
+# scout22 Native iOS
 
-This folder contains the primary SwiftUI iOS app for JobTok.
+This folder contains the primary SwiftUI iOS app for scout22.
+
+> The Xcode project files, scheme, target, bundle identifiers, app group, and `jobtok://` deep link scheme still use the legacy `JobTok` / `jobtok` names. Renaming these would require an Xcode project rename, App Group migration, App Store Connect updates, and Supabase OAuth redirect changes — they're left as-is intentionally.
 
 ## Open in Xcode
 

@@ -22,7 +22,7 @@ enum JobTokVideoStudioPurpose {
         case .employerRole:
             return "Add Role"
         case .adminRole:
-            return "Create JobTok"
+            return "Create Post"
         }
     }
 
@@ -1116,7 +1116,7 @@ private struct JobTokCameraRecorder: View {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 42, weight: .bold))
                         .foregroundStyle(PassportTheme.textPrimary)
-                    Text("Allow camera and microphone access to record a JobTok.")
+                    Text("Allow camera and microphone access to record a post.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(PassportTheme.textSecondary)
                     Button("Retry") {
@@ -1678,7 +1678,7 @@ private final class JobTokVideoEditorStore: ObservableObject {
 
     func exportFinalVideo() async -> JobTokComposedVideo? {
         do {
-            processingMessage = "Exporting JobTok..."
+            processingMessage = "Exporting Post..."
             processingProgress = 0
             isProcessing = true
 

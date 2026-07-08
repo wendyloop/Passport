@@ -40,7 +40,36 @@ struct PrefillProfile: Codable {
 
 struct PrefillResponse: Codable {
     let profile: PrefillProfile
+    // Canonical autofill bundle (label keys without the `canon:` prefix).
+    // Falls back to empty dict for older backend builds.
+    let canonical: [String: String]?
+    let rawHistory: [String: String]?
+    // Legacy union of canonical (still prefixed) + rawHistory.
     let fieldHistory: [String: String]
+}
+
+// MARK: - Capture + match models
+
+struct ApplicationShortField: Codable {
+    let label: String
+    let value: String
+}
+
+struct ApplicationEssay: Codable {
+    let question: String
+    let answer: String
+}
+
+struct EssayMatch: Codable {
+    let question: String
+    let answer: String
+    let similarity: Double
+    let sourceJobId: String?
+    let updatedAt: String
+}
+
+struct EssayMatchEnvelope: Codable {
+    let match: EssayMatch?
 }
 
 // MARK: - ApplyDrawerView
@@ -66,8 +95,9 @@ struct ApplyDrawerView: View {
                         ApplyWebView(
                             url: applyURL,
                             prefill: prefill,
-                            onSubmitted: { fields in
-                                handleSubmission(fields: fields)
+                            session: session,
+                            onSubmitted: { payload in
+                                handleSubmission(payload: payload)
                             }
                         )
                         .ignoresSafeArea(edges: .bottom)
@@ -155,7 +185,7 @@ struct ApplyDrawerView: View {
         )
     }
 
-    private func handleSubmission(fields: [String: String]) {
+    private func handleSubmission(payload: CapturedSubmission) {
         submittedSuccessfully = true
         Task {
             let eid: String?
@@ -164,21 +194,25 @@ struct ApplyDrawerView: View {
             } else {
                 eid = await logEvent(type: "submitted", applicationId: nil)
             }
-            if let eid, !fields.isEmpty {
-                await storeFields(eventId: eid, fields: fields)
+            if let eid, (!payload.shortFields.isEmpty || !payload.essays.isEmpty) {
+                try? await service.storeApplicationFields(
+                    eventID: eid,
+                    shortFields: payload.shortFields,
+                    essays: payload.essays,
+                    session: session
+                )
             }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             isPresented = false
         }
     }
+}
 
-    private func storeFields(eventId: String, fields: [String: String]) async {
-        try? await service.storeApplicationFields(
-            eventID: eventId,
-            fields: fields,
-            session: session
-        )
-    }
+// MARK: - Capture payload from WebView
+
+struct CapturedSubmission {
+    var shortFields: [ApplicationShortField]
+    var essays: [ApplicationEssay]
 }
 
 // MARK: - ApplyWebView (UIViewRepresentable)
@@ -186,40 +220,32 @@ struct ApplyDrawerView: View {
 struct ApplyWebView: UIViewRepresentable {
     let url: URL
     let prefill: PrefillResponse?
-    let onSubmitted: ([String: String]) -> Void
+    let session: AuthSession
+    let onSubmitted: (CapturedSubmission) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSubmitted: onSubmitted)
+        Coordinator(session: session, onSubmitted: onSubmitted)
     }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "formSubmitted")
-        config.userContentController.add(context.coordinator, name: "fieldCaptured")
+        config.userContentController.add(context.coordinator, name: "essayQuestionsFound")
+        config.userContentController.add(context.coordinator, name: "spaNavigation")
 
-        if let prefill {
-            let script = WKUserScript(
-                source: buildPrefillJS(prefill: prefill),
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
-            )
-            config.userContentController.addUserScript(script)
-
-            // MutationObserver for SPA re-renders
-            let spaScript = WKUserScript(
-                source: buildSPAObserverJS(prefill: prefill),
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
-            )
-            config.userContentController.addUserScript(spaScript)
-        }
+        let prefillJS = buildPrefillJS(prefill: prefill)
+        config.userContentController.addUserScript(
+            WKUserScript(source: prefillJS, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        )
+        config.userContentController.addUserScript(
+            WKUserScript(source: spaObserverJS, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        )
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
-        if let prefill {
-            context.coordinator.prefillJS = buildPrefillJS(prefill: prefill)
-        }
+        context.coordinator.prefillJS = prefillJS
+        context.coordinator.webView = webView
         webView.load(URLRequest(url: url))
         return webView
     }
@@ -228,113 +254,221 @@ struct ApplyWebView: UIViewRepresentable {
 
     // MARK: - JS builders
 
-    private func buildPrefillJS(prefill: PrefillResponse) -> String {
+    private func buildPrefillJS(prefill: PrefillResponse?) -> String {
         let encoder = JSONEncoder()
-        guard let profileData = try? encoder.encode(prefill.profile),
-              let profileJSON = String(data: profileData, encoding: .utf8) else { return "" }
+        let canonicalMap: [String: String] = {
+            var out = prefill?.canonical ?? [:]
+            // Hydrate from the legacy `profile` bundle for older backends.
+            if let p = prefill?.profile {
+                if out["first_name"]    == nil, !p.firstName.isEmpty    { out["first_name"]    = p.firstName }
+                if out["last_name"]     == nil, !p.lastName.isEmpty     { out["last_name"]     = p.lastName }
+                if out["full_name"]     == nil, !p.fullName.isEmpty     { out["full_name"]     = p.fullName }
+                if out["email"]         == nil, !p.email.isEmpty        { out["email"]         = p.email }
+                if out["phone"]         == nil, !p.phone.isEmpty        { out["phone"]         = p.phone }
+                if out["city"]          == nil, !p.city.isEmpty         { out["city"]          = p.city }
+                if out["linkedin_url"]  == nil, !p.linkedInUrl.isEmpty  { out["linkedin_url"]  = p.linkedInUrl }
+                if out["github_url"]    == nil, !p.githubUrl.isEmpty    { out["github_url"]    = p.githubUrl }
+                if out["portfolio_url"] == nil, !p.portfolioUrl.isEmpty { out["portfolio_url"] = p.portfolioUrl }
+            }
+            return out
+        }()
+        let rawHistory = prefill?.rawHistory ?? prefill?.fieldHistory ?? [:]
 
-        let historyEntries = prefill.fieldHistory.map { k, v in
-            "\"\(k.replacingOccurrences(of: "\"", with: "\\\""))\": \"\(v.replacingOccurrences(of: "\"", with: "\\\""))\""
-        }.joined(separator: ", ")
-        let historyJSON = "{\(historyEntries)}"
+        let canonicalJSON = (try? encoder.encode(canonicalMap)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let historyJSON   = (try? encoder.encode(rawHistory)).flatMap   { String(data: $0, encoding: .utf8) } ?? "{}"
 
         return """
         (function() {
-          var profile = \(profileJSON);
-          var history = \(historyJSON);
+          if (window.__jobtokAutofillInstalled) return;
+          window.__jobtokAutofillInstalled = true;
 
-          function fillInput(el, value) {
-            if (!el || !value) return;
-            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') ||
-                               Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
-            if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, value);
+          var canonical = \(canonicalJSON);
+          var rawHistory = \(historyJSON);
+
+          // Each canonical key has a set of label patterns it answers to.
+          // Kept short on purpose — the broader ATS-specific selectors live
+          // server-side in _shared/profile_fields.ts heuristics.
+          var CANON_PATTERNS = {
+            first_name:       ['first name','given name'],
+            last_name:        ['last name','surname','family name'],
+            full_name:        ['full name','your name','name'],
+            email:            ['email'],
+            phone:            ['phone','mobile','cell'],
+            city:             ['city','town'],
+            state:            ['state','province','region'],
+            country:          ['country'],
+            postal_code:      ['zip','postal'],
+            linkedin_url:     ['linkedin'],
+            github_url:       ['github'],
+            portfolio_url:    ['portfolio'],
+            personal_website: ['website','personal site'],
+            twitter_url:      ['twitter','x handle','x profile'],
+            current_title:    ['current title','job title','current job title'],
+            current_company:  ['current employer','current company','employer'],
+            years_experience: ['years of experience','experience (years)'],
+            highest_degree:   ['highest level of education','highest degree','degree'],
+            school:           ['school','university','college','institution'],
+            graduation_year:  ['graduation year','grad year'],
+            field_of_study:   ['major','field of study','concentration'],
+            work_authorization: ['work authorization','authorized to work','work eligibility'],
+            requires_sponsorship: ['sponsorship','visa sponsorship'],
+            salary_expectation: ['salary expectation','desired salary','compensation expectation'],
+            available_start_date: ['start date','available to start'],
+            preferred_location: ['preferred location','where would you like to work'],
+            willing_to_relocate: ['relocate','relocation'],
+            remote_preference: ['remote','work from home'],
+            pronouns:         ['pronouns'],
+            referral_source:  ['referred by','referral source'],
+            how_did_you_hear: ['how did you hear','how do you hear']
+          };
+
+          function nativeSet(el, value) {
+            if (!el || value == null || value === '') return;
+            var proto = el instanceof HTMLTextAreaElement
+              ? window.HTMLTextAreaElement.prototype
+              : window.HTMLInputElement.prototype;
+            var setter = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (setter && setter.set) setter.set.call(el, value);
             else el.value = value;
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
           }
 
-          function findByLabel(text) {
-            var lower = text.toLowerCase();
-            var labels = document.querySelectorAll('label');
-            for (var i = 0; i < labels.length; i++) {
-              var l = labels[i];
-              if (l.textContent.toLowerCase().indexOf(lower) !== -1) {
-                var forEl = l.htmlFor ? document.getElementById(l.htmlFor) : null;
-                return forEl || l.querySelector('input, textarea');
-              }
+          function labelFor(el) {
+            if (!el) return '';
+            if (el.id) {
+              var l = document.querySelector('label[for="' + el.id + '"]');
+              if (l && l.textContent) return l.textContent.trim();
             }
-            // aria-label fallback
-            var inputs = document.querySelectorAll('input[aria-label], textarea[aria-label]');
-            for (var j = 0; j < inputs.length; j++) {
-              if ((inputs[j].getAttribute('aria-label') || '').toLowerCase().indexOf(lower) !== -1) {
-                return inputs[j];
-              }
-            }
-            // placeholder fallback
-            var ph = document.querySelectorAll('input[placeholder], textarea[placeholder]');
-            for (var k = 0; k < ph.length; k++) {
-              if ((ph[k].getAttribute('placeholder') || '').toLowerCase().indexOf(lower) !== -1) {
-                return ph[k];
-              }
-            }
-            return null;
+            var parentLabel = el.closest('label');
+            if (parentLabel && parentLabel.textContent) return parentLabel.textContent.trim();
+            return (el.getAttribute('aria-label') || el.placeholder || el.name || '').trim();
           }
 
-          // Standard field mappings (label keyword -> profile value)
-          var mappings = [
-            ['first name', profile.firstName],
-            ['last name', profile.lastName],
-            ['full name', profile.fullName],
-            ['your name', profile.fullName],
-            ['email', profile.email],
-            ['phone', profile.phone],
-            ['city', profile.city],
-            ['location', profile.city],
-            ['linkedin', profile.linkedInUrl],
-            ['github', profile.githubUrl],
-            ['portfolio', profile.portfolioUrl],
-            ['website', profile.portfolioUrl],
-          ];
-
-          mappings.forEach(function(m) {
-            fillInput(findByLabel(m[0]), m[1]);
-          });
-
-          // Historical field values from previous applications
-          Object.keys(history).forEach(function(label) {
-            var el = findByLabel(label);
-            if (el && !el.value) fillInput(el, history[label]);
-          });
-
-          // Capture form submission
-          function labelFor(input) {
-            if (input.id) {
-              var l = document.querySelector('label[for="' + input.id + '"]');
-              if (l) return l.textContent.trim();
-            }
-            var p = input.closest('label');
-            if (p) return p.textContent.trim();
-            return input.getAttribute('aria-label') || input.placeholder || input.name || null;
+          function isFillable(el) {
+            if (!el) return false;
+            if (el.disabled || el.readOnly) return false;
+            if (el.type === 'password' || el.type === 'hidden' || el.type === 'file' ||
+                el.type === 'submit' || el.type === 'button') return false;
+            return true;
           }
 
-          document.addEventListener('submit', function() {
-            var fields = {};
-            document.querySelectorAll('input, textarea, select').forEach(function(el) {
-              var lbl = labelFor(el);
-              if (lbl && el.value && el.type !== 'password' && el.type !== 'hidden') {
-                fields[lbl] = el.value;
+          function matchesPattern(label, patterns) {
+            var lower = label.toLowerCase();
+            for (var i = 0; i < patterns.length; i++) {
+              if (lower.indexOf(patterns[i]) !== -1) return true;
+            }
+            return false;
+          }
+
+          function runPrefill() {
+            var inputs = document.querySelectorAll('input, textarea, select');
+            inputs.forEach(function(el) {
+              if (!isFillable(el)) return;
+              if (el.value && el.value.trim().length > 0) return;  // user already typed
+              var label = labelFor(el);
+              if (!label) return;
+
+              // 1. Canonical match wins — survives ATS swaps.
+              for (var key in CANON_PATTERNS) {
+                if (matchesPattern(label, CANON_PATTERNS[key]) && canonical[key]) {
+                  nativeSet(el, canonical[key]);
+                  return;
+                }
+              }
+              // 2. Verbatim raw-label match for repeat visits to the same ATS.
+              if (rawHistory[label]) {
+                nativeSet(el, rawHistory[label]);
+                return;
               }
             });
-            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.formSubmitted) {
-              window.webkit.messageHandlers.formSubmitted.postMessage({ fields: fields, url: window.location.href });
+
+            // Report textarea-style questions back to native so it can fetch
+            // similarity matches and prefill them via fillEssayMatch(...).
+            var essayQuestions = [];
+            document.querySelectorAll('textarea').forEach(function(ta) {
+              if (!isFillable(ta) || (ta.value && ta.value.trim().length > 0)) return;
+              var label = labelFor(ta);
+              if (label && label.length > 8) {
+                essayQuestions.push({
+                  question: label,
+                  selector: cssPath(ta)
+                });
+              }
+            });
+            if (essayQuestions.length > 0 &&
+                window.webkit && window.webkit.messageHandlers.essayQuestionsFound) {
+              window.webkit.messageHandlers.essayQuestionsFound.postMessage({
+                questions: essayQuestions
+              });
+            }
+          }
+
+          // Native calls this back after match-essay-answer returns. We don't
+          // overwrite if the user already typed something — the prefill is
+          // a suggestion, not an assertion.
+          window.fillEssayMatch = function(selector, value) {
+            try {
+              var el = document.querySelector(selector);
+              if (el && isFillable(el) && (!el.value || el.value.trim() === '')) {
+                nativeSet(el, value);
+              }
+            } catch (e) { /* swallow — bad selector shouldn't crash the page */ }
+          };
+
+          // Stable enough CSS path for our purposes: tag + id + nth-of-type chain.
+          function cssPath(el) {
+            if (!(el instanceof Element)) return '';
+            var path = [];
+            while (el && el.nodeType === 1 && path.length < 6) {
+              var sel = el.nodeName.toLowerCase();
+              if (el.id) { sel += '#' + el.id; path.unshift(sel); break; }
+              var sibling = el, nth = 1;
+              while ((sibling = sibling.previousElementSibling) != null) {
+                if (sibling.nodeName.toLowerCase() === el.nodeName.toLowerCase()) nth++;
+              }
+              sel += ':nth-of-type(' + nth + ')';
+              path.unshift(sel);
+              el = el.parentElement;
+            }
+            return path.join(' > ');
+          }
+
+          // Capture-on-submit: split textareas (essays) from inputs (short fields).
+          document.addEventListener('submit', function() {
+            var shortFields = [];
+            var essays = [];
+            document.querySelectorAll('input, textarea, select').forEach(function(el) {
+              if (!isFillable(el)) return;
+              var value = (el.value || '').trim();
+              if (!value) return;
+              var label = labelFor(el);
+              if (!label) return;
+              if (el.tagName === 'TEXTAREA' && value.length >= 200) {
+                essays.push({ question: label, answer: value });
+              } else {
+                shortFields.push({ label: label, value: value });
+              }
+            });
+            if (window.webkit && window.webkit.messageHandlers.formSubmitted) {
+              window.webkit.messageHandlers.formSubmitted.postMessage({
+                shortFields: shortFields,
+                essays: essays,
+                url: window.location.href
+              });
             }
           }, true);
+
+          // Initial pass; the SPA observer re-triggers it after route changes.
+          runPrefill();
+          window.__jobtokRunPrefill = runPrefill;
         })();
         """
     }
 
-    private func buildSPAObserverJS(prefill: PrefillResponse) -> String {
-        // Throttled observer: notify native when URL changes (SPA navigation) so WKWebView can re-inject
+    private var spaObserverJS: String {
+        // Watch for SPA-style route changes (Workday, Lever) and re-run prefill
+        // after the new form mounts. Throttled to avoid hammering on every DOM tick.
         return """
         (function() {
           var lastUrl = location.href;
@@ -344,8 +478,11 @@ struct ApplyWebView: UIViewRepresentable {
               lastUrl = location.href;
               clearTimeout(timer);
               timer = setTimeout(function() {
-                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fieldCaptured) {
-                  window.webkit.messageHandlers.fieldCaptured.postMessage({ spaNavigation: true, url: location.href });
+                if (typeof window.__jobtokRunPrefill === 'function') {
+                  window.__jobtokRunPrefill();
+                }
+                if (window.webkit && window.webkit.messageHandlers.spaNavigation) {
+                  window.webkit.messageHandlers.spaNavigation.postMessage({ url: location.href });
                 }
               }, 600);
             }
@@ -358,28 +495,79 @@ struct ApplyWebView: UIViewRepresentable {
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        let onSubmitted: ([String: String]) -> Void
+        let session: AuthSession
+        let onSubmitted: (CapturedSubmission) -> Void
         var prefillJS: String = ""
+        weak var webView: WKWebView?
         private var hasReportedSubmission = false
+        // Same question on the same form shouldn't trigger N round-trips per
+        // SPA tick. Keyed by selector+question.
+        private var essayLookupsInFlight = Set<String>()
 
-        init(onSubmitted: @escaping ([String: String]) -> Void) {
+        init(session: AuthSession, onSubmitted: @escaping (CapturedSubmission) -> Void) {
+            self.session = session
             self.onSubmitted = onSubmitted
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "formSubmitted" {
+            switch message.name {
+            case "formSubmitted":
                 guard !hasReportedSubmission else { return }
                 hasReportedSubmission = true
                 let body = message.body as? [String: Any]
-                let fields = body?["fields"] as? [String: String] ?? [:]
-                DispatchQueue.main.async { self.onSubmitted(fields) }
-            } else if message.name == "fieldCaptured" {
-                // SPA navigation detected — re-run prefill in current webView
+                let shorts = (body?["shortFields"] as? [[String: String]] ?? []).compactMap { dict -> ApplicationShortField? in
+                    guard let label = dict["label"], let value = dict["value"] else { return nil }
+                    return ApplicationShortField(label: label, value: value)
+                }
+                let essays = (body?["essays"] as? [[String: String]] ?? []).compactMap { dict -> ApplicationEssay? in
+                    guard let q = dict["question"], let a = dict["answer"] else { return nil }
+                    return ApplicationEssay(question: q, answer: a)
+                }
+                DispatchQueue.main.async {
+                    self.onSubmitted(CapturedSubmission(shortFields: shorts, essays: essays))
+                }
+
+            case "essayQuestionsFound":
                 let body = message.body as? [String: Any]
-                guard (body?["spaNavigation"] as? Bool) == true else { return }
-                // The message handler doesn't have direct access to the webView here;
-                // re-injection happens via webView(_:didFinish:) after SPA pushState
+                let questions = body?["questions"] as? [[String: String]] ?? []
+                for q in questions {
+                    guard let question = q["question"], let selector = q["selector"] else { continue }
+                    let key = "\(selector)|\(question)"
+                    if essayLookupsInFlight.contains(key) { continue }
+                    essayLookupsInFlight.insert(key)
+                    Task { [weak self] in
+                        await self?.lookupEssay(question: question, selector: selector)
+                    }
+                }
+
+            case "spaNavigation":
+                // Prefill already re-ran via window.__jobtokRunPrefill; nothing
+                // else to do here.
+                return
+
+            default:
+                return
             }
+        }
+
+        private func lookupEssay(question: String, selector: String) async {
+            let match = try? await SupabaseService.shared.matchEssayAnswer(question: question, session: session)
+            guard let match else { return }
+            let escapedSelector = jsString(selector)
+            let escapedValue = jsString(match.answer)
+            let js = "window.fillEssayMatch && window.fillEssayMatch(\(escapedSelector), \(escapedValue));"
+            await MainActor.run {
+                self.webView?.evaluateJavaScript(js, completionHandler: nil)
+            }
+        }
+
+        private func jsString(_ s: String) -> String {
+            let escaped = s
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "\\r")
+            return "\"\(escaped)\""
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -387,8 +575,14 @@ struct ApplyWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard !prefillJS.isEmpty else { return }
-            webView.evaluateJavaScript(prefillJS, completionHandler: nil)
+            // The @atDocumentEnd user script already injected prefill code; no
+            // need to re-evaluate prefillJS here (would risk double-install).
+            // We do trigger a re-run in case the page mutated between
+            // document-end and load completion.
+            webView.evaluateJavaScript(
+                "window.__jobtokRunPrefill && window.__jobtokRunPrefill();",
+                completionHandler: nil
+            )
         }
     }
 }
