@@ -38,6 +38,10 @@
 		A10000010000000000000031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
 		A100000100000000000E0031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
 		A2D918232FD8BC580087EF97 /* JobTokShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AB0000010000000000000001 /* ModelsDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000001 /* ModelsDecodingTests.swift */; };
+		AB0000010000000000000002 /* SharedFormattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000002 /* SharedFormattersTests.swift */; };
+		AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */; };
+		AB0000010000000000000004 /* CarouselThemesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000004 /* CarouselThemesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +51,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = A2D918182FD8BC580087EF97;
 			remoteInfo = JobTokShareExtension;
+		};
+		AD00000100000000000000A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = JobTok;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -98,6 +109,11 @@
 		A20000010000000000000031 /* SharedConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedConstants.swift; sourceTree = "<group>"; };
 		A20000010000000000000020 /* JobTok.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JobTok.entitlements; sourceTree = "<group>"; };
 		A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobTokShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0000010000000000000001 /* ModelsDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsDecodingTests.swift; sourceTree = "<group>"; };
+		AC0000010000000000000002 /* SharedFormattersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedFormattersTests.swift; sourceTree = "<group>"; };
+		AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseErrorMappingTests.swift; sourceTree = "<group>"; };
+		AC0000010000000000000004 /* CarouselThemesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselThemesTests.swift; sourceTree = "<group>"; };
+		AC0000010000000000A00001 /* JobTokTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JobTokTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -129,6 +145,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD00000100000000000000C2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -136,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				A40000010000000000000001 /* JobTok */,
+				AD00000100000000000000B1 /* JobTokTests */,
 				A2D9181A2FD8BC580087EF97 /* JobTokShareExtension */,
 				A40000010000000000000002 /* Products */,
 			);
@@ -184,8 +208,20 @@
 			children = (
 				A20000000000000000000000 /* JobTok.app */,
 				A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */,
+				AC0000010000000000A00001 /* JobTokTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AD00000100000000000000B1 /* JobTokTests */ = {
+			isa = PBXGroup;
+			children = (
+				AC0000010000000000000001 /* ModelsDecodingTests.swift */,
+				AC0000010000000000000002 /* SharedFormattersTests.swift */,
+				AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */,
+				AC0000010000000000000004 /* CarouselThemesTests.swift */,
+			);
+			path = JobTokTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -232,6 +268,23 @@
 			productReference = A20000000000000000000000 /* JobTok.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AE00000100000000000000D1 /* JobTokTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF00000100000000000000E3 /* Build configuration list for PBXNativeTarget "JobTokTests" */;
+			buildPhases = (
+				AD00000100000000000000C1 /* Sources */,
+				AD00000100000000000000C2 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AD00000100000000000000A2 /* PBXTargetDependency */,
+			);
+			name = JobTokTests;
+			productName = JobTokTests;
+			productReference = AC0000010000000000A00001 /* JobTokTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -247,6 +300,10 @@
 					};
 					A50000010000000000000001 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					AE00000100000000000000D1 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = A50000010000000000000001;
 					};
 				};
 			};
@@ -265,6 +322,7 @@
 			targets = (
 				A50000010000000000000001 /* JobTok */,
 				A2D918182FD8BC580087EF97 /* JobTokShareExtension */,
+				AE00000100000000000000D1 /* JobTokTests */,
 			);
 		};
 /* End PBXProject section */
@@ -331,6 +389,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD00000100000000000000C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB0000010000000000000001 /* ModelsDecodingTests.swift in Sources */,
+				AB0000010000000000000002 /* SharedFormattersTests.swift in Sources */,
+				AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */,
+				AB0000010000000000000004 /* CarouselThemesTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -338,6 +407,11 @@
 			isa = PBXTargetDependency;
 			target = A2D918182FD8BC580087EF97 /* JobTokShareExtension */;
 			targetProxy = A2D918212FD8BC580087EF97 /* PBXContainerItemProxy */;
+		};
+		AD00000100000000000000A2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* JobTok */;
+			targetProxy = AD00000100000000000000A1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -417,6 +491,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 42AKPHSLM9;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = JobTok/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = JobTok;
@@ -498,6 +573,42 @@
 			};
 			name = Release;
 		};
+		AF00000100000000000000E1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jobtok.jobtok.JobTokTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JobTok.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JobTok";
+			};
+			name = Debug;
+		};
+		AF00000100000000000000E2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jobtok.jobtok.JobTokTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JobTok.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JobTok";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -524,6 +635,15 @@
 			buildConfigurations = (
 				A80000010000000000000003 /* Debug */,
 				A80000010000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF00000100000000000000E3 /* Build configuration list for PBXNativeTarget "JobTokTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF00000100000000000000E1 /* Debug */,
+				AF00000100000000000000E2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
