@@ -12,6 +12,7 @@
 // more company metadata than Getro per row. Pagination is via the opaque
 // `meta.sequence` cursor returned by the API.
 
+import { postJSON } from "../http.ts";
 import type {
   AdapterInput,
   AdapterResult,
@@ -107,7 +108,7 @@ export async function considerAdapter(input: AdapterInput): Promise<AdapterResul
 
     let payload: ConsiderResponse;
     try {
-      payload = await postJSON<ConsiderResponse>(url, body);
+      payload = await postJSON<ConsiderResponse>(url, body, FETCH_TIMEOUT_MS);
     } catch (error) {
       throw new Error(`Consider fetch failed for ${fund.slug} page ${page}: ${(error as Error).message}`);
     }
@@ -194,25 +195,6 @@ function pickPostedAt(job: ConsiderJob): string | null {
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
-async function postJSON<T>(url: string, body: unknown): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`HTTP ${response.status} for ${url}: ${text.slice(0, 200)}`);
-    }
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 function stripTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;

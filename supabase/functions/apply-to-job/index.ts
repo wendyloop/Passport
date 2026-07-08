@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
+import { escapeHtml, sendEmail } from "../_shared/email.ts";
 
 type ApplyRequest = {
   jobId?: string;
@@ -8,22 +9,11 @@ type ApplyRequest = {
   socialLink?: string;
 };
 
-const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
-const fromEmail = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "JobTok <applications@jobtok.app>";
 // INSTAGRAM MESSAGING API (DM on apply) — disabled until Meta app review is complete.
 // To enable: set INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_BUSINESS_ACCOUNT_ID in Supabase edge function secrets,
 // then uncomment sendInstagramDM, the isInstagramReel routing block, and the canApply change in iOS.
 // const instagramAccessToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
 // const instagramAccountId = Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ?? "";
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function normalizedSocialPayload(rawValue?: string | null) {
   const trimmed = rawValue?.trim();
@@ -84,13 +74,6 @@ async function sendEmployerEmail(params: {
   instagramUsername?: string | null;
   tiktokUsername?: string | null;
 }) {
-  if (!resendApiKey) {
-    return {
-      status: "skipped",
-      error: "Missing RESEND_API_KEY in Supabase Edge Function secrets.",
-    };
-  }
-
   const previousEmployers = params.previousEmployers.length
     ? params.previousEmployers.join(", ")
     : "Not provided";
@@ -139,30 +122,12 @@ async function sendEmployerEmail(params: {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [params.to],
-      subject: `New applicant: ${params.candidateName} for ${params.jobTitle}`,
-      text,
-      html,
-    }),
+  return await sendEmail({
+    to: params.to,
+    subject: `New applicant: ${params.candidateName} for ${params.jobTitle}`,
+    text,
+    html,
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    return {
-      status: "failed",
-      error: body || `Resend request failed with status ${response.status}.`,
-    };
-  }
-
-  return { status: "sent", error: null };
 }
 
 // async function sendInstagramDM(params: {

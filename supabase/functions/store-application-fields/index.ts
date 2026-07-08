@@ -14,6 +14,7 @@
 // fields write, because the autofill UX degrades gracefully without essays.
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { canonLabel, matchCanonical } from "../_shared/profile_fields.ts";
 import { embedText, normalizeQuestion, toPgVector } from "../_shared/openai_embeddings.ts";
@@ -193,11 +194,4 @@ function splitInputs(body: RequestBody): { shortFields: ShortField[]; essays: Es
     }
   }
   return { shortFields, essays };
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }

@@ -20,10 +20,11 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient } from "../_shared/client.ts";
 import { pickTheme } from "../_shared/themes.ts";
+import { jsonError, jsonResponse } from "../_shared/http.ts";
+import { requireCronSecret } from "../_shared/cron_auth.ts";
+import { callStructured } from "../_shared/openai.ts";
 
-const PITCH_CRON_SECRET = Deno.env.get("PITCH_CRON_SECRET") ?? "";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
-const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini";
 
 const RUN_BUDGET_MS = 50_000;
 const MAX_PER_RUN = 30;
@@ -107,14 +108,8 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Fail closed: an unset secret must never leave the endpoint open.
-  const providedSecret = request.headers.get("x-pitch-cron-secret");
-  if (!PITCH_CRON_SECRET || providedSecret !== PITCH_CRON_SECRET) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const unauthorized = requireCronSecret(request);
+  if (unauthorized) return unauthorized;
 
   const body: RequestBody = await request.json().catch(() => ({}));
   const admin = createAdminClient();
@@ -404,59 +399,25 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     job_description: job.description,
   });
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
+  const parsed = await callStructured<LLMContent>({
+    systemPrompt,
+    userPrompt,
+    schemaName: "carousel_content",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["hook", "company_blurb", "responsibilities", "requirements", "perks"],
+      properties: {
+        hook: { type: "string", maxLength: 70 },
+        company_blurb: { type: "string", maxLength: 120 },
+        responsibilities: { type: "array", maxItems: 4, items: { type: "string", maxLength: 70 } },
+        requirements: { type: "array", maxItems: 4, items: { type: "string", maxLength: 60 } },
+        perks: { type: "array", maxItems: 3, items: { type: "string", maxLength: 50 } },
       },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: [
-          { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
-          { role: "user", content: [{ type: "input_text", text: userPrompt }] },
-        ],
-        max_output_tokens: 500,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "carousel_content",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              required: ["hook", "company_blurb", "responsibilities", "requirements", "perks"],
-              properties: {
-                hook: { type: "string", maxLength: 70 },
-                company_blurb: { type: "string", maxLength: 120 },
-                responsibilities: { type: "array", maxItems: 4, items: { type: "string", maxLength: 70 } },
-                requirements: { type: "array", maxItems: 4, items: { type: "string", maxLength: 60 } },
-                perks: { type: "array", maxItems: 3, items: { type: "string", maxLength: 50 } },
-              },
-            },
-          },
-        },
-      }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OpenAI HTTP ${response.status}: ${text.slice(0, 200)}`);
-  }
-
-  const payload = await response.json();
-  const outputText = extractOutputText(payload);
-  if (!outputText) throw new Error("OpenAI returned no output_text");
-
-  const parsed = JSON.parse(outputText) as LLMContent;
+    },
+    maxOutputTokens: 500,
+    timeoutMs: OPENAI_TIMEOUT_MS,
+  });
   return {
     hook: (parsed.hook ?? "").trim(),
     company_blurb: (parsed.company_blurb ?? "").trim(),
@@ -464,36 +425,4 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     requirements: (parsed.requirements ?? []).map((s) => s.trim()).filter(Boolean),
     perks: (parsed.perks ?? []).map((s) => s.trim()).filter(Boolean),
   };
-}
-
-function extractOutputText(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const p = payload as Record<string, unknown>;
-  if (typeof p.output_text === "string" && p.output_text.trim()) return p.output_text;
-  const output = Array.isArray(p.output) ? p.output : [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const content = (item as Record<string, unknown>).content;
-    if (!Array.isArray(content)) continue;
-    for (const c of content) {
-      if (c && typeof c === "object" && typeof (c as Record<string, unknown>).text === "string") {
-        const text = ((c as Record<string, unknown>).text as string).trim();
-        if (text) return text;
-      }
-    }
-  }
-  return null;
-}
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
-function jsonError(message: string, status = 500) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }

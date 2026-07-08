@@ -23,8 +23,8 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient } from "../_shared/client.ts";
 import { getAdapter } from "../_shared/ats/adapters/index.ts";
 import type { ATSType, NormalizedJob } from "../_shared/ats/models.ts";
-
-const PITCH_CRON_SECRET = Deno.env.get("PITCH_CRON_SECRET") ?? "";
+import { jsonError, jsonResponse } from "../_shared/http.ts";
+import { requireCronSecret } from "../_shared/cron_auth.ts";
 
 const RUN_BUDGET_MS = 50_000;
 // Each company costs one ATS list-fetch (often hundreds of HTML JD bodies in
@@ -60,14 +60,8 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Fail closed: an unset secret must never leave the endpoint open.
-  const providedSecret = request.headers.get("x-pitch-cron-secret");
-  if (!PITCH_CRON_SECRET || providedSecret !== PITCH_CRON_SECRET) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const unauthorized = requireCronSecret(request);
+  if (unauthorized) return unauthorized;
 
   const body: RequestBody = await request.json().catch(() => ({}));
   const admin = createAdminClient();
@@ -218,15 +212,3 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((acc, item) => acc + pick(item), 0);
 }
 
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
-function jsonError(message: string, status = 500) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}

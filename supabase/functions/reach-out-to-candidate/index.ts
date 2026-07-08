@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
+import { escapeHtml, sendEmail } from "../_shared/email.ts";
 
 type OutreachRequest = {
   candidateId?: string;
@@ -7,18 +8,6 @@ type OutreachRequest = {
   subject?: string;
   message?: string;
 };
-
-const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
-const fromEmail = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "JobTok <applications@jobtok.app>";
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 async function sendCandidateEmail(params: {
   to: string;
@@ -29,13 +18,6 @@ async function sendCandidateEmail(params: {
   message: string;
   relatedJobTitle?: string | null;
 }) {
-  if (!resendApiKey) {
-    return {
-      status: "skipped",
-      error: "Missing RESEND_API_KEY in Supabase Edge Function secrets.",
-    };
-  }
-
   const intro = params.relatedJobTitle
     ? `${params.employerName} from ${params.companyName} reached out about ${params.relatedJobTitle}.`
     : `${params.employerName} from ${params.companyName} reached out through JobTok.`;
@@ -59,31 +41,12 @@ async function sendCandidateEmail(params: {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [params.to],
-      subject: params.subject,
-      text,
-      html,
-      reply_to: [fromEmail],
-    }),
+  return await sendEmail({
+    to: params.to,
+    subject: params.subject,
+    text,
+    html,
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    return {
-      status: "failed",
-      error: body || `Resend request failed with status ${response.status}.`,
-    };
-  }
-
-  return { status: "sent", error: null };
 }
 
 Deno.serve(async (request) => {
