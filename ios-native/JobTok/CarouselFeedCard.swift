@@ -7,6 +7,10 @@ import SwiftUI
 
 private let slideAutoAdvanceSeconds: TimeInterval = 3.0
 
+// TODO(deferred): snapshot/UI test coverage for this feed card (and the
+// FounderEmailSheet compose flow). Needs an external snapshot lib
+// (swift-snapshot-testing via SPM) + baseline images; the JobTokTests target
+// is the foundation to add it onto. Effort: medium. See docs/DEFERRED_WORK.md.
 struct CarouselFeedCard: View {
     let job: JobPostingRecord
     let carousel: Carousel

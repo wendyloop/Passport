@@ -21,6 +21,15 @@ const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
 const DEFAULT_WEEKLY_LIMIT = 5;
 const MAX_NOTE_CHARS = 400;
 
+// TODO(deferred): Founder-email v2.
+//  - Email verification: validate guessed addresses with a vendor
+//    (Hunter/NeverBounce) BEFORE sending, instead of relying only on the
+//    Resend bounce webhook after the fact.
+//  - Per-company weekly cap: today the limit is per-candidate; add a cap so
+//    N candidates don't all email the same founder in the same week.
+//  Ship v1 and learn from real reply/bounce rates first. Effort: medium.
+//  See docs/DEFERRED_WORK.md.
+
 type RequestBody = {
   jobId?: string;
   mode?: "preview" | "send";

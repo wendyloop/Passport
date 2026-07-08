@@ -284,6 +284,10 @@ struct JobTokVideoStudio: View {
     }
 }
 
+// TODO(deferred): This employer job-creation workflow lives inside the
+// 2,300-line VideoStudio.swift and belongs with the employer refactor —
+// extract it into its own file when EmployerHomeView is refactored.
+// See docs/DEFERRED_WORK.md.
 struct JobTokEmployerRoleWorkflow: View {
     let profile: EmployerProfileDraft
     let accountEmail: String

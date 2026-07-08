@@ -1,5 +1,10 @@
 import Foundation
 
+// TODO(deferred): CandidateStore split. This store still holds all three
+// roles' ~20 @Published props, which feed NativeRootView's per-role closures.
+// Splitting candidate state into its own ObservableObject means rewiring those
+// closures, so do it alongside the employer/admin view refactor. Effort:
+// medium. See docs/DEFERRED_WORK.md.
 @MainActor
 final class AppSessionStore: ObservableObject {
     enum Phase {

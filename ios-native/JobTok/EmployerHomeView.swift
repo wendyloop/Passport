@@ -1,5 +1,10 @@
 import SwiftUI
 
+// TODO(deferred): Employer view refactor. ~1,340-line God-view with the same
+// smell the candidate side had before its split. Same treatment: extract
+// sheets/rows into their own files and move direct networking behind the
+// service layer (mirror the JobSeekerHomeView / SupabaseService split).
+// Off the candidate path, so deferred. Effort: large. See docs/DEFERRED_WORK.md.
 struct EmployerHomeView: View {
     let profile: EmployerProfileDraft
     let accountEmail: String

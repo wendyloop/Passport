@@ -93,6 +93,10 @@ export async function getroAdapter(input: AdapterInput): Promise<AdapterResult> 
 
     let payload: GetroSearchResponse;
     try {
+      // TODO(deferred): use _shared/ats/http.ts fetchWithRetry instead of the
+      // plain postJSON — it adds 5xx/429 backoff. Board crawl is cron and
+      // resumes from its cursor next run, so transient failures are cheap;
+      // low priority. Effort: small. See docs/DEFERRED_WORK.md.
       payload = await postJSON<GetroSearchResponse>(url, { hitsPerPage: HITS_PER_PAGE, page }, FETCH_TIMEOUT_MS);
     } catch (error) {
       throw new Error(`Getro fetch failed for ${fund.slug} page ${page}: ${(error as Error).message}`);

@@ -1,5 +1,9 @@
 import SwiftUI
 
+// TODO(deferred): Admin view refactor (~600 lines). Same treatment as the
+// employer/candidate views — extract subviews, route networking through the
+// service layer. Do it alongside the employer refactor. Effort: medium/large.
+// See docs/DEFERRED_WORK.md.
 struct AdminHomeView: View {
     let jobs: [JobPostingRecord]
     let employers: [EmployerDirectoryItem]

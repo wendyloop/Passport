@@ -382,6 +382,11 @@ Deno.serve(async (request) => {
     const adminClient = createAdminClient();
 
     // Load existing source URLs for deduplication
+    // TODO(deferred): N+1 / unbounded load. This pulls every jobs.source_url
+    // into memory per run and (below) inserts scraped rows one at a time.
+    // Fix: scope the existence check to this batch's URLs with .in(...) and
+    // bulk-insert. Admin scrape pipeline (cron), not user-facing, so deferred.
+    // Effort: small/medium. See docs/DEFERRED_WORK.md.
     const { data: existing } = await adminClient.from("jobs").select("source_url").not("source_url", "is", null);
     const existingURLs = new Set((existing ?? []).map((j) => j.source_url as string));
 

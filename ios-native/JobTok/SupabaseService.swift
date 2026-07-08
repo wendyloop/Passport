@@ -2,6 +2,11 @@ import Foundation
 
 /// Shared + employer/admin backend calls. Auth lives in AuthService and the
 /// candidate domain in CandidateService; all three share one transport.
+// TODO(deferred): Full DI. Services are reached via SupabaseService.shared;
+// only ApplyDrawerView/FounderEmailSheet take an injected CandidateService.
+// Protocol-extract each service and inject through the view tree so they're
+// mockable in tests. Big diff for a test-only payoff today — revisit when
+// service-level (networking) tests are wanted. See docs/DEFERRED_WORK.md.
 final class SupabaseService {
     static let shared = SupabaseService()
 
