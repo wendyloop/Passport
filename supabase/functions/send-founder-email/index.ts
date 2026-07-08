@@ -17,7 +17,7 @@ import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { escapeHtml, sendEmail } from "../_shared/email.ts";
 
 const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
-  "scout22 <intro@tryscount22.com>";
+  "scout22 <intro@tryscout22.com>";
 const DEFAULT_WEEKLY_LIMIT = 5;
 const MAX_NOTE_CHARS = 400;
 
