@@ -1371,13 +1371,6 @@ struct JobSeekerHomeView: View {
         onUploadVideo(composedVideo.url, composedVideo.duration)
     }
 
-    private func formattedDuration(_ duration: Double) -> String {
-        let totalSeconds = Int(duration.rounded())
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
     private func formattedImportDate(_ date: Date?) -> String {
         guard let date else { return "just now" }
         let formatter = DateFormatter()
@@ -1550,30 +1543,8 @@ private struct JobFeedCard: View {
             .clipShape(Capsule())
     }
 
-    private var compensationText: String? {
-        if job.compensationMinAnnual != nil || job.compensationMaxAnnual != nil {
-            return formattedCompensation(min: job.compensationMinAnnual, max: job.compensationMaxAnnual, suffix: "")
-        }
-        if job.compensationMinHourly != nil || job.compensationMaxHourly != nil {
-            return formattedCompensation(min: job.compensationMinHourly, max: job.compensationMaxHourly, suffix: "/hr")
-        }
-        return nil
-    }
+    private var compensationText: String? { job.compensationSummary }
 
-    private func formattedCompensation(min: Int?, max: Int?, suffix: String) -> String? {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 0
-        let minimum = min.flatMap { formatter.string(from: NSNumber(value: $0)) }
-        let maximum = max.flatMap { formatter.string(from: NSNumber(value: $0)) }
-        switch (minimum, maximum) {
-        case let (min?, max?): return "\(min) – \(max)\(suffix)"
-        case let (min?, nil): return "From \(min)\(suffix)"
-        case let (nil, max?): return "Up to \(max)\(suffix)"
-        case (nil, nil): return nil
-        }
-    }
 }
 
 private struct ApplySheet: View {
@@ -1870,7 +1841,7 @@ private struct CandidateProfileEditor: View {
                             validationMessage = "Full name can only be changed once every 7 days."
                             return
                         }
-                        let trimmedHandle = normalizedHandle(profile.handle)
+                        let trimmedHandle = SharedFormatters.profileHandle(profile.handle)
                         if !trimmedHandle.isEmpty && trimmedHandle.count < 3 {
                             validationMessage = "Handle must be at least 3 characters."
                             return
@@ -1958,7 +1929,7 @@ private struct CandidateProfileEditor: View {
 
             TextField("mayachen", text: Binding(
                 get: { profile.handle },
-                set: { profile.handle = normalizedHandle($0) }
+                set: { profile.handle = SharedFormatters.profileHandle($0) }
             ))
                 .textFieldStyle(PassportTextFieldStyle())
                 .focused($focusedField, equals: .handle)
@@ -2199,12 +2170,6 @@ private struct CandidateProfileEditor: View {
         return "Again \(formatter.localizedString(for: nextAllowedDate, relativeTo: .now))"
     }
 
-    private func normalizedHandle(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9_]", with: "", options: .regularExpression)
-    }
 
     private func normalizedSocialUsername(_ value: String) -> String {
         value
@@ -2406,38 +2371,8 @@ private struct SavedJobCard: View {
         .jobTokCard(cornerRadius: 24)
     }
 
-    private var compensationText: String? {
-        if job.compensationMinAnnual != nil || job.compensationMaxAnnual != nil {
-            return formattedCompensation(min: job.compensationMinAnnual, max: job.compensationMaxAnnual, suffix: "")
-        }
+    private var compensationText: String? { job.compensationSummary }
 
-        if job.compensationMinHourly != nil || job.compensationMaxHourly != nil {
-            return formattedCompensation(min: job.compensationMinHourly, max: job.compensationMaxHourly, suffix: "/hr")
-        }
-
-        return nil
-    }
-
-    private func formattedCompensation(min: Int?, max: Int?, suffix: String) -> String? {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 0
-
-        let minimum = min.flatMap { formatter.string(from: NSNumber(value: $0)) }
-        let maximum = max.flatMap { formatter.string(from: NSNumber(value: $0)) }
-
-        switch (minimum, maximum) {
-        case let (min?, max?):
-            return "\(min) - \(max)\(suffix)"
-        case let (min?, nil):
-            return "From \(min)\(suffix)"
-        case let (nil, max?):
-            return "Up to \(max)\(suffix)"
-        case (nil, nil):
-            return nil
-        }
-    }
 }
 
 private struct PreviewURL: Identifiable {

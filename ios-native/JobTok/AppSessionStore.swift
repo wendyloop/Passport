@@ -35,6 +35,8 @@ final class AppSessionStore: ObservableObject {
     @Published var isBusy = false
 
     private let service = SupabaseService.shared
+    private var auth: AuthService { service.auth }
+    private var candidate: CandidateService { service.candidate }
     private let defaults = UserDefaults.standard
     private let sessionKey = "jobtok.supabase.session"
     private let sharedDefaults = UserDefaults(suiteName: "group.com.jobtok.shared")
@@ -117,7 +119,7 @@ final class AppSessionStore: ObservableObject {
         if let savedSession = loadPersistedSession() {
             session = savedSession
             do {
-                self.session = try await service.ensureValidSession(savedSession)
+                self.session = try await auth.ensureValidSession(savedSession)
                 try persistSessionIfNeeded()
                 try await loadCurrentUserState()
             } catch {
@@ -132,7 +134,7 @@ final class AppSessionStore: ObservableObject {
 
     func signUp(email: String, password: String) async {
         await runBusyTask { [self] in
-            let session = try await service.signUp(email: email, password: password)
+            let session = try await auth.signUp(email: email, password: password)
             self.session = session
             try persistSessionIfNeeded()
             try await loadCurrentUserState()
@@ -141,22 +143,19 @@ final class AppSessionStore: ObservableObject {
 
     func signIn(email: String, password: String) async {
         await runBusyTask { [self] in
-            print("DEBUG signIn: calling service.signIn")
             let session: AuthSession
             do {
-                session = try await service.signIn(email: email, password: password)
-                print("DEBUG signIn: auth OK, user=\(session.user.id)")
+                session = try await auth.signIn(email: email, password: password)
             } catch {
-                print("DEBUG signIn: AUTH FAILED \(error)")
+                AppLog.session.error("Sign-in auth failed: \(String(describing: error))")
                 throw error
             }
             self.session = session
             try persistSessionIfNeeded()
             do {
                 try await loadCurrentUserState()
-                print("DEBUG signIn: loadCurrentUserState OK")
             } catch {
-                print("DEBUG signIn: loadCurrentUserState FAILED \(error)")
+                AppLog.session.error("Post-sign-in state load failed: \(String(describing: error))")
                 throw error
             }
         }
@@ -164,7 +163,7 @@ final class AppSessionStore: ObservableObject {
 
     func signOut() async {
         if let session {
-            await service.signOut(session: session)
+            await auth.signOut(session: session)
         }
         clearSession()
         phase = .signedOut
@@ -181,7 +180,7 @@ final class AppSessionStore: ObservableObject {
 
     func handleAuthRedirect(url: URL) async {
         await runBusyTask { [self] in
-            let session = try await service.session(fromAuthRedirectURL: url)
+            let session = try await auth.session(fromAuthRedirectURL: url)
             self.session = session
             try persistSessionIfNeeded()
             try await loadCurrentUserState()
@@ -189,7 +188,7 @@ final class AppSessionStore: ObservableObject {
     }
 
     func oauthAuthorizationURL(provider: SocialAuthProvider, redirectTo: URL) throws -> URL {
-        try service.oauthAuthorizationURL(provider: provider, redirectTo: redirectTo)
+        try auth.oauthAuthorizationURL(provider: provider, redirectTo: redirectTo)
     }
 
     func completeOnboarding(
@@ -239,7 +238,7 @@ final class AppSessionStore: ObservableObject {
                         session: session
                     )
                     uploadedVideoPublicURL = result.publicURL
-                    try await service.insertCandidateVideo(
+                    try await candidate.insertCandidateVideo(
                         userID: userID,
                         publicURL: result.publicURL,
                         durationSeconds: introVideoDuration.map { Int($0.rounded()) },
@@ -247,7 +246,7 @@ final class AppSessionStore: ObservableObject {
                     )
                 }
 
-                try await service.upsertJobSeekerProfile(
+                try await candidate.upsertJobSeekerProfile(
                     userID: userID,
                     schoolName: schoolName,
                     jobFunction: jobFunction,
@@ -261,7 +260,7 @@ final class AppSessionStore: ObservableObject {
                     visibility: .appliedRolesOnly,
                     session: session
                 )
-                try await service.replaceJobSeekerEmployers(userID: userID, employers: employers, session: session)
+                try await candidate.replaceJobSeekerEmployers(userID: userID, employers: employers, session: session)
 
                 if let resumeURL {
                     try await uploadResumeFile(userID: userID, fileURL: resumeURL, session: session)
@@ -298,7 +297,7 @@ final class AppSessionStore: ObservableObject {
                 onboardingComplete: true,
                 session: session
             )
-            try await service.upsertJobSeekerProfile(
+            try await candidate.upsertJobSeekerProfile(
                 userID: userID,
                 schoolName: draft.school,
                 jobFunction: draft.jobFunction,
@@ -312,7 +311,7 @@ final class AppSessionStore: ObservableObject {
                 visibility: draft.visibility,
                 session: session
             )
-            try await service.replaceJobSeekerEmployers(userID: userID, employers: draft.employers, session: session)
+            try await candidate.replaceJobSeekerEmployers(userID: userID, employers: draft.employers, session: session)
 
             // Phase 2: when candidate discovery is turned on, visibility changes should
             // immediately influence employer browse queries rather than only applied-role access.
@@ -364,14 +363,14 @@ final class AppSessionStore: ObservableObject {
                 contentType: mimeType(for: uploadURL) ?? "video/mp4",
                 session: session
             )
-            try await service.insertCandidateVideo(
+            try await candidate.insertCandidateVideo(
                 userID: userID,
                 publicURL: upload.publicURL,
                 durationSeconds: Int(duration.rounded()),
                 session: session
             )
             let draft = candidateDraft
-            try await service.upsertJobSeekerProfile(
+            try await candidate.upsertJobSeekerProfile(
                 userID: userID,
                 schoolName: draft.school,
                 jobFunction: draft.jobFunction,
@@ -395,9 +394,9 @@ final class AppSessionStore: ObservableObject {
             let userID = try requireUserID()
 
             if savedJobIDs.contains(jobID) {
-                try await service.unsaveJob(userID: userID, jobID: jobID, session: session)
+                try await candidate.unsaveJob(userID: userID, jobID: jobID, session: session)
             } else {
-                try await service.saveJob(userID: userID, jobID: jobID, session: session)
+                try await candidate.saveJob(userID: userID, jobID: jobID, session: session)
             }
 
             try await refreshJobSeekerData()
@@ -455,7 +454,7 @@ final class AppSessionStore: ObservableObject {
     func applyToJob(_ draft: JobApplicationDraft) async {
         await runBusyTask { [self] in
             let session = try await requireSession()
-            _ = try await service.applyToJob(draft: draft, session: session)
+            _ = try await candidate.applyToJob(draft: draft, session: session)
             try await loadCurrentUserState()
         }
     }
@@ -644,16 +643,16 @@ final class AppSessionStore: ObservableObject {
 
     private func loadCurrentUserState() async throws {
         let session = try await requireSession()
-        let validSession = try await service.ensureValidSession(session)
+        let validSession = try await auth.ensureValidSession(session)
         self.session = validSession
         try persistSessionIfNeeded()
 
         let userID = validSession.user.id
         profile = try await service.fetchProfile(userID: userID, session: validSession)
-        jobSeekerProfile = try await service.fetchJobSeekerProfile(userID: userID, session: validSession)
+        jobSeekerProfile = try await candidate.fetchJobSeekerProfile(userID: userID, session: validSession)
         employerProfile = try await service.fetchEmployerProfile(userID: userID, session: validSession)
-        jobSeekerEmployers = try await service.fetchJobSeekerEmployers(userID: userID, session: validSession)
-        latestResume = try await service.fetchLatestResume(userID: userID, session: validSession)
+        jobSeekerEmployers = try await candidate.fetchJobSeekerEmployers(userID: userID, session: validSession)
+        latestResume = try await candidate.fetchLatestResume(userID: userID, session: validSession)
 
         try await loadNotifications()
 
@@ -683,7 +682,7 @@ final class AppSessionStore: ObservableObject {
         let session = try await requireSession()
         let userID = try requireUserID()
         jobFeed = try await service.fetchJobs(publishedOnly: true, session: session)
-        savedJobRecords = try await service.fetchSavedJobs(userID: userID, session: session)
+        savedJobRecords = try await candidate.fetchSavedJobs(userID: userID, session: session)
         candidateApplications = try await service.fetchJobApplications(candidateID: userID, session: session)
     }
 
@@ -733,8 +732,8 @@ final class AppSessionStore: ObservableObject {
             contentType: mimeType(for: fileURL) ?? "application/octet-stream",
             session: session
         )
-        let resumeRow = try await service.insertResumeUpload(userID: userID, filePath: upload.path, session: session)
-        try await service.invokeParseResume(
+        let resumeRow = try await candidate.insertResumeUpload(userID: userID, filePath: upload.path, session: session)
+        try await candidate.invokeParseResume(
             resumeID: resumeRow.id,
             rawText: extractResumeText(from: fileURL),
             session: session
@@ -743,7 +742,7 @@ final class AppSessionStore: ObservableObject {
 
     private func requireSession() async throws -> AuthSession {
         guard let session else { throw SupabaseServiceError.missingSession }
-        let valid = try await service.ensureValidSession(session)
+        let valid = try await auth.ensureValidSession(session)
         if valid.accessToken != session.accessToken {
             self.session = valid
             try persistSessionIfNeeded()
@@ -1009,12 +1008,9 @@ final class AppSessionStore: ObservableObject {
     }
 
 private func normalizedHandle(_ rawValue: String) -> String? {
-        let trimmed = rawValue
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9_]", with: "", options: .regularExpression)
-        guard !trimmed.isEmpty else { return nil }
-        return String(trimmed.prefix(30))
+        let handle = SharedFormatters.profileHandle(rawValue)
+        guard !handle.isEmpty else { return nil }
+        return String(handle.prefix(30))
     }
 }
 
