@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
+import { extractOutputText } from "../_shared/openai.ts";
 
 type ParseRequest = {
   sourceURL?: string;
@@ -606,28 +607,6 @@ function extractionSchema() {
   };
 }
 
-function parseResponseOutputText(payload: Record<string, unknown>) {
-  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
-    return payload.output_text;
-  }
-
-  const output = Array.isArray(payload.output) ? payload.output : [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const content = Array.isArray((item as Record<string, unknown>).content)
-      ? (item as Record<string, unknown>).content as Array<Record<string, unknown>>
-      : [];
-
-    for (const contentItem of content) {
-      if (typeof contentItem?.text === "string" && contentItem.text.trim()) {
-        return contentItem.text;
-      }
-    }
-  }
-
-  return null;
-}
-
 async function extractWithLLM(params: {
   sourceURL: string;
   sourcePlatform: string | null;
@@ -688,7 +667,7 @@ async function extractWithLLM(params: {
   const payload = await response.json().catch(() => null);
   if (!payload || typeof payload !== "object") return null;
 
-  const outputText = parseResponseOutputText(payload as Record<string, unknown>);
+  const outputText = extractOutputText(payload);
   if (!outputText) return null;
 
   try {

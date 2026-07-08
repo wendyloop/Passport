@@ -21,9 +21,10 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { canonLabel, type CanonicalKey } from "../_shared/profile_fields.ts";
+import { jsonResponse } from "../_shared/http.ts";
+import { callStructured } from "../_shared/openai.ts";
 
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
-const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 20_000;
 
 type ParsedResume = {
@@ -64,7 +65,10 @@ type ParsedResume = {
 // Which parsed_json keys flow into candidate_field_history under canon:*.
 // Education/employment arrays and skills stay in parsed_json only — they're
 // structured and don't map to a single ATS input.
-const CANONICAL_FROM_PARSED: CanonicalKey[] = [
+// `as const satisfies` narrows keys to the literals ParsedResume actually
+// has, so parsed[key] stays typed (CanonicalKey also holds non-resume keys
+// like full_name).
+const CANONICAL_FROM_PARSED = [
   "first_name",
   "last_name",
   "email",
@@ -83,7 +87,7 @@ const CANONICAL_FROM_PARSED: CanonicalKey[] = [
   "graduation_year",
   "field_of_study",
   "work_authorization",
-];
+] as const satisfies readonly CanonicalKey[];
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -202,72 +206,13 @@ async function extractWithLLM(rawText: string): Promise<ParsedResume> {
     "education are YYYY-MM or YYYY when month is unknown. is_current is " +
     "true only if the resume explicitly says Present/Current. Return JSON.";
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: [
-          { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
-          { role: "user", content: [{ type: "input_text", text: rawText.slice(0, 24_000) }] },
-        ],
-        max_output_tokens: 1500,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "parsed_resume",
-            strict: true,
-            schema: SCHEMA,
-          },
-        },
-      }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OpenAI HTTP ${response.status}: ${text.slice(0, 200)}`);
-  }
-
-  const payload = await response.json();
-  const outputText = extractOutputText(payload);
-  if (!outputText) throw new Error("OpenAI returned no output_text");
-  return JSON.parse(outputText) as ParsedResume;
-}
-
-function extractOutputText(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const p = payload as Record<string, unknown>;
-  if (typeof p.output_text === "string" && p.output_text.trim()) return p.output_text;
-  const output = Array.isArray(p.output) ? p.output : [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const content = (item as Record<string, unknown>).content;
-    if (!Array.isArray(content)) continue;
-    for (const c of content) {
-      if (c && typeof c === "object" && typeof (c as Record<string, unknown>).text === "string") {
-        const text = ((c as Record<string, unknown>).text as string).trim();
-        if (text) return text;
-      }
-    }
-  }
-  return null;
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  return await callStructured<ParsedResume>({
+    systemPrompt,
+    userPrompt: rawText.slice(0, 24_000),
+    schemaName: "parsed_resume",
+    schema: SCHEMA,
+    maxOutputTokens: 1500,
+    timeoutMs: OPENAI_TIMEOUT_MS,
   });
 }
 

@@ -11,6 +11,7 @@
 //               to the same ATS template.
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { CANON_PREFIX } from "../_shared/profile_fields.ts";
 
@@ -99,11 +100,4 @@ function prefixWithCanon(canonical: Record<string, string>): Record<string, stri
     out[`${CANON_PREFIX}${key}`] = value;
   }
   return out;
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }

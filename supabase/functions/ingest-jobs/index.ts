@@ -31,8 +31,8 @@ import {
 } from "../_shared/ats/classify.ts";
 import type { FundRow } from "../_shared/ats/models.ts";
 import type { BoardCompany, BoardJob } from "../_shared/boards/types.ts";
-
-const PITCH_CRON_SECRET = Deno.env.get("PITCH_CRON_SECRET") ?? "";
+import { jsonError } from "../_shared/http.ts";
+import { requireCronSecret } from "../_shared/cron_auth.ts";
 
 // Total per-run wall-clock. Supabase edge ceiling is 150s; we stay well
 // below to leave headroom for slow pages + the post-loop write phase.
@@ -71,14 +71,8 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Fail closed: an unset secret must never leave the endpoint open.
-  const providedSecret = request.headers.get("x-pitch-cron-secret");
-  if (!PITCH_CRON_SECRET || providedSecret !== PITCH_CRON_SECRET) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const unauthorized = requireCronSecret(request);
+  if (unauthorized) return unauthorized;
 
   const body: RequestBody = await request.json().catch(() => ({}));
   const admin = createAdminClient();
@@ -368,11 +362,4 @@ function toInt(value: number | null): number | null {
 
 function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((acc, item) => acc + pick(item), 0);
-}
-
-function jsonError(message: string, status = 500) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }

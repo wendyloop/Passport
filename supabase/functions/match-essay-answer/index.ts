@@ -8,6 +8,7 @@
 // Cheap: one ~$0.00002 embedding call + one vector index lookup per question.
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { embedText, toPgVector } from "../_shared/openai_embeddings.ts";
 
@@ -76,11 +77,4 @@ Deno.serve(async (request) => {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }
