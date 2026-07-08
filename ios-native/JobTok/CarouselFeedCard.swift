@@ -13,6 +13,7 @@ struct CarouselFeedCard: View {
     let safeAreaBottom: CGFloat
     let isActive: Bool
     let onApply: () -> Void
+    let onEmailFounder: (() -> Void)?
     let onSave: () -> Void
     let isSaved: Bool
 
@@ -87,17 +88,36 @@ struct CarouselFeedCard: View {
 
                     HStack(alignment: .bottom, spacing: 14) {
                         // Left: full-width Apply pill (mirrors JobFeedCard for reels,
-                        // but the action opens the WebView drawer instead of email).
-                        Button(action: onApply) {
-                            Text(job.canApplyViaDrawer ? "Apply Now" : "Apply Unavailable")
-                                .font(.subheadline.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
-                                .background(job.canApplyViaDrawer ? PassportTheme.accent : Color.white.opacity(0.15))
-                                .foregroundStyle(job.canApplyViaDrawer ? .black : .white)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        // but the action opens the WebView drawer instead of email),
+                        // with the founder-intro pill as the secondary path.
+                        VStack(spacing: 8) {
+                            Button(action: onApply) {
+                                Text(job.canApplyViaDrawer ? "Apply Now" : "Apply Unavailable")
+                                    .font(.subheadline.weight(.bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                                    .background(job.canApplyViaDrawer ? PassportTheme.accent : Color.white.opacity(0.15))
+                                    .foregroundStyle(job.canApplyViaDrawer ? .black : .white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .disabled(!job.canApplyViaDrawer)
+
+                            if let onEmailFounder {
+                                Button(action: onEmailFounder) {
+                                    Label("Email the founder", systemImage: "envelope")
+                                        .font(.subheadline.weight(.bold))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .background(Color.white.opacity(0.12))
+                                        .foregroundStyle(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                                        )
+                                }
+                            }
                         }
-                        .disabled(!job.canApplyViaDrawer)
 
                         // Right: action column matching reel cards.
                         VStack(spacing: 18) {

@@ -980,3 +980,43 @@ enum DemoData {
         ),
     ]
 }
+
+// MARK: - Founder email (direct apply path)
+
+struct FounderContactPreview: Codable, Equatable {
+    let id: String
+    let fullName: String?
+    let roleTitle: String?
+    let emailMasked: String
+    let source: String
+    let confidence: Double?
+
+    /// Guessed addresses get an honest badge in the compose UI; verified
+    /// posting emails don't need one.
+    var isGuessedAddress: Bool {
+        source != "posting_email"
+    }
+}
+
+struct FounderEmailPreview: Codable, Equatable {
+    let eligible: Bool
+    let reason: String?          // "pitch_video_required" | "no_contact" | "weekly_limit_reached"
+    let contact: FounderContactPreview?
+    let remaining: Int
+    let limit: Int
+    let subjectPreview: String?
+}
+
+struct FounderOutreachRecord: Codable, Equatable {
+    let id: String
+    let jobId: String?
+    let subject: String
+    let deliveryStatus: String
+    let createdAt: Date
+}
+
+struct FounderEmailSendResult: Codable {
+    let outreach: FounderOutreachRecord
+    let remaining: Int
+    let limit: Int
+}

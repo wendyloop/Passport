@@ -281,6 +281,34 @@ final class CandidateService {
         let envelope = try await transport.execute(request, decode: EssayMatchEnvelope.self)
         return envelope.match
     }
+
+    // MARK: - Founder email
+
+    func previewFounderEmail(jobID: String, session: AuthSession) async throws -> FounderEmailPreview {
+        let request = try transport.makeFunctionRequest(
+            name: "send-founder-email",
+            accessToken: session.accessToken,
+            body: [
+                "jobId": AnyEncodable(jobID),
+                "mode": AnyEncodable("preview"),
+            ]
+        )
+        return try await transport.execute(request, decode: FounderEmailPreview.self)
+    }
+
+    func sendFounderEmail(jobID: String, contactID: String?, note: String?, session: AuthSession) async throws -> FounderEmailSendResult {
+        let request = try transport.makeFunctionRequest(
+            name: "send-founder-email",
+            accessToken: session.accessToken,
+            body: [
+                "jobId": AnyEncodable(jobID),
+                "mode": AnyEncodable("send"),
+                "contactId": AnyEncodable(contactID),
+                "note": AnyEncodable(note?.isEmpty == true ? nil : note),
+            ]
+        )
+        return try await transport.execute(request, decode: FounderEmailSendResult.self)
+    }
 }
 
 private struct JobApplicationEnvelope: Codable {
