@@ -75,6 +75,11 @@ Deno.serve(async (request) => {
     if (error) return jsonError(`Failed to load company: ${error.message}`);
     companies = (data ?? []) as CompanyRow[];
   } else {
+    // TODO(deferred): Founder-email v2 — re-scrape cadence. This is scrape-once
+    // today (the RPC filters on contacts_scraped_at IS NULL), so a company
+    // scraped with zero founders is never retried. Add a staleness window
+    // (re-scrape after N days when no contacts were found). Effort: medium.
+    // See docs/DEFERRED_WORK.md.
     const { data, error } = await admin.rpc("get_companies_needing_contact_scrape", {
       p_limit: MAX_COMPANIES_PER_RUN,
     });
