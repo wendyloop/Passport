@@ -34,6 +34,7 @@ struct JobSeekerHomeView: View {
     @State private var applyDrawerJob: JobPostingRecord?
     @State private var applicationDraft = JobApplicationDraft()
     @State private var easyApplyConfirmation: JobPostingRecord?
+    @State private var founderEmailJob: JobPostingRecord?
     @State private var easyApplySuccess: String?
     @State private var brokenJobIDs: Set<String> = []
     @State private var showingSettingsDrawer = false
@@ -202,6 +203,17 @@ struct JobSeekerHomeView: View {
             )
             .presentationDetents([.height(320)])
         }
+        .sheet(item: $founderEmailJob) { job in
+            if let session {
+                FounderEmailSheet(
+                    job: job,
+                    session: session,
+                    onRecordPitch: { showingVideoStudio = true },
+                    onFallbackApply: { handleApplyTap(for: job) }
+                )
+                .presentationDetents([.large])
+            }
+        }
         .overlay(alignment: .top) {
             if let title = easyApplySuccess {
                 EasyApplySuccessBanner(jobTitle: title)
@@ -360,6 +372,7 @@ struct JobSeekerHomeView: View {
                     safeAreaBottom: safeAreaBottom,
                     isActive: currentJobID == job.id,
                     onApply: { handleApplyTap(for: job) },
+                    onEmailFounder: job.companyID == nil ? nil : { handleEmailFounderTap(for: job) },
                     onSave: { onToggleSavedJob(job.id) },
                     isSaved: savedJobIDs.contains(job.id)
                 )
@@ -372,6 +385,7 @@ struct JobSeekerHomeView: View {
                     isActive: currentJobID == job.id,
                     onToggleSaved: { onToggleSavedJob(job.id) },
                     onApply: { handleApplyTap(for: job) },
+                    onEmailFounder: job.companyID == nil ? nil : { handleEmailFounderTap(for: job) },
                     onBroken: { brokenJobIDs.insert(job.id) }
                 )
             }
@@ -390,6 +404,10 @@ struct JobSeekerHomeView: View {
             applicationDraft = makeApplicationDraft(for: job)
             applyingJob = job
         }
+    }
+
+    private func handleEmailFounderTap(for job: JobPostingRecord) {
+        founderEmailJob = job
     }
 
     private var applicationsView: some View {
@@ -758,7 +776,7 @@ struct JobSeekerHomeView: View {
                         .font(.title3.weight(.bold))
                         .foregroundStyle(PassportTheme.textPrimary)
 
-                    Text("This is the first thing employers should see on your profile.")
+                    Text("This is the first thing employers see — and it unlocks direct founder intros from the feed.")
                         .foregroundStyle(PassportTheme.textSecondary)
 
                     Button {
@@ -1410,6 +1428,7 @@ private struct JobFeedCard: View {
     let isActive: Bool
     let onToggleSaved: () -> Void
     let onApply: () -> Void
+    let onEmailFounder: (() -> Void)?
     let onBroken: () -> Void
 
     @State private var isMuted = false
@@ -1505,6 +1524,22 @@ private struct JobFeedCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .disabled(alreadyApplied || !canApply)
+
+                        if let onEmailFounder {
+                            Button(action: onEmailFounder) {
+                                Label("Email the founder", systemImage: "envelope")
+                                    .font(.subheadline.weight(.bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.white.opacity(0.12))
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                                    )
+                            }
+                        }
                     }
                     .padding(.trailing, 14)
 
