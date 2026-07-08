@@ -1035,7 +1035,7 @@ private struct JobTokAssetThumbnailCell: View {
                 )
 
                 HStack {
-                    Text(formattedDuration(asset.duration))
+                    Text(SharedFormatters.duration(asset.duration))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8)
@@ -1070,10 +1070,6 @@ private struct JobTokAssetThumbnailCell: View {
         }
     }
 
-    private func formattedDuration(_ duration: Double) -> String {
-        let total = Int(duration.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
 }
 
 @MainActor

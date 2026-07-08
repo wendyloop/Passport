@@ -148,25 +148,7 @@ struct NativeRootView: View {
     private var signedInView: some View {
         switch store.role {
         case .jobSeeker:
-            JobSeekerHomeView(
-                profile: store.candidateDraft,
-                jobs: store.jobFeed,
-                savedJobs: store.savedJobs,
-                savedJobIDs: store.savedJobIDs,
-                applications: store.candidateApplications,
-                session: store.session,
-                onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
-                onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
-                onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
-                onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
-                onRequestResumePreview: { try await store.requestResumePreviewURL() },
-                onApply: { draft in Task { await store.applyToJob(draft) } },
-                onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
-                onRefresh: { Task { await store.refreshCurrentRoleData() } },
-                onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } },
-                onDeleteAccount: { Task { await store.deleteAccount() } }
-            )
+            jobSeekerHome()
         case .employer:
             EmployerHomeView(
                 profile: store.employerDraft,
@@ -217,26 +199,31 @@ struct NativeRootView: View {
                 onSignOut: { Task { await store.signOut() } }
             )
         case .none:
-            JobSeekerHomeView(
-                profile: store.candidateDraft,
-                jobs: store.jobFeed,
-                savedJobs: store.savedJobs,
-                savedJobIDs: store.savedJobIDs,
-                applications: store.candidateApplications,
-                session: store.session,
-                onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
-                onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
-                onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
-                onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
-                onRequestResumePreview: { try await store.requestResumePreviewURL() },
-                onApply: { draft in Task { await store.applyToJob(draft) } },
-                onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
-                onRefresh: { Task { await store.refreshCurrentRoleData() } },
-                onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } },
-                onDeleteAccount: { Task { await store.deleteAccount() } }
-            )
+            // Role not yet chosen — default to the candidate experience.
+            jobSeekerHome()
         }
+    }
+
+    private func jobSeekerHome() -> some View {
+        JobSeekerHomeView(
+            profile: store.candidateDraft,
+            jobs: store.jobFeed,
+            savedJobs: store.savedJobs,
+            savedJobIDs: store.savedJobIDs,
+            applications: store.candidateApplications,
+            session: store.session,
+            onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
+            onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
+            onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
+            onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
+            onRequestResumePreview: { try await store.requestResumePreviewURL() },
+            onApply: { draft in Task { await store.applyToJob(draft) } },
+            onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
+            onRefresh: { Task { await store.refreshCurrentRoleData() } },
+            onShowNotifications: { showingNotifications = true },
+            onSignOut: { Task { await store.signOut() } },
+            onDeleteAccount: { Task { await store.deleteAccount() } }
+        )
     }
 
     private var loginMethodSelector: some View {

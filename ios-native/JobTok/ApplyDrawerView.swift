@@ -171,11 +171,11 @@ struct ApplyDrawerView: View {
     }
 
     private func fetchPrefill() async -> PrefillResponse? {
-        try? await service.getPrefillProfile(session: session)
+        try? await service.candidate.getPrefillProfile(session: session)
     }
 
     private func logEvent(type: String, applicationId: String?) async -> String? {
-        try? await service.logApplicationEvent(
+        try? await service.candidate.logApplicationEvent(
             jobID: job.id,
             eventType: type,
             applicationID: applicationId,
@@ -195,7 +195,7 @@ struct ApplyDrawerView: View {
                 eid = await logEvent(type: "submitted", applicationId: nil)
             }
             if let eid, (!payload.shortFields.isEmpty || !payload.essays.isEmpty) {
-                try? await service.storeApplicationFields(
+                try? await service.candidate.storeApplicationFields(
                     eventID: eid,
                     shortFields: payload.shortFields,
                     essays: payload.essays,
@@ -551,7 +551,7 @@ struct ApplyWebView: UIViewRepresentable {
         }
 
         private func lookupEssay(question: String, selector: String) async {
-            let match = try? await SupabaseService.shared.matchEssayAnswer(question: question, session: session)
+            let match = try? await SupabaseService.shared.candidate.matchEssayAnswer(question: question, session: session)
             guard let match else { return }
             let escapedSelector = jsString(selector)
             let escapedValue = jsString(match.answer)
