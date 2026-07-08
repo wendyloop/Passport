@@ -60,8 +60,9 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Fail closed: an unset secret must never leave the endpoint open.
   const providedSecret = request.headers.get("x-pitch-cron-secret");
-  if (PITCH_CRON_SECRET && providedSecret !== PITCH_CRON_SECRET) {
+  if (!PITCH_CRON_SECRET || providedSecret !== PITCH_CRON_SECRET) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -182,13 +183,17 @@ async function enrichCompany(
     if (!match || (!match.description && !match.description_raw)) continue;
 
     // description IS NULL guard makes this a write-once update — concurrent
-    // re-runs cannot overwrite each other.
+    // re-runs cannot overwrite each other. posting_contact_email rides along:
+    // it goes to its own column, NOT application_email, because that column
+    // gates the iOS easy-apply path and extractFirstEmail can surface
+    // unrelated addresses (accessibility@, privacy@) from JD boilerplate.
     const { error, count } = await admin
       .from("jobs")
       .update(
         {
           description: match.description,
           description_raw: match.description_raw,
+          posting_contact_email: match.contact_email_on_posting,
         },
         { count: "exact" },
       )

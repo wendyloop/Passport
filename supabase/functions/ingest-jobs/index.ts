@@ -71,8 +71,9 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Fail closed: an unset secret must never leave the endpoint open.
   const providedSecret = request.headers.get("x-pitch-cron-secret");
-  if (PITCH_CRON_SECRET && providedSecret !== PITCH_CRON_SECRET) {
+  if (!PITCH_CRON_SECRET || providedSecret !== PITCH_CRON_SECRET) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

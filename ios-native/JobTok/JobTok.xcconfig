@@ -1,4 +1,12 @@
-SUPABASE_PROJECT_REF = zqfurscyhmxlvrfendnc
+// Real values live in JobTok.local.xcconfig (gitignored). Copy this file's
+// keys there and fill them in from the Supabase dashboard (Settings → API).
+//
+// Threat model note: the anon key is a public client credential — it ships
+// inside the IPA and Row Level Security is the real enforcement boundary.
+// It is kept out of the repo as hygiene, not as a security boundary.
+SUPABASE_PROJECT_REF = your-project-ref
 SUPABASE_URL = "https:"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnVyc2N5aG14bHZyZmVuZG5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDM5MjMsImV4cCI6MjA5MTY3OTkyM30._F7D1QNtRjxKRQ4Dg7JbDW3cjIUU09JpY7rDHyh7APM"
+SUPABASE_ANON_KEY = "your-anon-key"
 SUPABASE_REDIRECT_SCHEME = jobtok
+
+#include? "JobTok.local.xcconfig"

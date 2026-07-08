@@ -148,13 +148,17 @@ async function startRun(
   input: Record<string, unknown>,
   label: string,
 ): Promise<string> {
+  // Secret travels in a header, not the URL — request URLs are visible in
+  // the Apify console and run logs.
   const webhookURL =
-    `${SUPABASE_URL}/functions/v1/process-apify-results` +
-    `?secret=${APIFY_WEBHOOK_SECRET}&platform=${label}`;
+    `${SUPABASE_URL}/functions/v1/process-apify-results?platform=${label}`;
 
   const webhooksParam = btoa(JSON.stringify([{
     eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED"],
     requestUrl: webhookURL,
+    headersTemplate: JSON.stringify({
+      "x-apify-webhook-secret": APIFY_WEBHOOK_SECRET,
+    }),
   }]));
 
   const response = await fetch(

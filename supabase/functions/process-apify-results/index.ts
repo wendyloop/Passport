@@ -349,7 +349,13 @@ function queryType(raw: string | null): "hashtag" | "keyword" {
 
 Deno.serve(async (request) => {
   const url = new URL(request.url);
-  if (url.searchParams.get("secret") !== APIFY_WEBHOOK_SECRET) {
+  // Header is the current channel; the query param is a transition fallback
+  // for webhooks registered before the header switch (drop once a
+  // post-switch run has landed and the secret is rotated). Fail closed when
+  // the secret is unset.
+  const providedSecret = request.headers.get("x-apify-webhook-secret") ??
+    url.searchParams.get("secret");
+  if (!APIFY_WEBHOOK_SECRET || providedSecret !== APIFY_WEBHOOK_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
 
