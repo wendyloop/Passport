@@ -77,7 +77,7 @@ as $$
       select 1 from public.company_contacts cc
       where cc.company_id = c.id
     )
-  order by c.created_at asc
+  order by c.first_seen_at asc
   limit p_limit;
 $$;
 

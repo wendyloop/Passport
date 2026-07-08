@@ -302,6 +302,16 @@ struct Carousel: Codable, Equatable {
         case content
         case status
     }
+
+    /// Slides this build can actually draw, in display order. Unknown slide
+    /// types (from a newer backend) are dropped.
+    var renderableSlides: [CarouselSlide] {
+        content.filter(\.isRenderable).sorted { $0.order < $1.order }
+    }
+
+    var hasRenderableSlides: Bool {
+        content.contains(where: \.isRenderable)
+    }
 }
 
 enum CarouselStatus: String, Codable {
@@ -317,6 +327,11 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
     case role(RoleSlide)
     case requirements(RequirementsSlide)
     case details(DetailsSlide)
+    // A slide type this build doesn't recognize — e.g. a new layout added by
+    // a newer backend. It decodes successfully (so the surrounding carousel
+    // survives) but is skipped at render time. This keeps a single new slide
+    // type from dropping the whole job out of an old client's feed.
+    case unknown(order: Int)
 
     var id: Int { order }
 
@@ -327,7 +342,13 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
         case .role(let s):          return s.order
         case .requirements(let s):  return s.order
         case .details(let s):       return s.order
+        case .unknown(let order):   return order
         }
+    }
+
+    var isRenderable: Bool {
+        if case .unknown = self { return false }
+        return true
     }
 
     private enum DiscriminatorKey: String, CodingKey {
@@ -345,11 +366,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
         case "requirements":  self = .requirements(try RequirementsSlide(from: decoder))
         case "details":       self = .details(try DetailsSlide(from: decoder))
         default:
-            throw DecodingError.dataCorruptedError(
-                forKey: .type,
-                in: c,
-                debugDescription: "Unknown carousel slide type: \(type)"
-            )
+            self = .unknown(order: (try? c.decode(Int.self, forKey: .order)) ?? 0)
         }
     }
 

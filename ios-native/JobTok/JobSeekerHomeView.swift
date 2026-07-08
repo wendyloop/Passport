@@ -125,9 +125,11 @@ struct JobSeekerHomeView: View {
             }()
 
             let payMatches = selectedPayFilter.matches(job)
-            // Carousel-backed rows (ATS + board) without a generated carousel
-            // have nothing to render — hide them until generate-carousel picks them up.
-            let renderable = !job.sourceKind.rendersCarousel || job.carousel != nil
+            // Carousel-backed rows (ATS + board) need at least one slide this
+            // build can draw. No carousel yet (generate-carousel hasn't run) or
+            // a carousel made entirely of unknown slide types → nothing to
+            // render, so hide it.
+            let renderable = !job.sourceKind.rendersCarousel || (job.carousel?.hasRenderableSlides ?? false)
             return renderable && !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
         }
     }
