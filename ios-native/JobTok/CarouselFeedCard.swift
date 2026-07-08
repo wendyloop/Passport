@@ -23,7 +23,7 @@ struct CarouselFeedCard: View {
     private var theme: CarouselTheme { CarouselTheme.resolve(carousel.themeId) }
 
     private var slides: [CarouselSlide] {
-        carousel.content.sorted { $0.order < $1.order }
+        carousel.renderableSlides
     }
 
     var body: some View {
@@ -163,6 +163,9 @@ private struct SlideView: View {
         case .role(let s):          BulletSlideView(title: "The Role", bullets: s.bullets, theme: theme)
         case .requirements(let s):  BulletSlideView(title: "What You Bring", bullets: s.bullets, theme: theme)
         case .details(let s):       DetailsSlideView(slide: s, theme: theme, job: job)
+        // Filtered out of `slides` before we get here; render nothing if one
+        // ever reaches this view.
+        case .unknown:              EmptyView()
         }
     }
 }

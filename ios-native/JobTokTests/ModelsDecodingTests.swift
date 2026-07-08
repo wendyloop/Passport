@@ -65,11 +65,32 @@ final class ModelsDecodingTests: XCTestCase {
         XCTAssertEqual(job.sourceKind, .employerPost)
     }
 
-    // The job-level decode deliberately swallows a malformed carousel
-    // (try? in the hand-written init) so one bad slide can't take down the
-    // entire feed response — the job survives with carousel == nil.
-    func testUnknownSlideTypeDropsCarouselButKeepsJob() throws {
-        let badSlide = """
+    // A slide type this build doesn't recognize is skipped, but the known
+    // slides around it still render and the job stays in the feed — a new
+    // backend slide type must not drop the job from an old client.
+    func testUnknownSlideTypeIsSkippedButKnownSlidesRender() throws {
+        let mixed = """
+        {
+            "theme_id": "slate-gradient",
+            "slide_count": 2,
+            "status": "generated",
+            "content": [
+                {"type": "cover", "order": 1, "hook": "Build the feed", "role": "iOS Engineer", "company": "Acme", "location": "NYC"},
+                {"type": "hologram", "order": 2}
+            ]
+        }
+        """
+        let job = try decoder.decode(JobPostingRecord.self, from: baseJobJSON(carousel: mixed))
+        XCTAssertNotNil(job.carousel)
+        XCTAssertEqual(job.carousel?.content.count, 2)          // both decoded
+        XCTAssertEqual(job.carousel?.renderableSlides.count, 1) // unknown dropped
+        XCTAssertEqual(job.carousel?.hasRenderableSlides, true)
+    }
+
+    // A carousel made entirely of unknown slides has nothing to draw, so the
+    // feed filter treats it like a missing carousel (hasRenderableSlides false).
+    func testAllUnknownSlidesLeaveNothingRenderable() throws {
+        let allUnknown = """
         {
             "theme_id": "slate-gradient",
             "slide_count": 1,
@@ -77,15 +98,18 @@ final class ModelsDecodingTests: XCTestCase {
             "content": [{"type": "hologram", "order": 1}]
         }
         """
-        let job = try decoder.decode(JobPostingRecord.self, from: baseJobJSON(carousel: badSlide))
-        XCTAssertNil(job.carousel)
-        XCTAssertEqual(job.id, "job-1")
+        let job = try decoder.decode(JobPostingRecord.self, from: baseJobJSON(carousel: allUnknown))
+        XCTAssertNotNil(job.carousel)
+        XCTAssertEqual(job.carousel?.hasRenderableSlides, false)
     }
 
-    // The slide enum itself is strict — unknown discriminators throw.
-    func testUnknownSlideTypeThrowsAtSlideLevel() {
-        let json = #"[{"type": "hologram", "order": 1}]"#.data(using: .utf8)!
-        XCTAssertThrowsError(try decoder.decode([CarouselSlide].self, from: json))
+    // Unknown discriminators decode to .unknown rather than throwing.
+    func testUnknownSlideTypeDecodesToUnknownCase() throws {
+        let json = #"[{"type": "hologram", "order": 3}]"#.data(using: .utf8)!
+        let slides = try decoder.decode([CarouselSlide].self, from: json)
+        XCTAssertEqual(slides.count, 1)
+        XCTAssertFalse(slides[0].isRenderable)
+        XCTAssertEqual(slides[0].order, 3)
     }
 
     func testFounderEmailPreviewDecodes() throws {
