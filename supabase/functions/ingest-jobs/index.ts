@@ -33,6 +33,7 @@ import type { FundRow } from "../_shared/ats/models.ts";
 import type { BoardCompany, BoardJob } from "../_shared/boards/types.ts";
 import { jsonError } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
+import { classifyTitle } from "../_shared/title_classify.ts";
 
 // Total per-run wall-clock. Supabase edge ceiling is 150s; we stay well
 // below to leave headroom for slow pages + the post-loop write phase.
@@ -303,6 +304,7 @@ function buildJobRows(
       title: job.title,
       location: job.location,
       employment_type: normalizeEmploymentType(job.employment_type),
+      job_function: classifyTitle(job.title),
       compensation_text: job.compensation_text,
       compensation_min_annual: toInt(job.compensation.min_annual),
       compensation_max_annual: toInt(job.compensation.max_annual),

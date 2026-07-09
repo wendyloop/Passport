@@ -391,3 +391,20 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # `supabase functions deploy resend-webhook --no-verify-jwt` to match.
 [functions.resend-webhook]
 verify_jwt = false
+
+# Cron-invoked functions authenticate via the x-pitch-cron-secret header
+# (fail-closed in _shared/cron_auth.ts), not a user JWT — pg_net calls carry
+# no Authorization header. A plain `supabase functions deploy` on 2026-07-08
+# re-enabled gateway JWT verification and every cron call 401'd; these
+# entries make deploys keep verification off.
+[functions.ingest-jobs]
+verify_jwt = false
+
+[functions.enrich-descriptions]
+verify_jwt = false
+
+[functions.generate-carousel]
+verify_jwt = false
+
+[functions.enrich-company-contacts]
+verify_jwt = false
