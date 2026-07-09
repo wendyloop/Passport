@@ -39,6 +39,25 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertEqual(SharedFormatters.duration(59.6), "1:00")
     }
 
+    func testFounderFatigueBuckets() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func job(touch: String?) throws -> JobPostingRecord {
+            let touchJSON = touch.map { "\"\($0)\"" } ?? "null"
+            let json = """
+            {"id": "j", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z",
+             "last_founder_touch_at": \(touchJSON)}
+            """.data(using: .utf8)!
+            return try decoder.decode(JobPostingRecord.self, from: json)
+        }
+        let now = ISO8601DateFormatter().date(from: "2026-07-08T15:00:00Z")!
+        XCTAssertEqual(try job(touch: nil).founderFatigueBucket(now: now), 0)
+        XCTAssertEqual(try job(touch: "2026-07-08T09:00:00Z").founderFatigueBucket(now: now), 2)
+        XCTAssertEqual(try job(touch: "2026-07-05T09:00:00Z").founderFatigueBucket(now: now), 1)
+        XCTAssertEqual(try job(touch: "2026-06-20T09:00:00Z").founderFatigueBucket(now: now), 0)
+    }
+
     func testCompensationSummaryPrefersAnnual() throws {
         let json = """
         {

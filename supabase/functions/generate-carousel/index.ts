@@ -97,6 +97,7 @@ type Slide =
     }
   | { type: "role"; order: number; bullets: string[] }
   | { type: "requirements"; order: number; bullets: string[] }
+  | { type: "perks"; order: number; bullets: string[] }
   | {
       type: "details";
       order: number;
@@ -349,6 +350,12 @@ function assembleSlides(
     slides.push({ type: "requirements", order: slides.length + 1, bullets: content.requirements });
   }
 
+  // Perks were extracted by the LLM all along but never emitted. Old app
+  // builds decode this as an unknown slide and skip it safely.
+  if (content.perks.length > 0) {
+    slides.push({ type: "perks", order: slides.length + 1, bullets: content.perks });
+  }
+
   // Always emit the details slide — the schema requires a 3-slide minimum
   // (cover + about_company + details). When all three sub-fields are missing
   // the slide still renders as a "Tap to apply" footer.
@@ -387,6 +394,11 @@ async function computeSourceHash(
   fundName: string | null,
 ): Promise<string> {
   const payload = JSON.stringify({
+    // Format version: bump to force regeneration of every carousel when the
+    // slide structure changes (v2 = perks slide). Regen drains at
+    // MAX_PER_RUN/day via cron; invoke the function manually in a loop to
+    // drain faster after deploying a bump.
+    v: 2,
     t: job.title,
     d: job.description,
     l: job.location,

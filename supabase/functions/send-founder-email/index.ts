@@ -208,6 +208,14 @@ Deno.serve(async (request) => {
       metadata: { outreach_id: outreachId, job_id: job.id },
     });
 
+    // FIRST-100-USERS: stamp the job so the feed deprioritizes it — spread
+    // intros across founders instead of piling onto one job. See
+    // 20260708140000_founder_fatigue.sql.
+    await admin
+      .from("jobs")
+      .update({ last_founder_touch_at: new Date().toISOString() })
+      .eq("id", job.id);
+
     return jsonResponse({
       outreach: {
         id: outreachId,

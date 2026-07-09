@@ -6,6 +6,16 @@ import Foundation
 // in behavior per call site.
 
 extension JobPostingRecord {
+    /// FIRST-100-USERS founder-fatigue rank: 0 = untouched, 1 = a founder
+    /// was reached earlier this week (soft demote), 2 = reached today (hard
+    /// demote). Feed sorts ascending bucket, newest-first within a bucket.
+    func founderFatigueBucket(now: Date) -> Int {
+        guard let touched = lastFounderTouchAt else { return 0 }
+        if Calendar.current.isDate(touched, inSameDayAs: now) { return 2 }
+        if touched > now.addingTimeInterval(-7 * 24 * 3600) { return 1 }
+        return 0
+    }
+
     /// "$120,000 – $150,000" / "From $30/hr" / nil when no compensation set.
     var compensationSummary: String? {
         if compensationMinAnnual != nil || compensationMaxAnnual != nil {

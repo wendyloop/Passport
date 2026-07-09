@@ -326,6 +326,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
     case aboutCompany(AboutCompanySlide)
     case role(RoleSlide)
     case requirements(RequirementsSlide)
+    case perks(PerksSlide)
     case details(DetailsSlide)
     // A slide type this build doesn't recognize — e.g. a new layout added by
     // a newer backend. It decodes successfully (so the surrounding carousel
@@ -341,6 +342,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
         case .aboutCompany(let s):  return s.order
         case .role(let s):          return s.order
         case .requirements(let s):  return s.order
+        case .perks(let s):         return s.order
         case .details(let s):       return s.order
         case .unknown(let order):   return order
         }
@@ -364,6 +366,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
         case "about_company": self = .aboutCompany(try AboutCompanySlide(from: decoder))
         case "role":          self = .role(try RoleSlide(from: decoder))
         case "requirements":  self = .requirements(try RequirementsSlide(from: decoder))
+        case "perks":         self = .perks(try PerksSlide(from: decoder))
         case "details":       self = .details(try DetailsSlide(from: decoder))
         default:
             self = .unknown(order: (try? c.decode(Int.self, forKey: .order)) ?? 0)
@@ -381,6 +384,8 @@ struct CoverSlide: Codable, Equatable {
     let role: String?
     let company: String?
     let location: String?
+    // The backend has always sent this; the client just never decoded it.
+    let compensation: String?
 }
 
 struct AboutCompanySlide: Codable, Equatable {
@@ -403,6 +408,11 @@ struct RoleSlide: Codable, Equatable {
 }
 
 struct RequirementsSlide: Codable, Equatable {
+    let order: Int
+    let bullets: [String]
+}
+
+struct PerksSlide: Codable, Equatable {
     let order: Int
     let bullets: [String]
 }
@@ -457,6 +467,10 @@ struct JobPostingRecord: Codable, Identifiable {
     // PostgREST-embedded carousel row (only present for ATS rows that have
     // been processed by generate-carousel).
     let carousel: Carousel?
+    // FIRST-100-USERS: stamped by the backend when a founder email or a
+    // video application lands on this job; the feed demotes touched jobs so
+    // early applications spread across companies. See founder_fatigue migration.
+    let lastFounderTouchAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -492,6 +506,7 @@ struct JobPostingRecord: Codable, Identifiable {
         case sourceAts = "source_ats"
         case applyFlow = "apply_flow"
         case companyID = "company_id"
+        case lastFounderTouchAt = "last_founder_touch_at"
         case company
         case carousel
     }
@@ -535,6 +550,7 @@ extension JobPostingRecord {
         sourceAts                 = try c.decodeIfPresent(String.self,              forKey: .sourceAts)
         applyFlow                 = try c.decodeIfPresent(String.self,              forKey: .applyFlow)
         companyID                 = try c.decodeIfPresent(String.self,              forKey: .companyID)
+        lastFounderTouchAt        = try c.decodeIfPresent(Date.self,                forKey: .lastFounderTouchAt)
         company                   = try c.decodeIfPresent(CompanyRef.self,          forKey: .company)
         // PostgREST may embed a one-to-one FK as either a single object or a
         // single-element array depending on whether it detects the unique
@@ -886,7 +902,8 @@ enum DemoData {
             applyFlow: nil,
             companyID: nil,
             company: nil,
-            carousel: nil
+            carousel: nil,
+            lastFounderTouchAt: nil
         ),
         JobPostingRecord(
             id: "demo-job-2",
@@ -923,7 +940,8 @@ enum DemoData {
             applyFlow: nil,
             companyID: nil,
             company: nil,
-            carousel: nil
+            carousel: nil,
+            lastFounderTouchAt: nil
         ),
     ]
 }

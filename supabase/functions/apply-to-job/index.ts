@@ -321,6 +321,17 @@ Deno.serve(async (request) => {
       throw insertError;
     }
 
+    // FIRST-100-USERS: a video application lands in a founder's inbox like a
+    // founder email does, so stamp the job for feed deprioritization — spread
+    // applications across companies while the user base is tiny. See
+    // 20260708140000_founder_fatigue.sql.
+    if (resolvedVideoURL) {
+      await adminClient
+        .from("jobs")
+        .update({ last_founder_touch_at: new Date().toISOString() })
+        .eq("id", job.id);
+    }
+
     const signedResume = await adminClient.storage
       .from("resumes")
       .createSignedUrl(resumeRecord.file_path, 60 * 60 * 24 * 7);
