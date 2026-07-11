@@ -176,7 +176,7 @@ final class SupabaseService {
             async let videos: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage),carousel:carousels(theme_id,slide_count,content,status)"),
                     ("is_published", "eq.true"),
                     ("is_active", "eq.true"),
                     ("source_kind", "in.(reel,employer_post)"),
@@ -188,7 +188,7 @@ final class SupabaseService {
             async let carousels: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url),carousel:carousels!inner(theme_id,slide_count,content,status)"),
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage),carousel:carousels!inner(theme_id,slide_count,content,status)"),
                     ("is_published", "eq.true"),
                     ("is_active", "eq.true"),
                     ("source_kind", "in.(ats,board)"),
@@ -199,28 +199,37 @@ final class SupabaseService {
                 session: session
             )
             let merged = try await videos + carousels
-            // TODO(deferred): Feature backlog D2 + D5 — boost comp-listed
-            // jobs (30-44% better conversion per research) and add saved/
-            // applied job_function affinity ranking. Slot both into this
-            // sort. See docs/DEFERRED_WORK.md (Feature backlog).
-            // FIRST-100-USERS founder-fatigue sort: jobs whose founder was
-            // already reached today (video application or founder email) sink
-            // below everything untouched; jobs touched earlier this week are
-            // demoted slightly less (below untouched, above today's). Keeps
-            // early applications spread across companies instead of piling
-            // onto whatever's newest. Revisit once volume justifies real
-            // ranking. See migration 20260708140000_founder_fatigue.sql.
+            // TODO(deferred): Feature backlog D5 — add saved/applied
+            // job_function affinity ranking (For-You v0) as the next tier.
+            // See docs/DEFERRED_WORK.md.
+            //
+            // Feed ranking tiers, most important first:
+            //  1. FIRST-100-USERS founder-fatigue: founder reached today →
+            //     bottom; this week → slightly less demoted. Spreads early
+            //     applications across companies; revisit at volume
+            //     (migration 20260708140000).
+            //  2. F8 big-company demotion: 1000+/acquired/IPO rank below
+            //     startups — the product promise is startup jobs.
+            //  3. F3 comp transparency: salary-listed jobs first (they
+            //     convert 30-44% better per LinkedIn/SHRM research).
+            //  4. Freshness.
             let now = Date()
+            func rank(_ job: JobPostingRecord) -> (Int, Int, Int) {
+                (
+                    job.founderFatigueBucket(now: now),
+                    job.isBigCompany ? 1 : 0,
+                    job.compensationSummary == nil ? 1 : 0
+                )
+            }
             return merged.sorted { a, b in
-                let bucketA = a.founderFatigueBucket(now: now)
-                let bucketB = b.founderFatigueBucket(now: now)
-                if bucketA != bucketB { return bucketA < bucketB }
+                let ra = rank(a), rb = rank(b)
+                if ra != rb { return ra < rb }
                 return a.createdAt > b.createdAt
             }
         }
 
         var query: [(String, String)] = [
-            ("select", "*,company:companies(id,name,domain,logo_url),carousel:carousels(theme_id,slide_count,content,status)"),
+            ("select", "*,company:companies(id,name,domain,logo_url,stage),carousel:carousels(theme_id,slide_count,content,status)"),
             ("order", "created_at.desc")
         ]
         if let employerID {

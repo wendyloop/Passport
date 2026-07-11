@@ -28,13 +28,9 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
 | F1 | Social visual language for carousels: sticker chips w/ rotation, caption-highlight text blocks, doodle accents, cascade-in bullets, "swipe →" affordance | carousel v3 plan (backlog C); anchor `CarouselFeedCard.swift` | M | — |
-| F2 | Early-career + remote feed filter chips (surface `experience_level` / `work_mode`; decode on `JobPostingRecord`) | 2026-07-09 analysis (backlog D1); anchor `JobSeekerHomeView.swift` | S–M | columns ✅ (v3); data fills as carousel drain runs |
-| F3 | Comp-listed ranking boost (jobs with salary rank above those without; +30-44% conversion per research) | analysis (backlog D2); anchor `SupabaseService.swift` | S | — |
 | F4 | Startup-stage "founder-reachable" toggle (pre-seed→series B, ~3.4k jobs) | analysis (backlog D3); anchor `JobSeekerHomeView.swift` | S–M | needs company `stage` in feed payload (shared with F8) |
-| F5 | Ingest hygiene: drop aggregator apply URLs (linkedin.com ≈ 1,546 rows) via host blocklist. *Loses nothing visible*: these can never be enriched → never get a feed-eligible carousel; they only burn pipeline cycles | analysis (backlog D4); anchor `ingest-jobs/index.ts` | S | — |
 | F6 | For-You v0: rank feed by job_function affinity from saves + applies (no ML) | analysis (backlog D5); anchor `SupabaseService.swift` | M | job_function ✅ |
 | F7 | Founder slide in carousel ("meet Jane 👋") ending in the Pitch-the-founder CTA | carousel v3 plan | M | `company_contacts` populating ✅ |
-| F8 | **Big-company handling** (decided 2026-07-11): keep 1000+/acquired/IPO companies but (a) demote those stages in the feed sort tier and (b) hide the Pitch-the-founder button for them — apply-only. Backend keeps founder/contact data untouched. No Workday adapter | user decision on the old "description gap" item | S–M | company `stage` must join the feed payload (`CompanyRef` + select) — shared with F4 |
 | F9 | Throttle `pitch-generate-carousel` back from `*/30` to hourly/daily **after** the backlog drains (the backfill itself is already running; this is the cost-hygiene step at the end, not the backfill) | rescue migration comment | S | carousel backlog drained |
 | F10 | **Share-a-job loop** (added 2026-07-11 — network-effect priority): candidate shares a job by link over text; recipient sees a rich preview, taps → landing page → App Store/TestFlight → app opens the job. Parts: **F10a** ShareLink button on feed cards (S) · **F10b** universal links — Associated Domains + AASA file on the domain, app routes `https://<domain>/j/{id}` to the job (M) · **F10c** public landing edge function: OG tags (title/company/comp), store link, "open in app" (M) · **F10d** v2 rendered share image for the OG card (decide renderer then — carousel-service was deleted; prefer an edge-side render) | user request | M–L total | ⚠ two open questions below (domain hosting, store/TestFlight URL) |
 
@@ -43,9 +39,7 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
 | T1 | Employer + admin view refactors (extract subviews, route networking through services; incl. `JobTokEmployerRoleWorkflow` out of `VideoStudio.swift`) | refactor pass | L | do together with T5 |
-| T2 | **Resolved (2026-07-11): delete `services/carousel-service`.** Share v1 (F10a-c) doesn't need image rendering; when F10d wants share images, choose a renderer fresh (edge-side render preferred). Git history preserves the service if ever needed | user decision | S | — |
 | T3 | `process-apify-results` N+1: loads all `jobs.source_url` into memory, row-by-row inserts | refactor pass; anchor ~line 385 | S–M | — |
-| T4 | Board adapters use `fetchWithRetry` (5xx/429 backoff) instead of plain `postJSON` | refactor pass; anchors `getro.ts` / `consider.ts` | S | — |
 | T5 | `CandidateStore` split out of `AppSessionStore` | refactor pass; anchor `AppSessionStore.swift` | M | pair with T1 |
 | T6 | Full DI: protocol-extract services, inject through view tree | refactor pass; anchor `SupabaseService.swift` | M–L | with first service-level tests |
 | T7 | Snapshot/UI tests for feed cards + pitch sheet (swift-snapshot-testing via SPM) | refactor pass; anchor `CarouselFeedCard.swift` | M | — |
@@ -78,14 +72,11 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 Sequenced by: dependencies first → launch blockers → Gen Z first-time-user
 impact → quick wins early.
 
-### Milestone 1 — "The feed doesn't lie" (pre-launch, ~2-3 days)
-1. **F5** drop aggregator URLs (S, quick win)
-2. **F3** comp-listed ranking boost (S, quick win)
-3. **F8** big-co feed demotion + apply-only gating (S–M — brings company `stage` into the feed payload, which F4 reuses)
-4. **F2** early-career + remote filter chips (S–M — *the* persona feature)
-5. **T4** board adapter retry (S)
-6. **T2** delete carousel-service (S, housekeeping)
-7. **F9** throttle carousel cron once drained (S, watch OpenAI spend)
+### Milestone 1 — "The feed doesn't lie" — ✅ SHIPPED 2026-07-11 (PR #15)
+F5 aggregator blocklist · F3 comp-first ranking · F8 big-co demotion +
+apply-only gating · F2 experience/work-mode filter chips · T4 board retry ·
+T2 carousel-service deleted. **F9 still pending**: throttle the carousel
+cron back from `*/30` once the backlog drains (96/32k done at ship time).
 
 ### Milestone 2 — "First-session wow + the share loop" (~1-1.5 weeks)
 8. **F10a-c** share-a-job loop (M–L — the network-effect play; needs the two open questions answered)

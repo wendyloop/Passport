@@ -278,12 +278,16 @@ struct CompanyRef: Codable, Equatable {
     let name: String?
     let domain: String?
     let logoUrl: String?
+    // Funding/size stage ("seed" … "1000+ employees") — drives big-co feed
+    // demotion and founder-pitch gating (F8).
+    let stage: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case domain
         case logoUrl = "logo_url"
+        case stage
     }
 }
 
@@ -482,6 +486,10 @@ struct JobPostingRecord: Codable, Identifiable {
     // video application lands on this job; the feed demotes touched jobs so
     // early applications spread across companies. See founder_fatigue migration.
     let lastFounderTouchAt: Date?
+    // Classified at ingest (title/location keywords) or by the carousel LLM
+    // (full JD). Drive the experience / work-mode feed filters (F2).
+    let experienceLevel: String?
+    let workMode: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -518,6 +526,8 @@ struct JobPostingRecord: Codable, Identifiable {
         case applyFlow = "apply_flow"
         case companyID = "company_id"
         case lastFounderTouchAt = "last_founder_touch_at"
+        case experienceLevel = "experience_level"
+        case workMode = "work_mode"
         case company
         case carousel
     }
@@ -562,6 +572,8 @@ extension JobPostingRecord {
         applyFlow                 = try c.decodeIfPresent(String.self,              forKey: .applyFlow)
         companyID                 = try c.decodeIfPresent(String.self,              forKey: .companyID)
         lastFounderTouchAt        = try c.decodeIfPresent(Date.self,                forKey: .lastFounderTouchAt)
+        experienceLevel           = try c.decodeIfPresent(String.self,              forKey: .experienceLevel)
+        workMode                  = try c.decodeIfPresent(String.self,              forKey: .workMode)
         company                   = try c.decodeIfPresent(CompanyRef.self,          forKey: .company)
         // PostgREST may embed a one-to-one FK as either a single object or a
         // single-element array depending on whether it detects the unique
@@ -916,7 +928,9 @@ enum DemoData {
             companyID: nil,
             company: nil,
             carousel: nil,
-            lastFounderTouchAt: nil
+            lastFounderTouchAt: nil,
+            experienceLevel: nil,
+            workMode: nil
         ),
         JobPostingRecord(
             id: "demo-job-2",
@@ -954,7 +968,9 @@ enum DemoData {
             companyID: nil,
             company: nil,
             carousel: nil,
-            lastFounderTouchAt: nil
+            lastFounderTouchAt: nil,
+            experienceLevel: nil,
+            workMode: nil
         ),
     ]
 }

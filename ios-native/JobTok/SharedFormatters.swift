@@ -16,6 +16,23 @@ extension JobPostingRecord {
         return 0
     }
 
+    /// F8 big-company handling: 1000+/acquired/IPO companies stay in the
+    /// catalog but rank below startups and don't get the founder-pitch
+    /// button (apply-only). Unknown stage counts as a startup.
+    private static let bigCompanyStages: Set<String> = ["1000+ employees", "acquisition", "ipo"]
+
+    var isBigCompany: Bool {
+        guard let stage = company?.stage else { return false }
+        return Self.bigCompanyStages.contains(stage)
+    }
+
+    /// The founder-pitch path only makes sense where an email plausibly
+    /// reaches a founder. Backend contact data is untouched — this only
+    /// gates the button.
+    var founderPitchAllowed: Bool {
+        companyID != nil && !isBigCompany
+    }
+
     /// "$120,000 – $150,000" / "From $30/hr" / nil when no compensation set.
     var compensationSummary: String? {
         if compensationMinAnnual != nil || compensationMaxAnnual != nil {
