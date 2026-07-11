@@ -29,7 +29,7 @@ enum JobTokVideoStudioPurpose {
     var subtitle: String {
         switch self {
         case .candidatePitch:
-            return "Create or upload a vertical pitch that sells your story quickly."
+            return "30-60 seconds: who you are, then one project you're proud of — show it off."
         case .employerRole:
             return "Pick clips, record, add text, and turn it into a hiring post."
         case .adminRole:
@@ -105,6 +105,9 @@ struct JobTokVideoStudio: View {
             } else {
                 VStack(spacing: 18) {
                     header
+                    if purpose == .candidatePitch {
+                        pitchScriptCard
+                    }
                     sourceTabs
 
                     Group {
@@ -155,6 +158,39 @@ struct JobTokVideoStudio: View {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    // The three beats of a good pitch — visible while picking/recording so
+    // candidates know what to say before the camera rolls.
+    private var pitchScriptCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("your 3 beats", systemImage: "sparkles")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(PassportTheme.accent)
+            scriptBeat(number: "1", text: "who you are — name, what you do, one line")
+            scriptBeat(number: "2", text: "one project you're proud of — what and why")
+            scriptBeat(number: "3", text: "show it! screen-record it, hold it up, demo it")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PassportTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 18)
+    }
+
+    private func scriptBeat(number: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.caption.weight(.black))
+                .frame(width: 20, height: 20)
+                .background(PassportTheme.accentSoft)
+                .foregroundStyle(PassportTheme.accent)
+                .clipShape(Circle())
+            Text(text)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(PassportTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var header: some View {

@@ -108,7 +108,7 @@ struct CarouselFeedCard: View {
 
                             if let onEmailFounder {
                                 Button(action: onEmailFounder) {
-                                    Label("Email the founder", systemImage: "envelope")
+                                    Label("Pitch the founder", systemImage: "paperplane.fill")
                                         .font(.subheadline.weight(.bold))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -136,7 +136,7 @@ struct CarouselFeedCard: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, safeAreaBottom + 20)
+                .padding(.bottom, safeAreaBottom + FeedLayout.cardBottomClearance)
             }
         }
     }
@@ -253,7 +253,7 @@ private struct CoverSlideView: View {
             Spacer()
         }
         .padding(.horizontal, 28)
-        .padding(.bottom, 220)
+        .padding(.bottom, FeedLayout.slideContentClearance)
         .frame(maxWidth: .infinity, alignment: centeredLayout ? .center : .leading)
     }
 
@@ -409,7 +409,7 @@ private struct AboutCompanySlideView: View {
             Spacer()
         }
         .padding(.horizontal, 28)
-        .padding(.bottom, 220)
+        .padding(.bottom, FeedLayout.slideContentClearance)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -458,7 +458,7 @@ private struct BulletSlideView: View {
             Spacer()
         }
         .padding(.horizontal, 28)
-        .padding(.bottom, 220)
+        .padding(.bottom, FeedLayout.slideContentClearance)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -513,7 +513,7 @@ private struct DetailsSlideView: View {
             Spacer()
         }
         .padding(.horizontal, 28)
-        .padding(.bottom, 220)
+        .padding(.bottom, FeedLayout.slideContentClearance)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

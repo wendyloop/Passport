@@ -742,6 +742,8 @@ struct CandidateProfileDraft: Equatable {
     var linkedInURL: String = ""
     var instagramUsername: String = ""
     var tiktokUsername: String = ""
+    var githubURL: String = ""
+    var portfolioURL: String = ""
     var visibility: CandidateVisibility = .appliedRolesOnly
     var resumeFileName: String?
     var resumeStoragePath: String?

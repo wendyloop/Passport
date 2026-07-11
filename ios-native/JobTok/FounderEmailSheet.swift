@@ -33,7 +33,7 @@ struct FounderEmailSheet: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(PassportTheme.background.ignoresSafeArea())
-                .navigationTitle("Email the founder")
+                .navigationTitle("Pitch the founder")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -172,7 +172,7 @@ struct FounderEmailSheet: View {
                 }
 
                 HStack {
-                    Text("\(preview.remaining) of \(preview.limit) intros left this week")
+                    Text("\(preview.remaining) of \(preview.limit) pitches left this week")
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -189,7 +189,7 @@ struct FounderEmailSheet: View {
                         if isSending {
                             ProgressView().tint(.black)
                         } else {
-                            Text(preview.remaining > 0 ? "Send intro" : "Weekly limit reached")
+                            Text(preview.remaining > 0 ? "Send your pitch" : "Weekly limit reached")
                         }
                     }
                     .font(.subheadline.weight(.bold))
@@ -254,13 +254,13 @@ struct FounderEmailSheet: View {
             Image(systemName: "paperplane.circle.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(PassportTheme.accent)
-            Text("Intro sent")
+            Text("Pitch sent 🚀")
                 .font(.title2.weight(.black))
                 .foregroundStyle(PassportTheme.textPrimary)
-            Text("Your pitch is on its way to \(job.companyName). Replies go straight to your inbox.")
+            Text("Your pitch is on its way to \(job.companyName)\u{2019}s founder. Replies land straight in your inbox.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(PassportTheme.textSecondary)
-            Text("\(remaining) of \(limit) intros left this week")
+            Text("\(remaining) of \(limit) pitches left this week")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(PassportTheme.textSecondary)
             Button("Done") { dismiss() }
