@@ -35,6 +35,9 @@ struct JobSeekerHomeView: View {
     @State private var applicationDraft = JobApplicationDraft()
     @State private var easyApplyConfirmation: JobPostingRecord?
     @State private var founderEmailJob: JobPostingRecord?
+    // Double-tap-to-save heart burst (TikTok like gesture).
+    @State private var heartBurstJobID: String?
+    @State private var heartBurstCount = 0
     @State private var easyApplySuccess: String?
     @State private var brokenJobIDs: Set<String> = []
     @State private var showingSettingsDrawer = false
@@ -134,22 +137,32 @@ struct JobSeekerHomeView: View {
         }
     }
 
+    // TikTok-style navigation: full-bleed content with a custom dark bar and
+    // a prominent center record button — recording a pitch is the app's
+    // centerpiece action, exactly like TikTok's create button.
+    enum CandidateTab {
+        case jobs, saved, applications, profile
+    }
+
+    @State private var selectedTab: CandidateTab = .jobs
+
     var body: some View {
-        TabView {
-            jobsFeed
-                .tabItem {
-                    Label("Jobs", systemImage: "play.square.fill")
+        ZStack(alignment: .bottom) {
+            Group {
+                switch selectedTab {
+                case .jobs:
+                    jobsFeed
+                case .saved:
+                    savedTabView
+                case .applications:
+                    applicationsView
+                case .profile:
+                    profileView
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            applicationsView
-                .tabItem {
-                    Label("Applications", systemImage: "tray.full")
-                }
-
-            profileView
-                .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
-                }
+            candidateTabBar
         }
         .tint(PassportTheme.accent)
         .sheet(isPresented: $isEditingProfile) {
@@ -394,7 +407,31 @@ struct JobSeekerHomeView: View {
         }
         .frame(width: pageWidth, height: pageHeight)
         .clipped()
+        .overlay {
+            if heartBurstJobID == job.id {
+                HeartBurstView(trigger: heartBurstCount)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Double tap saves, TikTok-style. High priority so it wins over the
+        // video's single-tap play/pause (which now waits out the double-tap
+        // window — same slight delay TikTok has).
+        .highPriorityGesture(
+            TapGesture(count: 2).onEnded {
+                handleDoubleTapSave(job)
+            }
+        )
         .id(job.id)
+    }
+
+    private func handleDoubleTapSave(_ job: JobPostingRecord) {
+        // Double tap only ever saves — it never un-saves (matching TikTok,
+        // where re-double-tapping shows the heart again but stays liked).
+        if !savedJobIDs.contains(job.id) {
+            onToggleSavedJob(job.id)
+        }
+        heartBurstJobID = job.id
+        heartBurstCount += 1
     }
 
     private func handleApplyTap(for job: JobPostingRecord) {
@@ -443,6 +480,7 @@ struct JobSeekerHomeView: View {
                     }
                 }
                 .padding(20)
+                .padding(.bottom, 84)
             }
             .background(PassportTheme.background)
         }
@@ -459,6 +497,7 @@ struct JobSeekerHomeView: View {
                         profileTabContent
                     }
                     .padding(20)
+                    .padding(.bottom, 84)
                 }
                 .background(PassportTheme.background)
 
@@ -810,6 +849,81 @@ struct JobSeekerHomeView: View {
             visibilityModeCard
             profileAssetsCard
         }
+    }
+
+    private var savedTabView: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    screenHeader(
+                        title: "Saved",
+                        subtitle: "Roles you bookmarked from the feed."
+                    )
+                    savedJobsTab
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 96)
+            }
+            .background(PassportTheme.background)
+        }
+    }
+
+    // MARK: - TikTok-style tab bar
+
+    private var candidateTabBar: some View {
+        HStack(alignment: .center, spacing: 0) {
+            tabBarButton(.jobs, symbol: "play.square.fill", label: "Jobs")
+            tabBarButton(.saved, symbol: "bookmark.fill", label: "Saved")
+
+            // Center record button — opens the pitch video studio.
+            Button {
+                showingVideoStudio = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .black))
+                    .foregroundStyle(.black)
+                    .frame(width: 46, height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(PassportTheme.accent)
+                    )
+                    .background(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(Color.white.opacity(0.9))
+                            .offset(x: -3)
+                    )
+            }
+            .frame(maxWidth: .infinity)
+
+            tabBarButton(.applications, symbol: "tray.full.fill", label: "Inbox")
+            tabBarButton(.profile, symbol: "person.crop.circle.fill", label: "Me")
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 24)
+        .padding(.horizontal, 6)
+        .background(
+            // Always-dark bar, TikTok-style, regardless of system theme. On
+            // the feed it blends into the video; elsewhere it anchors the UI.
+            Color.black.opacity(selectedTab == .jobs ? 0.35 : 0.96)
+                .background(selectedTab == .jobs ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(Color.black))
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    private func tabBarButton(_ tab: CandidateTab, symbol: String, label: String) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: symbol)
+                    .font(.system(size: 21, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(selectedTab == tab ? .white : .white.opacity(0.55))
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 
     private var savedJobsTab: some View {
@@ -2616,5 +2730,32 @@ private struct EasyApplySuccessBanner: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
         .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
+    }
+}
+
+// MARK: - Heart burst (double-tap save)
+
+/// TikTok-style heart pop: scales up with a spring, drifts up, fades out.
+/// `trigger` changing replays the animation.
+struct HeartBurstView: View {
+    let trigger: Int
+    @State private var animate = false
+
+    var body: some View {
+        Image(systemName: "heart.fill")
+            .font(.system(size: 96))
+            .foregroundStyle(PassportTheme.accent)
+            .shadow(color: .black.opacity(0.35), radius: 12)
+            .scaleEffect(animate ? 1.0 : 0.3)
+            .opacity(animate ? 0 : 1)
+            .offset(y: animate ? -60 : 0)
+            .animation(.spring(response: 0.45, dampingFraction: 0.6), value: animate)
+            .onAppear { replay() }
+            .onChange(of: trigger) { _, _ in replay() }
+    }
+
+    private func replay() {
+        animate = false
+        DispatchQueue.main.async { animate = true }
     }
 }

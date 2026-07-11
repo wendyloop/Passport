@@ -199,7 +199,20 @@ final class SupabaseService {
                 session: session
             )
             let merged = try await videos + carousels
-            return merged.sorted { $0.createdAt > $1.createdAt }
+            // FIRST-100-USERS founder-fatigue sort: jobs whose founder was
+            // already reached today (video application or founder email) sink
+            // below everything untouched; jobs touched earlier this week are
+            // demoted slightly less (below untouched, above today's). Keeps
+            // early applications spread across companies instead of piling
+            // onto whatever's newest. Revisit once volume justifies real
+            // ranking. See migration 20260708140000_founder_fatigue.sql.
+            let now = Date()
+            return merged.sorted { a, b in
+                let bucketA = a.founderFatigueBucket(now: now)
+                let bucketB = b.founderFatigueBucket(now: now)
+                if bucketA != bucketB { return bucketA < bucketB }
+                return a.createdAt > b.createdAt
+            }
         }
 
         var query: [(String, String)] = [

@@ -97,6 +97,7 @@ type Slide =
     }
   | { type: "role"; order: number; bullets: string[] }
   | { type: "requirements"; order: number; bullets: string[] }
+  | { type: "perks"; order: number; bullets: string[] }
   | {
       type: "details";
       order: number;
@@ -124,25 +125,45 @@ Deno.serve(async (request) => {
   const body: RequestBody = await request.json().catch(() => ({}));
   const admin = createAdminClient();
 
-  // Selection: active jobs that either have no carousel, or have one with a
-  // different source_hash. We can't compute the hash in SQL (it spans
-  // company + fund joins), so we pull candidates and re-check in TS.
-  let jobQuery = admin
+  // Selection via the get_jobs_needing_carousel queue RPC: jobs with no
+  // carousel, or edited since their carousel was generated, description-
+  // bearing first. The previous approach (90 most-recently-seen jobs)
+  // wedged permanently once that window was covered — every run from
+  // 2026-06-29 to 2026-07-09 processed zero jobs while 11k+ sat waiting.
+  // The source-hash re-check below stays as the final skip guard.
+  let candidateIds: string[];
+  if (body.job_id) {
+    candidateIds = [body.job_id];
+  } else {
+    const { data: queue, error: queueError } = await admin.rpc("get_jobs_needing_carousel", {
+      p_limit: MAX_PER_RUN * 3, // overfetch — some skip on hash match
+    });
+    if (queueError) return jsonError(`carousel queue failed: ${queueError.message}`);
+    candidateIds = ((queue ?? []) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (candidateIds.length === 0) {
+    return jsonResponse({
+      summary: { event: "generate_carousel_run", processed: 0, generated: 0, fallback: 0, skipped: 0, errored: 0 },
+      outcomes: [],
+    });
+  }
+
+  const { data: jobs, error: jobsError } = await admin
     .from("jobs")
     .select(
       "id, company_id, company_name, title, description, location, compensation_text, compensation_min_annual, compensation_max_annual, compensation_min_hourly, compensation_max_hourly, employment_type, apply_url",
     )
+    .in("id", candidateIds)
     .eq("is_active", true)
-    .not("company_id", "is", null)
-    .order("last_seen_at", { ascending: false })
-    .limit(MAX_PER_RUN * 3); // overfetch — many will be skipped as up-to-date
-
-  if (body.job_id) jobQuery = jobQuery.eq("id", body.job_id);
-
-  const { data: jobs, error: jobsError } = await jobQuery;
+    .not("company_id", "is", null);
   if (jobsError) return jsonError(`load jobs failed: ${jobsError.message}`);
 
-  const jobRows = (jobs ?? []) as JobRow[];
+  // Restore the queue's priority order (description-bearing first) — the
+  // .in() fetch returns rows in arbitrary order.
+  const rank = new Map(candidateIds.map((id, i) => [id, i]));
+  const jobRows = ((jobs ?? []) as JobRow[])
+    .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
   if (jobRows.length === 0) {
     return jsonResponse({
       summary: { event: "generate_carousel_run", processed: 0, generated: 0, fallback: 0, skipped: 0, errored: 0 },
@@ -349,6 +370,12 @@ function assembleSlides(
     slides.push({ type: "requirements", order: slides.length + 1, bullets: content.requirements });
   }
 
+  // Perks were extracted by the LLM all along but never emitted. Old app
+  // builds decode this as an unknown slide and skip it safely.
+  if (content.perks.length > 0) {
+    slides.push({ type: "perks", order: slides.length + 1, bullets: content.perks });
+  }
+
   // Always emit the details slide — the schema requires a 3-slide minimum
   // (cover + about_company + details). When all three sub-fields are missing
   // the slide still renders as a "Tap to apply" footer.
@@ -387,6 +414,11 @@ async function computeSourceHash(
   fundName: string | null,
 ): Promise<string> {
   const payload = JSON.stringify({
+    // Format version: bump to force regeneration of every carousel when the
+    // slide structure changes (v2 = perks slide). Regen drains at
+    // MAX_PER_RUN/day via cron; invoke the function manually in a loop to
+    // drain faster after deploying a bump.
+    v: 2,
     t: job.title,
     d: job.description,
     l: job.location,

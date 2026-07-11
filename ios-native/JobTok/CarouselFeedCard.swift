@@ -166,6 +166,7 @@ private struct SlideView: View {
         case .aboutCompany(let s):  AboutCompanySlideView(slide: s, theme: theme)
         case .role(let s):          BulletSlideView(title: "The Role", bullets: s.bullets, theme: theme)
         case .requirements(let s):  BulletSlideView(title: "What You Bring", bullets: s.bullets, theme: theme)
+        case .perks(let s):         BulletSlideView(title: "The Good Stuff", bullets: s.bullets, theme: theme)
         case .details(let s):       DetailsSlideView(slide: s, theme: theme, job: job)
         // Filtered out of `slides` before we get here; render nothing if one
         // ever reaches this view.
@@ -176,13 +177,34 @@ private struct SlideView: View {
 
 // MARK: - Individual slide layouts
 
+// Fact-first cover: job title is the headline; company, location, and pay
+// are scannable chips. No tagline — candidates decide from facts in under a
+// second, TikTok-speed. Two layouts alternate deterministically per job so
+// the feed doesn't feel stamped from one template.
 private struct CoverSlideView: View {
     let slide: CoverSlide
     let theme: CarouselTheme
     let job: JobPostingRecord
 
+    private var centeredLayout: Bool {
+        // Stable per job — the same job always gets the same layout.
+        job.id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 2 == 1
+    }
+
+    private var title: String {
+        slide.role ?? job.title
+    }
+
+    private var companyName: String? {
+        slide.company ?? job.displayCompanyName.nonEmpty
+    }
+
+    private var compensation: String? {
+        slide.compensation ?? job.compensationSummary ?? job.compensationText
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: centeredLayout ? .center : .leading, spacing: 20) {
             Spacer(minLength: 60)
 
             if let logo = job.displayCompanyLogoURL {
@@ -194,42 +216,119 @@ private struct CoverSlideView: View {
                         EmptyView()
                     }
                 }
-                .frame(width: 72, height: 72)
+                .frame(width: centeredLayout ? 84 : 72, height: centeredLayout ? 84 : 72)
                 .background(theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
-            if let company = slide.company ?? job.displayCompanyName.nonEmpty {
+            if let company = companyName {
                 Text(company.uppercased())
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .tracking(2)
                     .foregroundStyle(theme.textSecondary)
             }
 
-            if let hook = slide.hook {
-                Text(hook)
-                    .font(theme.titleFont)
-                    .foregroundStyle(theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(title)
+                .font(theme.titleFont)
+                .foregroundStyle(theme.textPrimary)
+                .multilineTextAlignment(centeredLayout ? .center : .leading)
+                .fixedSize(horizontal: false, vertical: true)
 
-            if let role = slide.role {
-                Text(role)
-                    .font(theme.bodyFont)
-                    .foregroundStyle(theme.textSecondary)
-            }
-
-            if let loc = slide.location ?? job.location {
-                Label(loc, systemImage: "mappin.and.ellipse")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(theme.textSecondary)
-            }
+            factChips
+                .padding(.top, 2)
 
             Spacer()
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 220)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: centeredLayout ? .center : .leading)
+    }
+
+    private var factChips: some View {
+        FlowChips(alignment: centeredLayout ? .center : .leading) {
+            if let loc = slide.location ?? job.location, !loc.isEmpty {
+                coverChip(icon: "mappin.and.ellipse", text: loc)
+            }
+            if let comp = compensation, !comp.isEmpty {
+                coverChip(icon: "dollarsign.circle.fill", text: comp)
+            }
+            if let type = job.employmentType?.title {
+                coverChip(icon: "briefcase.fill", text: type)
+            }
+        }
+    }
+
+    private func coverChip(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+            Text(text)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(theme.accent.opacity(0.16))
+        .foregroundStyle(theme.accent)
+        .clipShape(Capsule())
+    }
+}
+
+// Wrapping chip row — chips flow onto the next line when they don't fit,
+// so a long location plus a salary range never overflows the slide.
+private struct FlowChips: Layout {
+    var alignment: HorizontalAlignment = .leading
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = computeRows(proposal: proposal, subviews: subviews)
+        let width = proposal.width ?? rows.map(\.width).max() ?? 0
+        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = computeRows(proposal: proposal, subviews: subviews)
+        var y = bounds.minY
+        for row in rows {
+            var x: CGFloat
+            switch alignment {
+            case .center:   x = bounds.minX + (bounds.width - row.width) / 2
+            case .trailing: x = bounds.maxX - row.width
+            default:        x = bounds.minX
+            }
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func computeRows(proposal: ProposedViewSize, subviews: Subviews) -> [Row] {
+        let maxWidth = proposal.width ?? .infinity
+        var rows: [Row] = []
+        var current = Row()
+        for (index, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(.unspecified)
+            let widthIfAdded = current.width + (current.indices.isEmpty ? 0 : spacing) + size.width
+            if !current.indices.isEmpty && widthIfAdded > maxWidth {
+                rows.append(current)
+                current = Row()
+            }
+            current.width += (current.indices.isEmpty ? 0 : spacing) + size.width
+            current.height = max(current.height, size.height)
+            current.indices.append(index)
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
     }
 }
 

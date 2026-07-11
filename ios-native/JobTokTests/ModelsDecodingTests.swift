@@ -112,6 +112,21 @@ final class ModelsDecodingTests: XCTestCase {
         XCTAssertEqual(slides[0].order, 3)
     }
 
+    func testPerksSlideDecodesAndRenders() throws {
+        let json = """
+        [{"type": "perks", "order": 5, "bullets": ["Equity", "Health"]}]
+        """.data(using: .utf8)!
+        let slides = try decoder.decode([CarouselSlide].self, from: json)
+        XCTAssertEqual(slides.count, 1)
+        XCTAssertTrue(slides[0].isRenderable)
+        XCTAssertEqual(slides[0].order, 5)
+        if case .perks(let s) = slides[0] {
+            XCTAssertEqual(s.bullets, ["Equity", "Health"])
+        } else {
+            XCTFail("expected .perks")
+        }
+    }
+
     func testFounderEmailPreviewDecodes() throws {
         let json = """
         {
