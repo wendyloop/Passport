@@ -1,3 +1,7 @@
+// TODO(deferred): P3 — employer job-level analytics (SHELVED until the
+// employer side launches). When built, it aggregates on top of the events
+// this function records (opened/submitted) plus new impression/save events.
+// Deliberately not implemented today. See docs/DEFERRED_WORK.md.
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 

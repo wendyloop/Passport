@@ -1,39 +1,120 @@
-# Deferred work
+# Plan — consolidated backlog & build order
 
-Known-but-intentionally-postponed work from the candidate-first refactor +
-"email the founder" feature (July 2026). Each item has a `TODO(deferred):`
-marker at its anchor in the code — run:
+The single planning doc for scout22. Consolidates: the former tech-debt table
+(this file), the feature backlog (2026-07-09 market analysis + carousel v3
+plan), the open items from `JOBTOK_PHASE2_NOTES.md`, the `TODO(deferred)`
+code markers, and the `FIRST-100-USERS` markers. Updated 2026-07-11 with
+product decisions (share loop added; big-co handling, security posture,
+application states decided; analytics shelved; carousel-service resolved).
+
+Conventions (unchanged): every item with a code anchor has a
+`TODO(deferred):` marker at its implementation site — list them with:
 
 ```bash
 grep -rn "TODO(deferred)" ios-native/JobTok supabase/functions services
 ```
 
-to list every anchor. This file is the human-readable index of that backlog;
-keep the two in sync (delete the row and the marker together when an item
-ships).
+Keep marker and table row in sync; delete both when an item ships.
+`FIRST-100-USERS` markers are found the same way.
 
-| Item | Anchor(s) | Effort | Why deferred / what it takes |
-|---|---|---|---|
-| **Employer & admin view refactors** | `EmployerHomeView.swift`, `AdminHomeView.swift`, `JobTokEmployerRoleWorkflow` in `VideoStudio.swift` | Large | Same God-view smell as the candidate side, but off the candidate path. Extract sheets/rows into their own files; move direct networking behind the service layer (mirror the `JobSeekerHomeView` / `SupabaseService` split). |
-| **`services/carousel-service`** | `services/carousel-service/src/index.ts` | Small to delete, large to wire up | Standalone Fastify + R2 + Redis carousel *image* renderer that nothing imports — the live carousel path is text slides via `generate-carousel`. Recommend deleting until there's a product reason for image carousels. |
-| **`process-apify-results` N+1** | `supabase/functions/process-apify-results/index.ts` (~line 385) | Small–medium | Loads all `jobs.source_url` into memory per run, then inserts scraped rows one at a time. Fix: scope the existence check with `.in(...)` and bulk-insert. Admin cron pipeline, not user-facing. |
-| **Board adapters skip retry** | `supabase/functions/_shared/boards/getro.ts`, `consider.ts` | Small | Use `_shared/ats/http.ts` `fetchWithRetry` (5xx/429 backoff) instead of plain `postJSON`. Board crawl is cron and resumes from its cursor next run, so transient failures are cheap. |
-| **`CandidateStore` split** | `AppSessionStore.swift` | Medium | Store still holds all three roles' ~20 `@Published` props, which feed `NativeRootView`'s per-role closures. Splitting candidate state out means rewiring those closures — do it alongside the employer/admin refactor. |
-| **Full DI container** | `SupabaseService.swift` | Medium–large | Services reached via `SupabaseService.shared`; only `ApplyDrawerView`/`FounderEmailSheet` take an injected `CandidateService`. Protocol-extract each service and inject through the view tree so they're mockable. Big diff for a test-only payoff today. |
-| **Snapshot / UI tests** | `CarouselFeedCard.swift` (feed card) + `FounderEmailSheet.swift` (compose sheet) | Medium | Needs an external snapshot lib (swift-snapshot-testing via SPM) + baseline images. The `JobTokTests` target is the foundation to add it onto. |
-| **Anon-key → publishable-key + RLS audit** | `Config.swift`; `JobTok.xcconfig` | Small–medium | Anon key is public-by-design and RLS is the real boundary, so not urgent. Migrate to Supabase's publishable/secret key model, and decide whether the anon-readable `companies`/`funds`/`carousels` should require auth like `jobs` does. |
-| **Founder-email v2** | `send-founder-email/index.ts` (verification, per-company caps), `enrich-company-contacts/index.ts` (re-scrape cadence) | Medium | Ship v1, learn from real reply/bounce rates first. Then: a re-scrape cadence for companies that scraped zero founders, email verification (Hunter/NeverBounce) *before* sending, and a per-company weekly cap so multiple candidates don't all hit the same founder in one week. |
+---
 
-## Feature backlog (from the 2026-07-09 market analysis + carousel v3 plan)
+## All items
 
-Product features waiting on a "work on the backlog" pass, distinct from the
-tech-debt table above. Anchors use the same `TODO(deferred):` convention.
+Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 
-| Item | Anchor(s) | Effort | What it is |
-|---|---|---|---|
-| **C. Social visual language for carousels** | `CarouselFeedCard.swift` | Medium | Sticker-style chips with slight rotation, TikTok-caption highlight blocks behind key lines, theme-colored doodle accents, bullets cascading in on slide-enter, "swipe →" affordance on the cover, and a founder slide ("meet Jane 👋") with the Email-the-founder CTA once company_contacts populates. |
-| **D1. Early-career + remote feed filter chips** | `JobSeekerHomeView.swift` (filter row) | Small–medium | Surface the `experience_level` and `work_mode` columns (added by carousel v3) as feed filter chips. Only ~1.7% of jobs are explicitly entry-level — surfacing them IS the product for the New-Grad Nina persona. Decode both fields on `JobPostingRecord`. |
-| **D2. Comp-listed ranking boost** | `SupabaseService.swift` (fetchJobs sort) | Small | Rank the ~23% of jobs with compensation above those without (salary-listed postings convert 30–44% better per LinkedIn/SHRM research). Slot into the existing founder-fatigue sort. |
-| **D3. Startup-stage toggle ("founder-reachable")** | `JobSeekerHomeView.swift` (filter row) | Small–medium | Filter to pre-seed→Series B companies (~3.4k jobs, ~950 companies) where founder@domain actually reaches the founder. Pairs with the founder-email feature; Founder-Chaser Felix persona. |
-| **D4. Ingest hygiene: drop aggregator URLs** | `supabase/functions/ingest-jobs/index.ts` | Small | Skip jobs whose apply_url host is linkedin.com (1,546 rows of un-enrichable aggregator links). Consider a host blocklist constant. |
-| **D5. For-You personalization v0** | `SupabaseService.swift` / `AppSessionStore.swift` | Medium | Rank feed by job_function affinity from the user's saves + applications (job_function is populated as of the pipeline-rescue backfill). Simple weighted boost, no ML. |
+### Features (candidate-facing)
+
+| ID | Item | Source | Effort | Depends on |
+|---|---|---|---|---|
+| F1 | Social visual language for carousels: sticker chips w/ rotation, caption-highlight text blocks, doodle accents, cascade-in bullets, "swipe →" affordance | carousel v3 plan (backlog C); anchor `CarouselFeedCard.swift` | M | — |
+| F2 | Early-career + remote feed filter chips (surface `experience_level` / `work_mode`; decode on `JobPostingRecord`) | 2026-07-09 analysis (backlog D1); anchor `JobSeekerHomeView.swift` | S–M | columns ✅ (v3); data fills as carousel drain runs |
+| F3 | Comp-listed ranking boost (jobs with salary rank above those without; +30-44% conversion per research) | analysis (backlog D2); anchor `SupabaseService.swift` | S | — |
+| F4 | Startup-stage "founder-reachable" toggle (pre-seed→series B, ~3.4k jobs) | analysis (backlog D3); anchor `JobSeekerHomeView.swift` | S–M | needs company `stage` in feed payload (shared with F8) |
+| F5 | Ingest hygiene: drop aggregator apply URLs (linkedin.com ≈ 1,546 rows) via host blocklist. *Loses nothing visible*: these can never be enriched → never get a feed-eligible carousel; they only burn pipeline cycles | analysis (backlog D4); anchor `ingest-jobs/index.ts` | S | — |
+| F6 | For-You v0: rank feed by job_function affinity from saves + applies (no ML) | analysis (backlog D5); anchor `SupabaseService.swift` | M | job_function ✅ |
+| F7 | Founder slide in carousel ("meet Jane 👋") ending in the Pitch-the-founder CTA | carousel v3 plan | M | `company_contacts` populating ✅ |
+| F8 | **Big-company handling** (decided 2026-07-11): keep 1000+/acquired/IPO companies but (a) demote those stages in the feed sort tier and (b) hide the Pitch-the-founder button for them — apply-only. Backend keeps founder/contact data untouched. No Workday adapter | user decision on the old "description gap" item | S–M | company `stage` must join the feed payload (`CompanyRef` + select) — shared with F4 |
+| F9 | Throttle `pitch-generate-carousel` back from `*/30` to hourly/daily **after** the backlog drains (the backfill itself is already running; this is the cost-hygiene step at the end, not the backfill) | rescue migration comment | S | carousel backlog drained |
+| F10 | **Share-a-job loop** (added 2026-07-11 — network-effect priority): candidate shares a job by link over text; recipient sees a rich preview, taps → landing page → App Store/TestFlight → app opens the job. Parts: **F10a** ShareLink button on feed cards (S) · **F10b** universal links — Associated Domains + AASA file on the domain, app routes `https://<domain>/j/{id}` to the job (M) · **F10c** public landing edge function: OG tags (title/company/comp), store link, "open in app" (M) · **F10d** v2 rendered share image for the OG card (decide renderer then — carousel-service was deleted; prefer an edge-side render) | user request | M–L total | ⚠ two open questions below (domain hosting, store/TestFlight URL) |
+
+### Platform / tech debt
+
+| ID | Item | Source | Effort | Depends on |
+|---|---|---|---|---|
+| T1 | Employer + admin view refactors (extract subviews, route networking through services; incl. `JobTokEmployerRoleWorkflow` out of `VideoStudio.swift`) | refactor pass | L | do together with T5 |
+| T2 | **Resolved (2026-07-11): delete `services/carousel-service`.** Share v1 (F10a-c) doesn't need image rendering; when F10d wants share images, choose a renderer fresh (edge-side render preferred). Git history preserves the service if ever needed | user decision | S | — |
+| T3 | `process-apify-results` N+1: loads all `jobs.source_url` into memory, row-by-row inserts | refactor pass; anchor ~line 385 | S–M | — |
+| T4 | Board adapters use `fetchWithRetry` (5xx/429 backoff) instead of plain `postJSON` | refactor pass; anchors `getro.ts` / `consider.ts` | S | — |
+| T5 | `CandidateStore` split out of `AppSessionStore` | refactor pass; anchor `AppSessionStore.swift` | M | pair with T1 |
+| T6 | Full DI: protocol-extract services, inject through view tree | refactor pass; anchor `SupabaseService.swift` | M–L | with first service-level tests |
+| T7 | Snapshot/UI tests for feed cards + pitch sheet (swift-snapshot-testing via SPM) | refactor pass; anchor `CarouselFeedCard.swift` | M | — |
+| T8 | **Security posture for App Store release (decided 2026-07-11)**: (a) require auth on `companies`/`funds`/`carousels` — consistent with `jobs`; the F10c landing page reads via service-role server-side, so nothing needs anon; (b) migrate anon JWT → Supabase publishable/secret key model; (c) raise `minimum_password_length` 6→8 + enable leaked-password protection; (d) verify all storage buckets private (resumes already signed-URL-only) | refactor pass + user decision; anchor `Config.swift` | M | do before App Store submission; after F10c exists (landing page must not rely on anon reads) |
+| T9 | Founder-pitch v2: re-scrape cadence, email verification vendor before send, per-company weekly cap | founder-email plan; anchors in both functions | M | real send/bounce data (post-launch) |
+
+### Employer side
+
+| ID | Item | Source | Effort | Depends on |
+|---|---|---|---|---|
+| P1 | Signed resume download edge function for employers (application-based authorization; bucket stays private) | PHASE2 notes | M | — |
+| P2 | **Application states — decided (2026-07-11)**: implement the full `reviewing`/`contacted`/`rejected`/`hired` set + **optional** internal notes per application. Rationale: state transitions + notes are the feedback loop for improving both candidate and employer experience — we want this insight | PHASE2 notes + user decision | M | — |
+
+### Shelved (deliberately not scheduled)
+
+| ID | Item | Status |
+|---|---|---|
+| P3 | Job-level employer analytics (impressions/saves/applies/conversion). **Shelved 2026-07-11** — employer side isn't launching yet. Anchored in code so it isn't lost: `TODO(deferred)` in `supabase/functions/log-application-event/index.ts` (analytics will aggregate on top of those events + new impression tracking) | ⏸ revisit at employer launch |
+
+### Post-launch reversals (FIRST-100-USERS markers)
+
+| ID | Item | Source | Effort | Depends on |
+|---|---|---|---|---|
+| X1 | Replace founder-fatigue feed demotion + once-per-founder-ever send rule with real ranking/caps | `FIRST-100-USERS` markers | S–M | >100 users / real volume |
+
+---
+
+## Build order
+
+Sequenced by: dependencies first → launch blockers → Gen Z first-time-user
+impact → quick wins early.
+
+### Milestone 1 — "The feed doesn't lie" (pre-launch, ~2-3 days)
+1. **F5** drop aggregator URLs (S, quick win)
+2. **F3** comp-listed ranking boost (S, quick win)
+3. **F8** big-co feed demotion + apply-only gating (S–M — brings company `stage` into the feed payload, which F4 reuses)
+4. **F2** early-career + remote filter chips (S–M — *the* persona feature)
+5. **T4** board adapter retry (S)
+6. **T2** delete carousel-service (S, housekeeping)
+7. **F9** throttle carousel cron once drained (S, watch OpenAI spend)
+
+### Milestone 2 — "First-session wow + the share loop" (~1-1.5 weeks)
+8. **F10a-c** share-a-job loop (M–L — the network-effect play; needs the two open questions answered)
+9. **F1** social visual language for carousels (M)
+10. **F7** founder slide → Pitch CTA (M)
+11. **F4** startup-stage toggle (S–M — stage payload already done by F8)
+12. **F6** For-You v0 (M)
+
+### Milestone 3 — "Trust + the other side of the marketplace" (~1-2 weeks)
+13. **T8** security posture: RLS lockdown + publishable keys + password policy (M — before App Store submission, after F10c)
+14. **P1** employer signed resume download (M)
+15. **P2** application states + optional internal notes (M)
+16. **T7** snapshot tests (M)
+
+### Milestone 4 — "Scale debt" (as volume justifies)
+17. **T1 + T5** employer/admin refactor + store split (L)
+18. **T3** apify N+1 (S–M)
+19. **T9** founder-pitch v2 (M — after real bounce/reply data)
+20. **T6** full DI (M–L)
+21. **F10d** rendered share images (M — pick renderer then)
+
+### Post-100-users
+22. **X1** replace first-100-users mechanics with real ranking
+
+---
+
+## ⚠ Open questions (only F10's remain)
+
+| Item | Question |
+|---|---|
+| **F10b** universal links | Which domain hosts the share links + AASA file — `tryscout22.com`? Where is it hosted today (it currently only has Resend DNS records)? Universal links need us to serve `/.well-known/apple-app-site-association` from that domain over HTTPS. |
+| **F10c** landing CTA | Is there a public TestFlight link (or App Store listing) yet? The landing page's "get the app" button needs a real destination before share links go out. |
