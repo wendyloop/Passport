@@ -27,12 +27,8 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
-| F1 | Social visual language for carousels: sticker chips w/ rotation, caption-highlight text blocks, doodle accents, cascade-in bullets, "swipe →" affordance | carousel v3 plan (backlog C); anchor `CarouselFeedCard.swift` | M | — |
-| F4 | Startup-stage "founder-reachable" toggle (pre-seed→series B, ~3.4k jobs) | analysis (backlog D3); anchor `JobSeekerHomeView.swift` | S–M | needs company `stage` in feed payload (shared with F8) |
-| F6 | For-You v0: rank feed by job_function affinity from saves + applies (no ML) | analysis (backlog D5); anchor `SupabaseService.swift` | M | job_function ✅ |
-| F7 | Founder slide in carousel ("meet Jane 👋") ending in the Pitch-the-founder CTA | carousel v3 plan | M | `company_contacts` populating ✅ |
 | F9 | Throttle `pitch-generate-carousel` back from `*/30` to hourly/daily **after** the backlog drains (the backfill itself is already running; this is the cost-hygiene step at the end, not the backfill) | rescue migration comment | S | carousel backlog drained |
-| F10 | **Share-a-job loop** (added 2026-07-11 — network-effect priority): candidate shares a job by link over text; recipient sees a rich preview, taps → landing page → App Store/TestFlight → app opens the job. Parts: **F10a** ShareLink button on feed cards (S) · **F10b** universal links — Associated Domains + AASA file on the domain, app routes `https://<domain>/j/{id}` to the job (M) · **F10c** public landing edge function: OG tags (title/company/comp), store link, "open in app" (M) · **F10d** v2 rendered share image for the OG card (decide renderer then — carousel-service was deleted; prefer an edge-side render) | user request | M–L total | ⚠ two open questions below (domain hosting, store/TestFlight URL) |
+| F10 | Share-a-job loop. **F10a ShareLink + F10c landing page shipped 2026-07-11** (links point at the Supabase-hosted `job-share` function for now; deep link via `jobtok://job/{id}`). Remaining: **F10b** universal links once tryscout22.com hosts the page + AASA, **F10d** rendered share image. `APP_STORE_URL` secret is the fill-in for the get-the-app CTA | user request | M (remaining) | ⚠ open questions below |
 
 ### Platform / tech debt
 
@@ -78,12 +74,13 @@ apply-only gating · F2 experience/work-mode filter chips · T4 board retry ·
 T2 carousel-service deleted. **F9 still pending**: throttle the carousel
 cron back from `*/30` once the backlog drains (96/32k done at ship time).
 
-### Milestone 2 — "First-session wow + the share loop" (~1-1.5 weeks)
-8. **F10a-c** share-a-job loop (M–L — the network-effect play; needs the two open questions answered)
-9. **F1** social visual language for carousels (M)
-10. **F7** founder slide → Pitch CTA (M)
-11. **F4** startup-stage toggle (S–M — stage payload already done by F8)
-12. **F6** For-You v0 (M)
+### Milestone 2 — "First-session wow + the share loop" — ✅ SHIPPED 2026-07-11 (PR #16)
+F10a share buttons + F10c landing page (Supabase-hosted until the domain
+answers land) · F1 social visuals (sticker chips, caption highlights,
+cascade-in bullets, swipe hint) · F7 founder slide + pitch CTA · F4
+founder-reachable toggle · F6 For-You affinity ranking.
+**Still open**: F10b universal links + F10d share images (blocked on the
+two open questions).
 
 ### Milestone 3 — "Trust + the other side of the marketplace" (~1-2 weeks)
 13. **T8** security posture: RLS lockdown + publishable keys + password policy (M — before App Store submission, after F10c)

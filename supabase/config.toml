@@ -408,3 +408,7 @@ verify_jwt = false
 
 [functions.enrich-company-contacts]
 verify_jwt = false
+
+# Public share landing page (F10c) — reads via service role, renders OG tags.
+[functions.job-share]
+verify_jwt = false

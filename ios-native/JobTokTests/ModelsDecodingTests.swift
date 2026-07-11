@@ -163,6 +163,17 @@ final class ModelsDecodingTests: XCTestCase {
         XCTAssertEqual(job.workMode, "remote")
     }
 
+    func testFounderSlideDecodes() throws {
+        let json = """
+        [{"type": "founder", "order": 6, "name": "Jane Doe", "role_title": "CEO"}]
+        """.data(using: .utf8)!
+        let slides = try decoder.decode([CarouselSlide].self, from: json)
+        XCTAssertTrue(slides[0].isRenderable)
+        guard case .founder(let s) = slides[0] else { return XCTFail("expected .founder") }
+        XCTAssertEqual(s.name, "Jane Doe")
+        XCTAssertEqual(s.roleTitle, "CEO")
+    }
+
     func testFounderEmailPreviewDecodes() throws {
         let json = """
         {

@@ -106,6 +106,7 @@ type Slide =
   | { type: "role"; order: number; bullets: string[] }
   | { type: "requirements"; order: number; bullets: string[] }
   | { type: "perks"; order: number; bullets: string[] }
+  | { type: "founder"; order: number; name: string; role_title?: string }
   | {
       type: "details";
       order: number;
@@ -183,18 +184,46 @@ Deno.serve(async (request) => {
   const jobIds = jobRows.map((j) => j.id);
   const companyIds = Array.from(new Set(jobRows.map((j) => j.company_id).filter(Boolean) as string[]));
 
-  const [carouselsRes, companiesRes, fundsRes] = await Promise.all([
+  const [carouselsRes, companiesRes, fundsRes, contactsRes] = await Promise.all([
     admin.from("carousels").select("job_id, source_hash").in("job_id", jobIds),
     admin.from("companies").select("id, name, domain, stage, industry").in("id", companyIds),
     admin
       .from("company_funds")
       .select("company_id, funds(name)")
       .in("company_id", companyIds),
+    admin
+      .from("company_contacts")
+      .select("company_id, full_name, first_name, role_title, source, email_status, confidence")
+      .in("company_id", companyIds)
+      .not("full_name", "is", null)
+      .not("email_status", "in", "(bounced,suppressed)"),
   ]);
 
   if (carouselsRes.error) return jsonError(`load carousels failed: ${carouselsRes.error.message}`);
   if (companiesRes.error) return jsonError(`load companies failed: ${companiesRes.error.message}`);
   if (fundsRes.error) return jsonError(`load funds failed: ${fundsRes.error.message}`);
+  if (contactsRes.error) return jsonError(`load contacts failed: ${contactsRes.error.message}`);
+
+  // Best named contact per company for the founder slide: verified posting
+  // emails first, then confidence. Companies at big-co stages don't get a
+  // founder slide — the founder-pitch path is gated off for them client-side
+  // (F8), so the slide would dead-end.
+  type ContactRow = {
+    company_id: string;
+    full_name: string;
+    first_name: string | null;
+    role_title: string | null;
+    source: string;
+    email_status: string;
+    confidence: number | null;
+  };
+  const bestContactByCompany = new Map<string, ContactRow>();
+  for (const contact of (contactsRes.data ?? []) as ContactRow[]) {
+    const current = bestContactByCompany.get(contact.company_id);
+    if (!current || contactRank(contact) < contactRank(current)) {
+      bestContactByCompany.set(contact.company_id, contact);
+    }
+  }
 
   const existingHashByJobId = new Map<string, string>();
   for (const row of (carouselsRes.data ?? []) as Array<{ job_id: string; source_hash: string }>) {
@@ -227,8 +256,12 @@ Deno.serve(async (request) => {
       continue;
     }
     const fundName = firstFundByCompanyId.get(company.id) ?? null;
+    const founderContact = bestContactByCompany.get(company.id) ?? null;
+    const founder = founderContact
+      ? { full_name: founderContact.full_name, role_title: founderContact.role_title }
+      : null;
 
-    const sourceHash = await computeSourceHash(job, company, fundName);
+    const sourceHash = await computeSourceHash(job, company, fundName, founder?.full_name ?? null);
     if (existingHashByJobId.get(job.id) === sourceHash) {
       outcomes.push({ job_id: job.id, status: "skipped", theme_id: null, slide_count: null, error: null });
       continue;
@@ -248,7 +281,7 @@ Deno.serve(async (request) => {
 
     const usedFallback = !llmContent;
     const content = llmContent ?? fallbackContent(job);
-    const slides = assembleSlides(job, company, fundName, content);
+    const slides = assembleSlides(job, company, fundName, content, founder);
     const themeId = pickTheme(company.id, company.industry);
 
     // Backfill experience_level/work_mode on the job from the LLM (it read
@@ -365,11 +398,22 @@ function employmentDisplay(raw: string | null): string | null {
   return raw;
 }
 
+const BIG_CO_STAGES = new Set(["1000+ employees", "acquisition", "ipo"]);
+
+function contactRank(c: { source: string; email_status: string; confidence: number | null }): number {
+  // Lower is better: verified posting emails, then verified anything, then
+  // by confidence descending.
+  if (c.source === "posting_email") return 0;
+  if (c.email_status === "verified") return 1;
+  return 2 + (1 - (c.confidence ?? 0));
+}
+
 function assembleSlides(
   job: JobRow,
   company: CompanyRow,
   fundName: string | null,
   content: LLMContent,
+  founder: { full_name: string; role_title: string | null } | null,
 ): Slide[] {
   const slides: Slide[] = [];
   const comp = compensationDisplay(job);
@@ -417,6 +461,17 @@ function assembleSlides(
     slides.push({ type: "perks", order: slides.length + 1, bullets: content.perks });
   }
 
+  // Founder slide (F7): only for startup-stage companies — the pitch CTA is
+  // gated off for big-cos client-side, so the slide would dead-end there.
+  if (founder && !BIG_CO_STAGES.has(company.stage ?? "")) {
+    slides.push({
+      type: "founder",
+      order: slides.length + 1,
+      name: founder.full_name,
+      ...(founder.role_title ? { role_title: founder.role_title } : {}),
+    });
+  }
+
   // Always emit the details slide — the schema requires a 3-slide minimum
   // (cover + about_company + details). When all three sub-fields are missing
   // the slide still renders as a "Tap to apply" footer.
@@ -456,14 +511,15 @@ async function computeSourceHash(
   job: JobRow,
   company: CompanyRow,
   fundName: string | null,
+  founderName: string | null,
 ): Promise<string> {
   const payload = JSON.stringify({
     // Format version: bump to force regeneration of every carousel when the
     // slide structure changes (v2 = perks slide; v3 = fact-first cover
-    // fields + casual voice). Regen drains at
+    // fields + casual voice; v4 = founder slide). Regen drains at
     // MAX_PER_RUN/day via cron; invoke the function manually in a loop to
     // drain faster after deploying a bump.
-    v: 3,
+    v: 4,
     t: job.title,
     d: job.description,
     l: job.location,
@@ -477,6 +533,7 @@ async function computeSourceHash(
     cs: company.stage,
     ci: company.industry,
     f: fundName,
+    fo: founderName,
   });
   const data = new TextEncoder().encode(payload);
   const hashBuf = await crypto.subtle.digest("SHA-256", data);

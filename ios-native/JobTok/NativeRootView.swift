@@ -56,6 +56,14 @@ struct NativeRootView: View {
             Text(store.errorMessage ?? "")
         }
         .onOpenURL { url in
+            // F10: share deep link jobtok://job/{id} → queue for the feed.
+            if url.host == "job" {
+                let jobID = url.lastPathComponent
+                if !jobID.isEmpty && jobID != "job" {
+                    store.pendingSharedJobID = jobID
+                }
+                return
+            }
             Task {
                 authNoticeMessage = nil
                 await handleAuthRedirectIfNeeded(url: url)
@@ -212,6 +220,8 @@ struct NativeRootView: View {
             savedJobIDs: store.savedJobIDs,
             applications: store.candidateApplications,
             session: store.session,
+            sharedJobID: store.pendingSharedJobID,
+            onConsumeSharedJob: { store.pendingSharedJobID = nil },
             onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
             onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
             onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },

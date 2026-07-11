@@ -12,6 +12,9 @@ struct JobSeekerHomeView: View {
     let savedJobIDs: Set<String>
     let applications: [JobApplicationRecord]
     let session: AuthSession?
+    // F10: job id arriving from a share deep link; the feed scrolls to it.
+    let sharedJobID: String?
+    let onConsumeSharedJob: () -> Void
     let onSaveProfile: (CandidateProfileDraft) -> Void
     let onUploadAvatar: (Data) -> Void
     let onUploadResume: (URL) -> Void
@@ -49,6 +52,7 @@ struct JobSeekerHomeView: View {
     @State private var selectedPayFilter: JobPayFilter = .all
     @State private var selectedExperienceFilter: ExperienceFilter = .all
     @State private var selectedWorkModeFilter: WorkModeFilter = .all
+    @State private var founderReachableOnly = false
     @State private var selectedProfileTab: CandidateProfileTab = .video
     @State private var profileEditorTarget: CandidateProfileEditTarget?
     @State private var pendingVisibilityChange: CandidateVisibility?
@@ -60,6 +64,8 @@ struct JobSeekerHomeView: View {
         savedJobIDs: Set<String>,
         applications: [JobApplicationRecord],
         session: AuthSession? = nil,
+        sharedJobID: String? = nil,
+        onConsumeSharedJob: @escaping () -> Void = {},
         onSaveProfile: @escaping (CandidateProfileDraft) -> Void,
         onUploadAvatar: @escaping (Data) -> Void,
         onUploadResume: @escaping (URL) -> Void,
@@ -78,6 +84,8 @@ struct JobSeekerHomeView: View {
         self.savedJobIDs = savedJobIDs
         self.applications = applications
         self.session = session
+        self.sharedJobID = sharedJobID
+        self.onConsumeSharedJob = onConsumeSharedJob
         self.onSaveProfile = onSaveProfile
         self.onUploadAvatar = onUploadAvatar
         self.onUploadResume = onUploadResume
@@ -117,8 +125,6 @@ struct JobSeekerHomeView: View {
         return values.sorted()
     }
 
-    // TODO(deferred): Feature backlog D3 — startup-stage "founder-reachable"
-    // toggle (pre-seed→series B). See docs/DEFERRED_WORK.md.
     private var filteredJobs: [JobPostingRecord] {
         jobs.filter { job in
             let locationMatches: Bool = {
@@ -134,13 +140,14 @@ struct JobSeekerHomeView: View {
             let payMatches = selectedPayFilter.matches(job)
             let experienceMatches = selectedExperienceFilter.matches(job)
             let workModeMatches = selectedWorkModeFilter.matches(job)
+            let stageMatches = !founderReachableOnly || job.isEarlyStageStartup
             // Carousel-backed rows (ATS + board) need at least one slide this
             // build can draw. No carousel yet (generate-carousel hasn't run) or
             // a carousel made entirely of unknown slide types → nothing to
             // render, so hide it.
             let renderable = !job.sourceKind.rendersCarousel || (job.carousel?.hasRenderableSlides ?? false)
             return renderable && !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
-                && experienceMatches && workModeMatches
+                && experienceMatches && workModeMatches && stageMatches
         }
     }
 
@@ -245,6 +252,14 @@ struct JobSeekerHomeView: View {
             }
         }
         .animation(.spring(response: 0.4), value: easyApplySuccess)
+        .onChange(of: sharedJobID) { _, incoming in
+            guard let incoming else { return }
+            selectedTab = .jobs
+            if jobs.contains(where: { $0.id == incoming }) {
+                currentJobID = incoming
+            }
+            onConsumeSharedJob()
+        }
         .fullScreenCover(isPresented: $showingVideoStudio) {
             JobTokVideoStudio(
                 purpose: .candidatePitch,
@@ -637,6 +652,24 @@ struct JobSeekerHomeView: View {
                     } label: {
                         filterPill(title: selectedWorkModeFilter.title)
                     }
+
+                    // F4: founder-reachable — early-stage startups only,
+                    // where a pitch lands with an actual founder.
+                    Button {
+                        founderReachableOnly.toggle()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("🚀 Founder-reachable")
+                                .font(.caption.weight(.bold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(founderReachableOnly ? .black : PassportTheme.textPrimary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(founderReachableOnly ? PassportTheme.accent : PassportTheme.card)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -1768,6 +1801,9 @@ private struct JobFeedCard: View {
                                 label: isMuted ? "Muted" : "Sound",
                                 action: { isMuted.toggle() }
                             )
+                        }
+                        if let shareURL = ShareConfig.shareURL(forJobID: job.id) {
+                            FeedShareButton(url: shareURL)
                         }
                     }
                     .frame(width: 56)

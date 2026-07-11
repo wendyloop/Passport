@@ -142,6 +142,29 @@ extension View {
 
 // MARK: - Feed Components
 
+/// Share button for the feed action rail — a ShareLink styled to match
+/// FeedActionButton (F10a). Shares the job's landing-page URL.
+struct FeedShareButton: View {
+    let url: URL
+
+    var body: some View {
+        ShareLink(item: url) {
+            VStack(spacing: 4) {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .background(.black.opacity(0.38))
+                    .clipShape(Circle())
+                Text("Share")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct FeedActionButton: View {
     let symbol: String
     var isActive: Bool = false

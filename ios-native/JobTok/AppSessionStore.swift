@@ -34,6 +34,10 @@ final class AppSessionStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var isBusy = false
 
+    // F10: job id from a share deep link (jobtok://job/{id}) waiting for the
+    // feed to scroll to it. Consumed by JobSeekerHomeView.
+    @Published var pendingSharedJobID: String?
+
     private let service = SupabaseService.shared
     private var auth: AuthService { service.auth }
     private var candidate: CandidateService { service.candidate }
@@ -689,6 +693,24 @@ final class AppSessionStore: ObservableObject {
         jobFeed = try await service.fetchJobs(publishedOnly: true, session: session)
         savedJobRecords = try await candidate.fetchSavedJobs(userID: userID, session: session)
         candidateApplications = try await service.fetchJobApplications(candidateID: userID, session: session)
+
+        // F6 For-You v0: re-rank with the user's function affinity (from
+        // saves + applications) now that both are loaded. feedRank keeps the
+        // other tiers stable; affinity slots between big-co and comp.
+        let savedIDs = savedJobIDs
+        var affinity = Set(jobFeed.filter { savedIDs.contains($0.id) }.compactMap(\.jobFunction))
+        affinity.formUnion(candidateApplications.compactMap { application in
+            jobFeed.first { $0.id == application.jobID }?.jobFunction
+        })
+        if !affinity.isEmpty {
+            let now = Date()
+            jobFeed = jobFeed.sorted { a, b in
+                let ra = a.feedRank(now: now, affinity: affinity)
+                let rb = b.feedRank(now: now, affinity: affinity)
+                if ra != rb { return ra < rb }
+                return a.createdAt > b.createdAt
+            }
+        }
     }
 
     private func refreshEmployerData() async throws {

@@ -33,6 +33,30 @@ extension JobPostingRecord {
         companyID != nil && !isBigCompany
     }
 
+    /// F4: true early-stage startups (pre-seed → series B + tiny headcount
+    /// stages) — the segment where founder@domain reaches an actual founder.
+    private static let earlyStageStages: Set<String> = [
+        "pre_seed", "seed", "series_a", "series_b", "1-10 employees", "10-100 employees",
+    ]
+
+    var isEarlyStageStartup: Bool {
+        guard let stage = company?.stage else { return false }
+        return Self.earlyStageStages.contains(stage)
+    }
+
+    /// The one place feed ranking lives. Tiers, most important first:
+    /// founder-fatigue (FIRST-100-USERS) → big-co demotion (F8) →
+    /// function-affinity from saves/applies (F6, empty set = neutral) →
+    /// salary-listed-first (F3). Ascending sort; freshness breaks ties.
+    func feedRank(now: Date, affinity: Set<JobFunctionOption>) -> (Int, Int, Int, Int) {
+        (
+            founderFatigueBucket(now: now),
+            isBigCompany ? 1 : 0,
+            affinity.isEmpty || (jobFunction.map { affinity.contains($0) } ?? false) ? 0 : 1,
+            compensationSummary == nil ? 1 : 0
+        )
+    }
+
     /// "$120,000 – $150,000" / "From $30/hr" / nil when no compensation set.
     var compensationSummary: String? {
         if compensationMinAnnual != nil || compensationMaxAnnual != nil {
