@@ -77,6 +77,8 @@ final class AppSessionStore: ObservableObject {
             linkedInURL: jobSeekerProfile?.linkedInURL ?? "",
             instagramUsername: jobSeekerProfile?.instagramUsername ?? "",
             tiktokUsername: jobSeekerProfile?.tiktokUsername ?? "",
+            githubURL: jobSeekerProfile?.githubURL ?? "",
+            portfolioURL: jobSeekerProfile?.portfolioURL ?? "",
             visibility: jobSeekerProfile?.discoveryVisibility ?? .appliedRolesOnly,
             resumeFileName: latestResume?.filePath.split(separator: "/").last.map(String.init),
             resumeStoragePath: latestResume?.filePath,
@@ -258,6 +260,8 @@ final class AppSessionStore: ObservableObject {
                     tiktokUsername: normalizedUsername(candidateDraft.tiktokUsername),
                     introVideoURL: uploadedVideoPublicURL,
                     visibility: .appliedRolesOnly,
+                    githubURL: normalizedOptionalURL(candidateDraft.githubURL),
+                    portfolioURL: normalizedOptionalURL(candidateDraft.portfolioURL),
                     session: session
                 )
                 try await candidate.replaceJobSeekerEmployers(userID: userID, employers: employers, session: session)
@@ -309,6 +313,8 @@ final class AppSessionStore: ObservableObject {
                 tiktokUsername: normalizedUsername(draft.tiktokUsername),
                 introVideoURL: draft.introVideoURL,
                 visibility: draft.visibility,
+                githubURL: normalizedOptionalURL(draft.githubURL),
+                portfolioURL: normalizedOptionalURL(draft.portfolioURL),
                 session: session
             )
             try await candidate.replaceJobSeekerEmployers(userID: userID, employers: draft.employers, session: session)
@@ -382,6 +388,8 @@ final class AppSessionStore: ObservableObject {
                 tiktokUsername: normalizedUsername(draft.tiktokUsername),
                 introVideoURL: upload.publicURL,
                 visibility: draft.visibility,
+                githubURL: normalizedOptionalURL(draft.githubURL),
+                portfolioURL: normalizedOptionalURL(draft.portfolioURL),
                 session: session
             )
             try await loadCurrentUserState()

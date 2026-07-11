@@ -693,25 +693,20 @@ struct JobSeekerHomeView: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
 
-                if hasAnyProfileLink {
-                    HStack(spacing: 10) {
-                        if let linkedInURL {
-                            profileLinkTag(title: "LinkedIn", url: linkedInURL)
-                        }
-                        if let instagramURL {
-                            profileLinkTag(title: "@\(normalizedUsernameDisplay(workingProfile.instagramUsername))", url: instagramURL)
-                        }
-                        if let tiktokURL {
-                            profileLinkTag(title: "@\(normalizedUsernameDisplay(workingProfile.tiktokUsername))", url: tiktokURL)
-                        }
-                    }
+                profileLinksRow
                     .frame(maxWidth: .infinity)
-                }
             }
             .frame(maxWidth: .infinity)
 
             HStack(spacing: 12) {
                 ProfileStatCell(title: "Applied", value: "\(applications.count)")
+
+                Button {
+                    selectedTab = .saved
+                } label: {
+                    ProfileStatCell(title: "Saved", value: "\(savedJobs.count)")
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -734,6 +729,83 @@ struct JobSeekerHomeView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 24)
         .jobTokCard(cornerRadius: 30)
+    }
+
+    // Links ordered by role: GitHub leads for engineers, portfolio for
+    // designers, TikTok/IG for marketing. When the role's flagship link is
+    // missing, an accent chip nudges straight into the editor.
+    private var profileLinksRow: some View {
+        let github = normalizedOptionalURLString(workingProfile.githubURL)
+        let portfolio = normalizedOptionalURLString(workingProfile.portfolioURL)
+
+        struct LinkItem { let title: String; let url: URL }
+        var items: [LinkItem] = []
+        var missingFlagship: String?
+
+        func add(_ title: String, _ urlString: String?) {
+            if let urlString, let url = URL(string: urlString) {
+                items.append(LinkItem(title: title, url: url))
+            }
+        }
+
+        switch workingProfile.jobFunction {
+        case .engineering, .science:
+            add("GitHub", github)
+            if github == nil { missingFlagship = "GitHub" }
+            if let linkedInURL { items.append(LinkItem(title: "LinkedIn", url: linkedInURL)) }
+            add("Portfolio", portfolio)
+        case .design:
+            add("Portfolio", portfolio)
+            if portfolio == nil { missingFlagship = "portfolio" }
+            if let linkedInURL { items.append(LinkItem(title: "LinkedIn", url: linkedInURL)) }
+        case .marketing:
+            if let tiktokURL { items.append(LinkItem(title: "@\(normalizedUsernameDisplay(workingProfile.tiktokUsername))", url: tiktokURL)) }
+            if let instagramURL { items.append(LinkItem(title: "@\(normalizedUsernameDisplay(workingProfile.instagramUsername))", url: instagramURL)) }
+            if tiktokURL == nil && instagramURL == nil { missingFlagship = "TikTok" }
+            if let linkedInURL { items.append(LinkItem(title: "LinkedIn", url: linkedInURL)) }
+        default:
+            if let linkedInURL { items.append(LinkItem(title: "LinkedIn", url: linkedInURL)) }
+            if linkedInURL == nil { missingFlagship = "LinkedIn" }
+            add("Portfolio", portfolio)
+            add("GitHub", github)
+        }
+
+        // Non-flagship socials round out the row when set.
+        if workingProfile.jobFunction != .marketing {
+            if let instagramURL { items.append(LinkItem(title: "@\(normalizedUsernameDisplay(workingProfile.instagramUsername))", url: instagramURL)) }
+            if let tiktokURL, workingProfile.jobFunction != .marketing {
+                items.append(LinkItem(title: "@\(normalizedUsernameDisplay(workingProfile.tiktokUsername))", url: tiktokURL))
+            }
+        }
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    profileLinkTag(title: item.title, url: item.url)
+                }
+                if let missing = missingFlagship {
+                    Button {
+                        isEditingProfile = true
+                    } label: {
+                        Label("add your \(missing)", systemImage: "plus")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(PassportTheme.accentSoft)
+                            .foregroundStyle(PassportTheme.accent)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    private func normalizedOptionalURLString(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.hasPrefix("http") ? trimmed : "https://\(trimmed)"
     }
 
     private var profileTabBar: some View {
@@ -903,7 +975,7 @@ struct JobSeekerHomeView: View {
             tabBarButton(.profile, symbol: "person.crop.circle.fill", label: "Me")
         }
         .padding(.top, 10)
-        .padding(.bottom, 24)
+        .padding(.bottom, 8)
         .padding(.horizontal, 6)
         .background(
             // Always-dark bar, TikTok-style, regardless of system theme. On
@@ -1030,10 +1102,6 @@ struct JobSeekerHomeView: View {
         let username = normalizedUsernameDisplay(workingProfile.tiktokUsername)
         guard !username.isEmpty else { return nil }
         return URL(string: "https://www.tiktok.com/@\(username)")
-    }
-
-    private var hasAnyProfileLink: Bool {
-        linkedInURL != nil || instagramURL != nil || tiktokURL != nil
     }
 
     private var completedChecklistCount: Int {
@@ -1647,7 +1715,7 @@ private struct JobFeedCard: View {
 
                         if let onEmailFounder {
                             Button(action: onEmailFounder) {
-                                Label("Email the founder", systemImage: "envelope")
+                                Label("Pitch the founder", systemImage: "paperplane.fill")
                                     .font(.subheadline.weight(.bold))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
@@ -1682,7 +1750,7 @@ private struct JobFeedCard: View {
                     .frame(width: 56)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, safeAreaBottom + 20)
+                .padding(.bottom, safeAreaBottom + FeedLayout.cardBottomClearance)
             }
         }
     }
@@ -1879,9 +1947,8 @@ private struct CandidateProfileEditor: View {
                         employersField
                         dreamRoleField
                         compensationRangeField
-                        linkedInField
-                        socialUsernameField(title: "Instagram", text: $profile.instagramUsername, placeholder: "yourhandle", target: .instagram)
-                        socialUsernameField(title: "TikTok", text: $profile.tiktokUsername, placeholder: "yourhandle", target: .tiktok)
+                        roleSpotlightHint
+                        linkFields
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Job function")
@@ -2271,6 +2338,100 @@ private struct CandidateProfileEditor: View {
         .id(CandidateProfileEditTarget.linkedIn)
     }
 
+    // Links ordered by what matters for this person's role: engineers lead
+    // with GitHub, designers with a portfolio, marketing/social folks with
+    // TikTok + Instagram. Everyone keeps LinkedIn.
+    @ViewBuilder
+    private var linkFields: some View {
+        switch profile.jobFunction {
+        case .engineering, .science:
+            githubField
+            linkedInField
+            portfolioField
+            socialUsernameField(title: "Instagram", text: $profile.instagramUsername, placeholder: "yourhandle", target: .instagram)
+            socialUsernameField(title: "TikTok", text: $profile.tiktokUsername, placeholder: "yourhandle", target: .tiktok)
+        case .design:
+            portfolioField
+            linkedInField
+            githubField
+            socialUsernameField(title: "Instagram", text: $profile.instagramUsername, placeholder: "yourhandle", target: .instagram)
+            socialUsernameField(title: "TikTok", text: $profile.tiktokUsername, placeholder: "yourhandle", target: .tiktok)
+        case .marketing:
+            socialUsernameField(title: "TikTok", text: $profile.tiktokUsername, placeholder: "yourhandle", target: .tiktok)
+            socialUsernameField(title: "Instagram", text: $profile.instagramUsername, placeholder: "yourhandle", target: .instagram)
+            linkedInField
+            portfolioField
+            githubField
+        default:
+            linkedInField
+            socialUsernameField(title: "Instagram", text: $profile.instagramUsername, placeholder: "yourhandle", target: .instagram)
+            socialUsernameField(title: "TikTok", text: $profile.tiktokUsername, placeholder: "yourhandle", target: .tiktok)
+            portfolioField
+            githubField
+        }
+    }
+
+    private var roleSpotlightHint: some View {
+        let hint: String
+        switch profile.jobFunction {
+        case .engineering, .science:
+            hint = "Your GitHub is your portfolio — founders click it before your resume."
+        case .design:
+            hint = "Your portfolio does the talking — make it the first thing they see."
+        case .marketing:
+            hint = "Your TikTok and Instagram ARE your track record — link them."
+        default:
+            hint = "A strong LinkedIn is your anchor — add anything else that shows your work."
+        }
+        return HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(PassportTheme.accent)
+            Text(hint)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(PassportTheme.textPrimary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PassportTheme.accentSoft.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var githubField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("GitHub")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            TextField("https://github.com/you", text: $profile.githubURL)
+                .textFieldStyle(PassportTextFieldStyle())
+                .focused($focusedField, equals: .github)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+        .id(CandidateProfileEditTarget.github)
+    }
+
+    private var portfolioField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Portfolio")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            TextField("https://yourfolio.com", text: $profile.portfolioURL)
+                .textFieldStyle(PassportTextFieldStyle())
+                .focused($focusedField, equals: .portfolio)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+        }
+        .padding(18)
+        .jobTokCard(cornerRadius: 22)
+        .id(CandidateProfileEditTarget.portfolio)
+    }
+
     private func socialUsernameField(
         title: String,
         text: Binding<String>,
@@ -2578,6 +2739,9 @@ private enum CandidateProfileEditTarget: Hashable {
     case dreamRole
     case compensation
     case linkedIn
+    case github
+    case portfolio
+    
     case instagram
     case tiktok
     case jobFunction

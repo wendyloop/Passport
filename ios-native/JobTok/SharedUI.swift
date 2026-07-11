@@ -281,3 +281,14 @@ struct SocialLinksRow: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
+
+// Vertical clearances for the feed, derived from the overlaid TikTok-style
+// tab bar (content ~52pt + margins) so cards render correctly on every
+// device size — the safe-area inset supplies the per-device remainder.
+enum FeedLayout {
+    /// Bottom padding for a card's CTA overlay: tab bar + breathing room.
+    static let cardBottomClearance: CGFloat = 92
+    /// Bottom padding for carousel slide text so it stays above the CTA
+    /// overlay (progress bar + apply/pitch pills) and the tab bar.
+    static let slideContentClearance: CGFloat = 300
+}
