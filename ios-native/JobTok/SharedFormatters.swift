@@ -55,6 +55,15 @@ enum SharedFormatters {
             .replacingOccurrences(of: "[^a-z0-9_]", with: "", options: .regularExpression)
     }
 
+    /// "today" / "3d ago" / "2w ago" — freshness chip on carousel covers.
+    static func relativeAge(of date: Date, now: Date = Date()) -> String {
+        let days = Int(now.timeIntervalSince(date) / 86_400)
+        if days <= 0 { return "today" }
+        if days == 1 { return "1d ago" }
+        if days < 14 { return "\(days)d ago" }
+        return "\(days / 7)w ago"
+    }
+
     /// "1:05" style mm:ss.
     static func duration(_ duration: Double) -> String {
         let totalSeconds = Int(duration.rounded())

@@ -39,6 +39,17 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertEqual(SharedFormatters.duration(59.6), "1:00")
     }
 
+    func testRelativeAge() {
+        let now = ISO8601DateFormatter().date(from: "2026-07-09T12:00:00Z")!
+        func age(_ iso: String) -> String {
+            SharedFormatters.relativeAge(of: ISO8601DateFormatter().date(from: iso)!, now: now)
+        }
+        XCTAssertEqual(age("2026-07-09T08:00:00Z"), "today")
+        XCTAssertEqual(age("2026-07-08T08:00:00Z"), "1d ago")
+        XCTAssertEqual(age("2026-07-04T08:00:00Z"), "5d ago")
+        XCTAssertEqual(age("2026-06-20T08:00:00Z"), "2w ago")
+    }
+
     func testFounderFatigueBuckets() throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

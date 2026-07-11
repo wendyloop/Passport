@@ -39,6 +39,8 @@ type RequestBody = { job_id?: string };
 type JobRow = {
   id: string;
   company_id: string | null;
+  experience_level: string | null;
+  work_mode: string | null;
   company_name: string | null;
   title: string | null;
   description: string | null;
@@ -63,6 +65,9 @@ type CompanyRow = {
 type LLMContent = {
   hook: string;
   company_blurb: string;
+  youd_line: string;
+  experience_level: string;
+  work_mode: string;
   responsibilities: string[];
   requirements: string[];
   perks: string[];
@@ -85,6 +90,9 @@ type Slide =
       hook: string;
       location?: string;
       compensation?: string;
+      youd_line?: string;
+      experience?: string;
+      work_mode?: string;
     }
   | {
       type: "about_company";
@@ -152,7 +160,7 @@ Deno.serve(async (request) => {
   const { data: jobs, error: jobsError } = await admin
     .from("jobs")
     .select(
-      "id, company_id, company_name, title, description, location, compensation_text, compensation_min_annual, compensation_max_annual, compensation_min_hourly, compensation_max_hourly, employment_type, apply_url",
+      "id, company_id, company_name, title, description, location, compensation_text, compensation_min_annual, compensation_max_annual, compensation_min_hourly, compensation_max_hourly, employment_type, apply_url, experience_level, work_mode",
     )
     .in("id", candidateIds)
     .eq("is_active", true)
@@ -242,6 +250,31 @@ Deno.serve(async (request) => {
     const content = llmContent ?? fallbackContent(job);
     const slides = assembleSlides(job, company, fundName, content);
     const themeId = pickTheme(company.id, company.industry);
+
+    // Backfill experience_level/work_mode on the job from the LLM (it read
+    // the full JD; the ingest pass only saw the title). Fill nulls only, and
+    // do it BEFORE the carousel upsert: jobs.updated_at bumps on update, and
+    // the queue RPC treats updated_at > carousels.generated_at as "needs
+    // regeneration" — updating after the upsert would loop this job forever.
+    if (llmContent) {
+      const jobPatch: Record<string, string> = {};
+      if (!job.experience_level && llmContent.experience_level) {
+        jobPatch.experience_level = llmContent.experience_level;
+      }
+      if (!job.work_mode && llmContent.work_mode) {
+        jobPatch.work_mode = llmContent.work_mode;
+      }
+      if (Object.keys(jobPatch).length > 0) {
+        const { error: patchError } = await admin.from("jobs").update(jobPatch).eq("id", job.id);
+        if (patchError) {
+          console.error(JSON.stringify({
+            event: "job_classifier_backfill_failed",
+            job_id: job.id,
+            error: patchError.message,
+          }));
+        }
+      }
+    }
 
     const { error: upsertError } = await admin
       .from("carousels")
@@ -350,6 +383,14 @@ function assembleSlides(
     hook: content.hook || (job.title ?? "Open role"),
     ...(job.location ? { location: job.location } : {}),
     ...(comp ? { compensation: comp } : {}),
+    ...(content.youd_line ? { youd_line: content.youd_line } : {}),
+    // LLM (reads the full JD) wins over the title-keyword pass for display.
+    ...((content.experience_level || job.experience_level)
+      ? { experience: (content.experience_level || job.experience_level) as string }
+      : {}),
+    ...((content.work_mode || job.work_mode)
+      ? { work_mode: (content.work_mode || job.work_mode) as string }
+      : {}),
   });
 
   slides.push({
@@ -395,6 +436,9 @@ function fallbackContent(job: JobRow): LLMContent {
   return {
     hook: job.title ?? "Open role",
     company_blurb: blurb,
+    youd_line: "",
+    experience_level: "",
+    work_mode: "",
     responsibilities: [],
     requirements: [],
     perks: [],
@@ -415,10 +459,11 @@ async function computeSourceHash(
 ): Promise<string> {
   const payload = JSON.stringify({
     // Format version: bump to force regeneration of every carousel when the
-    // slide structure changes (v2 = perks slide). Regen drains at
+    // slide structure changes (v2 = perks slide; v3 = fact-first cover
+    // fields + casual voice). Regen drains at
     // MAX_PER_RUN/day via cron; invoke the function manually in a loop to
     // drain faster after deploying a bump.
-    v: 2,
+    v: 3,
     t: job.title,
     d: job.description,
     l: job.location,
@@ -442,19 +487,29 @@ async function computeSourceHash(
 
 async function extractWithLLM(job: JobRow): Promise<LLMContent> {
   const systemPrompt =
-    "You write copy for short, swipeable job carousels in a consumer app for Gen Z job seekers. " +
-    "You turn a job description into punchy slide content. Your voice is warm, direct, and human — " +
-    "confident, a little playful, never corporate. Address the candidate as 'you' where natural. " +
-    "Rules: Use ONLY information present in the input. Never invent facts, perks, or numbers. " +
+    "You write short, swipeable job carousels for a Gen Z job app. " +
+    "Voice: like texting a friend about a cool job you spotted — warm, direct, " +
+    "second person, contractions, sentence case, zero corporate speak. " +
+    "BANNED words/phrases: synergy, fast-paced environment, rockstar, ninja, guru, " +
+    "self-starter, wear many hats, dynamic, passionate, leverage, stakeholders, " +
+    "best-in-class, cutting-edge, mission-critical. " +
+    "Rules: use ONLY information present in the input. Never invent facts, perks, or numbers. " +
     "If something isn't supported by the input, return an empty string or array. " +
-    "Respect every length limit. Short beats complete. " +
-    "company_blurb: one sentence on what the company does, ONLY if the JD says so. " +
-    "responsibilities: what they'll actually do, as short punchy phrases. " +
+    "Respect every length limit. Short beats complete. No hashtags. At most one emoji total across all fields. " +
+    "hook: one intriguing line about the role, no title repeat. " +
+    "company_blurb: what the company does, one plain sentence, ONLY if the JD says so. " +
+    "youd_line: one line starting with the word you'd, describing the single most concrete thing " +
+    "this person would actually do (e.g. you'd own the mobile app end to end). " +
+    "experience_level: how senior this role reads from the requirements — one of " +
+    "intern, entry, mid, senior, staff, exec — or empty string if the JD doesn't say. " +
+    "entry means 0-2 years or new grad friendly; mid means 2-5 years. " +
+    "work_mode: remote, hybrid, or onsite ONLY if the JD states it; else empty string. " +
+    "responsibilities: what they'd actually do, short punchy phrases. " +
     "requirements: the few things that genuinely matter, not the full wishlist. " +
     "founders: people the JD explicitly names as founder, co-founder, or CEO of THIS company — " +
     "never guess from context, never include hiring managers or team leads; empty array when none are named. " +
     "confidence: 0-1, how explicit the naming is. " +
-    "No emojis, no hashtags. Sentence case. Return only JSON.";
+    "Return only JSON.";
 
   const userPrompt = JSON.stringify({
     company: job.company_name,
@@ -472,10 +527,13 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["hook", "company_blurb", "responsibilities", "requirements", "perks", "founders"],
+      required: ["hook", "company_blurb", "youd_line", "experience_level", "work_mode", "responsibilities", "requirements", "perks", "founders"],
       properties: {
         hook: { type: "string", maxLength: 70 },
         company_blurb: { type: "string", maxLength: 120 },
+        youd_line: { type: "string", maxLength: 80 },
+        experience_level: { type: "string", enum: ["intern", "entry", "mid", "senior", "staff", "exec", ""] },
+        work_mode: { type: "string", enum: ["remote", "hybrid", "onsite", ""] },
         responsibilities: { type: "array", maxItems: 4, items: { type: "string", maxLength: 70 } },
         requirements: { type: "array", maxItems: 4, items: { type: "string", maxLength: 60 } },
         perks: { type: "array", maxItems: 3, items: { type: "string", maxLength: 50 } },
@@ -501,6 +559,9 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
   return {
     hook: (parsed.hook ?? "").trim(),
     company_blurb: (parsed.company_blurb ?? "").trim(),
+    youd_line: (parsed.youd_line ?? "").trim(),
+    experience_level: (parsed.experience_level ?? "").trim(),
+    work_mode: (parsed.work_mode ?? "").trim(),
     responsibilities: (parsed.responsibilities ?? []).map((s) => s.trim()).filter(Boolean),
     requirements: (parsed.requirements ?? []).map((s) => s.trim()).filter(Boolean),
     perks: (parsed.perks ?? []).map((s) => s.trim()).filter(Boolean),

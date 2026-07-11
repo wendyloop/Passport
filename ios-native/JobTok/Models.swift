@@ -386,6 +386,17 @@ struct CoverSlide: Codable, Equatable {
     let location: String?
     // The backend has always sent this; the client just never decoded it.
     let compensation: String?
+    // v3 fact-first fields: one concrete "you'd ..." line plus experience
+    // level and work mode extracted from the full JD.
+    let youdLine: String?
+    let experience: String?
+    let workMode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case order, hook, role, company, location, compensation, experience
+        case youdLine = "youd_line"
+        case workMode = "work_mode"
+    }
 }
 
 struct AboutCompanySlide: Codable, Equatable {

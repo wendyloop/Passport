@@ -199,6 +199,10 @@ final class SupabaseService {
                 session: session
             )
             let merged = try await videos + carousels
+            // TODO(deferred): Feature backlog D2 + D5 — boost comp-listed
+            // jobs (30-44% better conversion per research) and add saved/
+            // applied job_function affinity ranking. Slot both into this
+            // sort. See docs/DEFERRED_WORK.md (Feature backlog).
             // FIRST-100-USERS founder-fatigue sort: jobs whose founder was
             // already reached today (video application or founder email) sink
             // below everything untouched; jobs touched earlier this week are

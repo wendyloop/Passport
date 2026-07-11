@@ -115,6 +115,10 @@ struct JobSeekerHomeView: View {
         return values.sorted()
     }
 
+    // TODO(deferred): Feature backlog D1 + D3 — add experience_level /
+    // work_mode filter chips (columns exist as of carousel v3) and a
+    // startup-stage "founder-reachable" toggle (pre-seed→series B).
+    // See docs/DEFERRED_WORK.md (Feature backlog).
     private var filteredJobs: [JobPostingRecord] {
         jobs.filter { job in
             let locationMatches: Bool = {

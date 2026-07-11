@@ -112,6 +112,31 @@ final class ModelsDecodingTests: XCTestCase {
         XCTAssertEqual(slides[0].order, 3)
     }
 
+    func testCoverSlideDecodesV3Fields() throws {
+        let json = """
+        [{"type": "cover", "order": 1, "hook": "h", "role": "iOS Engineer",
+          "company": "Acme", "location": "NYC", "compensation": "$150k+",
+          "youd_line": "you'd own the app end to end",
+          "experience": "entry", "work_mode": "remote"}]
+        """.data(using: .utf8)!
+        let slides = try decoder.decode([CarouselSlide].self, from: json)
+        guard case .cover(let s) = slides[0] else { return XCTFail("expected cover") }
+        XCTAssertEqual(s.youdLine, "you'd own the app end to end")
+        XCTAssertEqual(s.experience, "entry")
+        XCTAssertEqual(s.workMode, "remote")
+    }
+
+    // v2 covers (no v3 fields) must keep decoding while the catalog regenerates.
+    func testCoverSlideDecodesWithoutV3Fields() throws {
+        let json = """
+        [{"type": "cover", "order": 1, "role": "PM", "company": "Acme"}]
+        """.data(using: .utf8)!
+        let slides = try decoder.decode([CarouselSlide].self, from: json)
+        guard case .cover(let s) = slides[0] else { return XCTFail("expected cover") }
+        XCTAssertNil(s.youdLine)
+        XCTAssertNil(s.experience)
+    }
+
     func testPerksSlideDecodesAndRenders() throws {
         let json = """
         [{"type": "perks", "order": 5, "bullets": ["Equity", "Health"]}]

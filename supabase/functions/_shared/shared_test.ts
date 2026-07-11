@@ -62,3 +62,33 @@ Deno.test("firstNameOf returns the first token or null", () => {
   assertEquals(firstNameOf("Jane Doe"), "Jane");
   assertEquals(firstNameOf("   "), null);
 });
+
+import { classifyExperience, classifyTitle, classifyWorkMode } from "./title_classify.ts";
+
+Deno.test("classifyTitle buckets common titles", () => {
+  assertEquals(classifyTitle("Senior Software Engineer, Payments"), "engineering");
+  assertEquals(classifyTitle("Account Executive - Mid Market"), "sales");
+  assertEquals(classifyTitle("Underwater Basket Weaver"), null);
+});
+
+Deno.test("classifyExperience: intern beats seniority words", () => {
+  assertEquals(classifyExperience("Senior Software Engineering Intern"), "intern");
+});
+
+Deno.test("classifyExperience: word boundaries (Internal ≠ intern)", () => {
+  assertEquals(classifyExperience("Internal Audit Manager"), null);
+  assertEquals(classifyExperience("International Tax Analyst"), null);
+});
+
+Deno.test("classifyExperience: entry + senior + unknown", () => {
+  assertEquals(classifyExperience("New Grad Engineer, Software"), "entry");
+  assertEquals(classifyExperience("Sr. Product Designer"), "senior");
+  assertEquals(classifyExperience("Software Engineer"), null);
+});
+
+Deno.test("classifyWorkMode: from location string only", () => {
+  assertEquals(classifyWorkMode("Remote - US"), "remote");
+  assertEquals(classifyWorkMode("New York (Hybrid)"), "hybrid");
+  assertEquals(classifyWorkMode("San Francisco, CA"), null);
+  assertEquals(classifyWorkMode(null), null);
+});

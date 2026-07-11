@@ -33,7 +33,7 @@ import type { FundRow } from "../_shared/ats/models.ts";
 import type { BoardCompany, BoardJob } from "../_shared/boards/types.ts";
 import { jsonError } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
-import { classifyTitle } from "../_shared/title_classify.ts";
+import { classifyExperience, classifyTitle, classifyWorkMode } from "../_shared/title_classify.ts";
 
 // Total per-run wall-clock. Supabase edge ceiling is 150s; we stay well
 // below to leave headroom for slow pages + the post-loop write phase.
@@ -271,6 +271,9 @@ async function ingestFund(
   };
 }
 
+// TODO(deferred): Feature backlog D4 — skip aggregator apply URLs
+// (linkedin.com ≈ 1,546 un-enrichable rows) via a host blocklist here.
+// See docs/DEFERRED_WORK.md (Feature backlog).
 function buildJobRows(
   fund: FundRow,
   jobs: BoardJob[],
@@ -305,6 +308,8 @@ function buildJobRows(
       location: job.location,
       employment_type: normalizeEmploymentType(job.employment_type),
       job_function: classifyTitle(job.title),
+      experience_level: classifyExperience(job.title),
+      work_mode: classifyWorkMode(job.location),
       compensation_text: job.compensation_text,
       compensation_min_annual: toInt(job.compensation.min_annual),
       compensation_max_annual: toInt(job.compensation.max_annual),

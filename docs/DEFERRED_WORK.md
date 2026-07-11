@@ -23,3 +23,17 @@ ships).
 | **Snapshot / UI tests** | `CarouselFeedCard.swift` (feed card) + `FounderEmailSheet.swift` (compose sheet) | Medium | Needs an external snapshot lib (swift-snapshot-testing via SPM) + baseline images. The `JobTokTests` target is the foundation to add it onto. |
 | **Anon-key → publishable-key + RLS audit** | `Config.swift`; `JobTok.xcconfig` | Small–medium | Anon key is public-by-design and RLS is the real boundary, so not urgent. Migrate to Supabase's publishable/secret key model, and decide whether the anon-readable `companies`/`funds`/`carousels` should require auth like `jobs` does. |
 | **Founder-email v2** | `send-founder-email/index.ts` (verification, per-company caps), `enrich-company-contacts/index.ts` (re-scrape cadence) | Medium | Ship v1, learn from real reply/bounce rates first. Then: a re-scrape cadence for companies that scraped zero founders, email verification (Hunter/NeverBounce) *before* sending, and a per-company weekly cap so multiple candidates don't all hit the same founder in one week. |
+
+## Feature backlog (from the 2026-07-09 market analysis + carousel v3 plan)
+
+Product features waiting on a "work on the backlog" pass, distinct from the
+tech-debt table above. Anchors use the same `TODO(deferred):` convention.
+
+| Item | Anchor(s) | Effort | What it is |
+|---|---|---|---|
+| **C. Social visual language for carousels** | `CarouselFeedCard.swift` | Medium | Sticker-style chips with slight rotation, TikTok-caption highlight blocks behind key lines, theme-colored doodle accents, bullets cascading in on slide-enter, "swipe →" affordance on the cover, and a founder slide ("meet Jane 👋") with the Email-the-founder CTA once company_contacts populates. |
+| **D1. Early-career + remote feed filter chips** | `JobSeekerHomeView.swift` (filter row) | Small–medium | Surface the `experience_level` and `work_mode` columns (added by carousel v3) as feed filter chips. Only ~1.7% of jobs are explicitly entry-level — surfacing them IS the product for the New-Grad Nina persona. Decode both fields on `JobPostingRecord`. |
+| **D2. Comp-listed ranking boost** | `SupabaseService.swift` (fetchJobs sort) | Small | Rank the ~23% of jobs with compensation above those without (salary-listed postings convert 30–44% better per LinkedIn/SHRM research). Slot into the existing founder-fatigue sort. |
+| **D3. Startup-stage toggle ("founder-reachable")** | `JobSeekerHomeView.swift` (filter row) | Small–medium | Filter to pre-seed→Series B companies (~3.4k jobs, ~950 companies) where founder@domain actually reaches the founder. Pairs with the founder-email feature; Founder-Chaser Felix persona. |
+| **D4. Ingest hygiene: drop aggregator URLs** | `supabase/functions/ingest-jobs/index.ts` | Small | Skip jobs whose apply_url host is linkedin.com (1,546 rows of un-enrichable aggregator links). Consider a host blocklist constant. |
+| **D5. For-You personalization v0** | `SupabaseService.swift` / `AppSessionStore.swift` | Medium | Rank feed by job_function affinity from the user's saves + applications (job_function is populated as of the pipeline-rescue backfill). Simple weighted boost, no ML. |

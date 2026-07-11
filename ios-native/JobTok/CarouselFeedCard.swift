@@ -164,9 +164,9 @@ private struct SlideView: View {
         switch slide {
         case .cover(let s):         CoverSlideView(slide: s, theme: theme, job: job)
         case .aboutCompany(let s):  AboutCompanySlideView(slide: s, theme: theme)
-        case .role(let s):          BulletSlideView(title: "The Role", bullets: s.bullets, theme: theme)
-        case .requirements(let s):  BulletSlideView(title: "What You Bring", bullets: s.bullets, theme: theme)
-        case .perks(let s):         BulletSlideView(title: "The Good Stuff", bullets: s.bullets, theme: theme)
+        case .role(let s):          BulletSlideView(title: "what you'd actually do", bullets: s.bullets, theme: theme)
+        case .requirements(let s):  BulletSlideView(title: "you're a fit if", bullets: s.bullets, theme: theme)
+        case .perks(let s):         BulletSlideView(title: "the good stuff", bullets: s.bullets, theme: theme)
         case .details(let s):       DetailsSlideView(slide: s, theme: theme, job: job)
         // Filtered out of `slides` before we get here; render nothing if one
         // ever reaches this view.
@@ -177,6 +177,10 @@ private struct SlideView: View {
 
 // MARK: - Individual slide layouts
 
+// TODO(deferred): Feature backlog C — social visual language: sticker
+// chips with rotation, caption-highlight text blocks, doodle accents,
+// cascade-in bullets, "swipe →" affordance, founder slide with email CTA.
+// See docs/DEFERRED_WORK.md (Feature backlog).
 // Fact-first cover: job title is the headline; company, location, and pay
 // are scannable chips. No tagline — candidates decide from facts in under a
 // second, TikTok-speed. Two layouts alternate deterministically per job so
@@ -234,6 +238,15 @@ private struct CoverSlideView: View {
                 .multilineTextAlignment(centeredLayout ? .center : .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // The 90%-signal: one concrete line about what you'd actually do.
+            if let youd = slide.youdLine, !youd.isEmpty {
+                Text(youd)
+                    .font(theme.bodyFont)
+                    .foregroundStyle(theme.textPrimary.opacity(0.85))
+                    .multilineTextAlignment(centeredLayout ? .center : .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             factChips
                 .padding(.top, 2)
 
@@ -245,16 +258,38 @@ private struct CoverSlideView: View {
     }
 
     private var factChips: some View {
+        // Order = decision weight from job-seeker research: salary first
+        // (89% call it the most helpful element), then experience fit,
+        // work mode, location, freshness.
         FlowChips(alignment: centeredLayout ? .center : .leading) {
-            if let loc = slide.location ?? job.location, !loc.isEmpty {
-                coverChip(icon: "mappin.and.ellipse", text: loc)
-            }
             if let comp = compensation, !comp.isEmpty {
                 coverChip(icon: "dollarsign.circle.fill", text: comp)
+            }
+            if let exp = slide.experience, !exp.isEmpty {
+                coverChip(icon: "chart.bar.fill", text: experienceLabel(exp))
+            }
+            if let mode = slide.workMode, !mode.isEmpty {
+                coverChip(icon: "house.fill", text: mode)
+            }
+            if let loc = slide.location ?? job.location, !loc.isEmpty {
+                coverChip(icon: "mappin.and.ellipse", text: loc)
             }
             if let type = job.employmentType?.title {
                 coverChip(icon: "briefcase.fill", text: type)
             }
+            coverChip(icon: "clock.fill", text: SharedFormatters.relativeAge(of: job.createdAt))
+        }
+    }
+
+    private func experienceLabel(_ raw: String) -> String {
+        switch raw {
+        case "intern": return "internship"
+        case "entry": return "0-2 yrs"
+        case "mid": return "2-5 yrs"
+        case "senior": return "senior"
+        case "staff": return "staff+"
+        case "exec": return "leadership"
+        default: return raw
         }
     }
 
@@ -340,7 +375,7 @@ private struct AboutCompanySlideView: View {
         VStack(alignment: .leading, spacing: 22) {
             Spacer(minLength: 60)
 
-            Text("About the Company")
+            Text("the backstory")
                 .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .tracking(2)
                 .foregroundStyle(theme.textSecondary)
@@ -437,7 +472,7 @@ private struct DetailsSlideView: View {
         VStack(alignment: .leading, spacing: 22) {
             Spacer(minLength: 60)
 
-            Text("The Details")
+            Text("the deets")
                 .font(theme.titleFont)
                 .foregroundStyle(theme.textPrimary)
 
