@@ -38,16 +38,14 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 | T3 | `process-apify-results` N+1: loads all `jobs.source_url` into memory, row-by-row inserts | refactor pass; anchor ~line 385 | S–M | — |
 | T5 | `CandidateStore` split out of `AppSessionStore` | refactor pass; anchor `AppSessionStore.swift` | M | pair with T1 |
 | T6 | Full DI: protocol-extract services, inject through view tree | refactor pass; anchor `SupabaseService.swift` | M–L | with first service-level tests |
-| T7 | Snapshot/UI tests for feed cards + pitch sheet (swift-snapshot-testing via SPM) | refactor pass; anchor `CarouselFeedCard.swift` | M | — |
-| T8 | **Security posture for App Store release (decided 2026-07-11)**: (a) require auth on `companies`/`funds`/`carousels` — consistent with `jobs`; the F10c landing page reads via service-role server-side, so nothing needs anon; (b) migrate anon JWT → Supabase publishable/secret key model; (c) raise `minimum_password_length` 6→8 + enable leaked-password protection; (d) verify all storage buckets private (resumes already signed-URL-only) | refactor pass + user decision; anchor `Config.swift` | M | do before App Store submission; after F10c exists (landing page must not rely on anon reads) |
+| T7 | **First pass shipped 2026-07-11**: ImageRenderer render-smoke tests (crash/zero-size regressions) in `RenderSmokeTests.swift`. Remainder: pixel-diff snapshots via swift-snapshot-testing (SPM) with recorded baselines | refactor pass | M | — |
+| T8 | **Partially shipped 2026-07-11** (RLS lockdown: companies/funds/company_funds/carousels now authenticated-only; password minimum 8). Remainder: migrate the committed anon JWT to Supabase's publishable/secret key model — needs keys minted in the dashboard, then swap `Config.swift` + edge secrets. Anchor `Config.swift` | refactor pass + user decision | S | dashboard access |
 | T9 | Founder-pitch v2: re-scrape cadence, email verification vendor before send, per-company weekly cap | founder-email plan; anchors in both functions | M | real send/bounce data (post-launch) |
 
 ### Employer side
 
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
-| P1 | Signed resume download edge function for employers (application-based authorization; bucket stays private) | PHASE2 notes | M | — |
-| P2 | **Application states — decided (2026-07-11)**: implement the full `reviewing`/`contacted`/`rejected`/`hired` set + **optional** internal notes per application. Rationale: state transitions + notes are the feedback loop for improving both candidate and employer experience — we want this insight | PHASE2 notes + user decision | M | — |
 
 ### Shelved (deliberately not scheduled)
 
@@ -82,11 +80,11 @@ founder-reachable toggle · F6 For-You affinity ranking.
 **Still open**: F10b universal links + F10d share images (blocked on the
 two open questions).
 
-### Milestone 3 — "Trust + the other side of the marketplace" (~1-2 weeks)
-13. **T8** security posture: RLS lockdown + publishable keys + password policy (M — before App Store submission, after F10c)
-14. **P1** employer signed resume download (M)
-15. **P2** application states + optional internal notes (M)
-16. **T7** snapshot tests (M)
+### Milestone 3 — "Trust + the other side" — ✅ MOSTLY SHIPPED 2026-07-11 (PR #17)
+T8 RLS lockdown + password policy (key migration remains — dashboard needed) ·
+P1 employer signed resume download · P2 full application pipeline
+(New/Reviewing/Contacted/Rejected/Hired + private notes) · T7 render-smoke
+tests (pixel-diff upgrade remains).
 
 ### Milestone 4 — "Scale debt" (as volume justifies)
 17. **T1 + T5** employer/admin refactor + store split (L)

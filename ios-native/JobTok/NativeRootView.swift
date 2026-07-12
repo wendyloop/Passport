@@ -185,6 +185,12 @@ struct NativeRootView: View {
                         )
                     }
                 },
+                onUpdateApplication: { applicationID, status, notes in
+                    Task { await store.updateApplication(applicationID: applicationID, status: status, internalNotes: notes) }
+                },
+                onRequestResumeURL: { applicationID in
+                    try await store.resumeURL(applicationID: applicationID)
+                },
                 onShowNotifications: { showingNotifications = true },
                 onSignOut: { Task { await store.signOut() } },
                 onDeleteAccount: { Task { await store.deleteAccount() } }

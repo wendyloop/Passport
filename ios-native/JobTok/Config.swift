@@ -1,13 +1,9 @@
 import Foundation
 
-// TODO(deferred): Auth/RLS hardening (two related items).
-//  1. Migrate the committed anon key to Supabase's publishable/secret key
-//     model. The anon key is public-by-design (ships in the IPA) and RLS is
-//     the real boundary, so this is hygiene, not urgent.
-//  2. RLS consistency audit: companies/funds/carousels are anon-readable
-//     while jobs is authenticated-only. Decide whether those three should
-//     also require auth. (company_contacts is already service-role-only.)
-//  Effort: small/medium. See docs/DEFERRED_WORK.md.
+// TODO(deferred): T8 remainder — migrate the committed anon key to
+// Supabase's publishable/secret key model (needs new keys minted in the
+// dashboard, then swap here + edge secrets). The RLS lockdown half shipped
+// in migration 20260711130000. See docs/DEFERRED_WORK.md.
 struct PassportConfig {
     let supabaseURL: String
     let supabaseAnonKey: String

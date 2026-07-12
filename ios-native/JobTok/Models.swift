@@ -627,6 +627,7 @@ struct JobApplicationRecord: Codable, Identifiable {
     let candidateCompensationRange: String?
     let resumeFilePath: String?
     let resumeFileName: String?
+    let internalNotes: String?
     let emailDeliveryStatus: String
     let emailDeliveryError: String?
     let appliedAt: Date
@@ -655,6 +656,7 @@ struct JobApplicationRecord: Codable, Identifiable {
         case candidateCompensationRange = "candidate_compensation_range"
         case resumeFilePath = "resume_file_path"
         case resumeFileName = "resume_file_name"
+        case internalNotes = "internal_notes"
         case emailDeliveryStatus = "email_delivery_status"
         case emailDeliveryError = "email_delivery_error"
         case appliedAt = "applied_at"

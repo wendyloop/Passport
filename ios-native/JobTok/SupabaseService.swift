@@ -330,6 +330,40 @@ final class SupabaseService {
         }
     }
 
+    // MARK: - Employer application workflow (P1 + P2)
+
+    func updateApplication(
+        applicationID: String,
+        status: String? = nil,
+        internalNotes: String? = nil,
+        session: AuthSession
+    ) async throws {
+        var body: [String: AnyEncodable] = [:]
+        if let status { body["status"] = AnyEncodable(status) }
+        if let internalNotes { body["internal_notes"] = AnyEncodable(internalNotes) }
+        guard !body.isEmpty else { return }
+        let _: EmptyPayload = try await transport.patchSingle(
+            path: "job_applications",
+            query: [("id", "eq.\(applicationID)")],
+            body: body,
+            session: session
+        )
+    }
+
+    func resumeDownloadURL(applicationID: String, session: AuthSession) async throws -> URL {
+        let request = try transport.makeFunctionRequest(
+            name: "get-resume-url",
+            accessToken: session.accessToken,
+            body: ["applicationId": AnyEncodable(applicationID)]
+        )
+        struct Envelope: Codable { let url: String }
+        let envelope = try await transport.execute(request, decode: Envelope.self)
+        guard let url = URL(string: envelope.url) else {
+            throw SupabaseServiceError.invalidResponse
+        }
+        return url
+    }
+
     // MARK: - Employer discovery + outreach
 
     func fetchDiscoverableCandidates(session: AuthSession) async throws -> [DiscoverableCandidateRecord] {

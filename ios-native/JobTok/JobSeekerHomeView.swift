@@ -2618,7 +2618,7 @@ private struct MinimalApplicationRow: View {
                             .foregroundStyle(PassportTheme.textSecondary)
                     }
                     Spacer()
-                    Text(application.status.capitalized)
+                    Text(ApplicationStatus(rawValue: application.status)?.title ?? application.status.capitalized)
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)

@@ -400,6 +400,26 @@ final class AppSessionStore: ObservableObject {
         }
     }
 
+    // P2: employer moves an application through the pipeline / edits notes.
+    func updateApplication(applicationID: String, status: String? = nil, internalNotes: String? = nil) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            try await service.updateApplication(
+                applicationID: applicationID,
+                status: status,
+                internalNotes: internalNotes,
+                session: session
+            )
+            try await refreshEmployerData()
+        }
+    }
+
+    // P1: short-lived signed resume URL for an application the employer owns.
+    func resumeURL(applicationID: String) async throws -> URL {
+        let session = try await requireSession()
+        return try await service.resumeDownloadURL(applicationID: applicationID, session: session)
+    }
+
     func toggleSavedJob(jobID: String) async {
         await runBusyTask { [self] in
             let session = try await requireSession()

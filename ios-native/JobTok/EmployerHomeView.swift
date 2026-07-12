@@ -17,6 +17,10 @@ struct EmployerHomeView: View {
     let onRefresh: () -> Void
     let onToggleJobPublishState: (String, Bool) -> Void
     let onReachOut: (String, String?, String, String) -> Void
+    // P2: patch an application's pipeline status / internal notes.
+    let onUpdateApplication: (String, String?, String?) -> Void
+    // P1: short-lived signed resume URL for an owned application.
+    let onRequestResumeURL: (String) async throws -> URL
     let onShowNotifications: () -> Void
     let onSignOut: () -> Void
     let onDeleteAccount: () -> Void
@@ -26,6 +30,7 @@ struct EmployerHomeView: View {
     @State private var currentCandidateID: String?
     @State private var selectedCandidateForOutreach: DiscoverableCandidateRecord?
     @State private var isEditingProfile = false
+    @State private var notesEditorTarget: JobApplicationRecord?
     @State private var showingVideoStudio = false
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
@@ -44,6 +49,8 @@ struct EmployerHomeView: View {
         onRefresh: @escaping () -> Void,
         onToggleJobPublishState: @escaping (String, Bool) -> Void,
         onReachOut: @escaping (String, String?, String, String) -> Void,
+        onUpdateApplication: @escaping (String, String?, String?) -> Void = { _, _, _ in },
+        onRequestResumeURL: @escaping (String) async throws -> URL = { _ in throw SupabaseServiceError.invalidResponse },
         onShowNotifications: @escaping () -> Void,
         onSignOut: @escaping () -> Void,
         onDeleteAccount: @escaping () -> Void
@@ -59,6 +66,8 @@ struct EmployerHomeView: View {
         self.onRefresh = onRefresh
         self.onToggleJobPublishState = onToggleJobPublishState
         self.onReachOut = onReachOut
+        self.onUpdateApplication = onUpdateApplication
+        self.onRequestResumeURL = onRequestResumeURL
         self.onShowNotifications = onShowNotifications
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
@@ -135,6 +144,16 @@ struct EmployerHomeView: View {
                 }
             )
             .presentationDetents([.large])
+        }
+        .sheet(item: $notesEditorTarget) { application in
+            ApplicationNotesSheet(
+                application: application,
+                onSave: { notes in
+                    onUpdateApplication(application.id, nil, notes)
+                    notesEditorTarget = nil
+                }
+            )
+            .presentationDetents([.medium])
         }
         .onChange(of: profile) { _, newValue in
             workingProfile = newValue
@@ -228,7 +247,20 @@ struct EmployerHomeView: View {
                         )
                     } else {
                         ForEach(applications) { application in
-                            EmployerApplicantCard(application: application)
+                            EmployerApplicantCard(
+                                application: application,
+                                onUpdateStatus: { status in
+                                    onUpdateApplication(application.id, status, nil)
+                                },
+                                onEditNotes: { notesEditorTarget = application },
+                                onOpenResume: {
+                                    Task {
+                                        if let url = try? await onRequestResumeURL(application.id) {
+                                            await UIApplication.shared.open(url)
+                                        }
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -780,6 +812,9 @@ private struct EmployerCandidateFeedCard: View {
 
 private struct EmployerApplicantCard: View {
     let application: JobApplicationRecord
+    let onUpdateStatus: (String) -> Void
+    let onEditNotes: () -> Void
+    let onOpenResume: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -836,8 +871,28 @@ private struct EmployerApplicantCard: View {
                 )
 
                 HStack {
-                    applicationStatusPill(title: application.status.capitalized)
+                    // P2: pipeline status menu — submitted renders as "New".
+                    Menu {
+                        ForEach(ApplicationStatus.allCases) { option in
+                            Button(option.title) {
+                                onUpdateStatus(option.rawValue)
+                            }
+                        }
+                    } label: {
+                        applicationStatusPill(title: ApplicationStatus(rawValue: application.status)?.title ?? application.status.capitalized)
+                    }
                     applicationStatusPill(title: application.emailDeliveryStatus.capitalized)
+
+                    Spacer()
+
+                    Button {
+                        onEditNotes()
+                    } label: {
+                        Image(systemName: (application.internalNotes ?? "").isEmpty ? "note.text.badge.plus" : "note.text")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(PassportTheme.textPrimary)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 if let coverNote = application.coverNote, !coverNote.isEmpty {
@@ -849,8 +904,14 @@ private struct EmployerApplicantCard: View {
                 }
 
                 if let resumeFileName = application.resumeFileName, !resumeFileName.isEmpty {
-                    Text("Resume snapshot: \(resumeFileName)")
-                        .foregroundStyle(PassportTheme.textPrimary)
+                    Button {
+                        onOpenResume()
+                    } label: {
+                        Label(resumeFileName, systemImage: "doc.text.magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(PassportTheme.accent)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -1312,5 +1373,70 @@ private struct EmployerOutreachSheet: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - P2 application pipeline
+
+enum ApplicationStatus: String, CaseIterable, Identifiable {
+    case submitted
+    case reviewing
+    case contacted
+    case rejected
+    case hired
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .submitted: return "New"
+        case .reviewing: return "Reviewing"
+        case .contacted: return "Contacted"
+        case .rejected: return "Rejected"
+        case .hired: return "Hired"
+        }
+    }
+}
+
+/// Optional private notes per application — the employer-side feedback loop.
+private struct ApplicationNotesSheet: View {
+    let application: JobApplicationRecord
+    let onSave: (String) -> Void
+    @State private var notes: String
+    @Environment(\.dismiss) private var dismiss
+
+    init(application: JobApplicationRecord, onSave: @escaping (String) -> Void) {
+        self.application = application
+        self.onSave = onSave
+        _notes = State(initialValue: application.internalNotes ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Internal notes — only your team sees these.")
+                    .font(.footnote)
+                    .foregroundStyle(PassportTheme.textSecondary)
+                TextEditor(text: $notes)
+                    .frame(minHeight: 160)
+                    .padding(10)
+                    .background(PassportTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Spacer()
+            }
+            .padding(18)
+            .background(PassportTheme.background)
+            .navigationTitle("Notes · \(application.candidateName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { onSave(notes) }
+                        .font(.subheadline.weight(.bold))
+                }
+            }
+        }
     }
 }
