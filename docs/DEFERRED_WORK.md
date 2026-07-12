@@ -35,12 +35,11 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
 | T1 | Employer + admin view refactors (extract subviews, route networking through services; incl. `JobTokEmployerRoleWorkflow` out of `VideoStudio.swift`) | refactor pass | L | do together with T5 |
-| T3 | `process-apify-results` N+1: loads all `jobs.source_url` into memory, row-by-row inserts | refactor pass; anchor ~line 385 | S–M | — |
 | T5 | `CandidateStore` split out of `AppSessionStore` | refactor pass; anchor `AppSessionStore.swift` | M | pair with T1 |
 | T6 | Full DI: protocol-extract services, inject through view tree | refactor pass; anchor `SupabaseService.swift` | M–L | with first service-level tests |
 | T7 | **First pass shipped 2026-07-11**: ImageRenderer render-smoke tests (crash/zero-size regressions) in `RenderSmokeTests.swift`. Remainder: pixel-diff snapshots via swift-snapshot-testing (SPM) with recorded baselines | refactor pass | M | — |
 | T8 | **Partially shipped 2026-07-11** (RLS lockdown: companies/funds/company_funds/carousels now authenticated-only; password minimum 8). Remainder: migrate the committed anon JWT to Supabase's publishable/secret key model — needs keys minted in the dashboard, then swap `Config.swift` + edge secrets. Anchor `Config.swift` | refactor pass + user decision | S | dashboard access |
-| T9 | Founder-pitch v2: re-scrape cadence, email verification vendor before send, per-company weekly cap | founder-email plan; anchors in both functions | M | real send/bounce data (post-launch) |
+| T9 | **Partially shipped 2026-07-11** (per-company weekly pitch cap of 3 + 14-day re-scrape cadence for zero-contact companies). Remainder: pre-send email verification via a vendor (Hunter/NeverBounce) — needs an account + API key. Anchor `send-founder-email/index.ts` | founder-email plan | S–M | vendor account |
 
 ### Employer side
 
@@ -86,12 +85,16 @@ P1 employer signed resume download · P2 full application pipeline
 (New/Reviewing/Contacted/Rejected/Hired + private notes) · T7 render-smoke
 tests (pixel-diff upgrade remains).
 
-### Milestone 4 — "Scale debt" (as volume justifies)
-17. **T1 + T5** employer/admin refactor + store split (L)
-18. **T3** apify N+1 (S–M)
-19. **T9** founder-pitch v2 (M — after real bounce/reply data)
-20. **T6** full DI (M–L)
-21. **F10d** rendered share images (M — pick renderer then)
+### Milestone 4 — "Scale debt" — partially shipped 2026-07-11 (PR #18)
+✅ **T3** apify batch existence check + bulk insert · ✅ **T9 partial**
+per-company pitch cap + zero-contact re-scrape cadence.
+Remaining, deliberately for a dedicated session (multi-day refactors that
+shouldn't be rushed at the tail of a long one):
+17. **T1 + T5** employer/admin refactor + store split (L, one effort)
+18. **T6** full DI (M–L — with the first service-level tests)
+19. **T9 remainder** pre-send email verification (needs vendor account)
+20. **T8 remainder** publishable-key migration (needs dashboard access)
+21. **F10b/d** universal links + rendered share images (need domain/store answers)
 
 ### Post-100-users
 22. **X1** replace first-100-users mechanics with real ranking

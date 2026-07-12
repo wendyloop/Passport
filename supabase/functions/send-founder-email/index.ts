@@ -21,14 +21,16 @@ const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
 const DEFAULT_WEEKLY_LIMIT = 5;
 const MAX_NOTE_CHARS = 400;
 
-// TODO(deferred): Founder-email v2.
-//  - Email verification: validate guessed addresses with a vendor
-//    (Hunter/NeverBounce) BEFORE sending, instead of relying only on the
-//    Resend bounce webhook after the fact.
-//  - Per-company weekly cap: today the limit is per-candidate; add a cap so
-//    N candidates don't all email the same founder in the same week.
-//  Ship v1 and learn from real reply/bounce rates first. Effort: medium.
-//  See docs/DEFERRED_WORK.md.
+// TODO(deferred): T9 remainder — email verification: validate guessed
+// addresses with a vendor (Hunter/NeverBounce) BEFORE sending, instead of
+// relying only on the Resend bounce webhook after the fact. Needs a vendor
+// account + API key. (Per-company cap + re-scrape cadence shipped
+// 2026-07-11.) See docs/DEFERRED_WORK.md.
+
+// T9: no company should hear from more than this many candidates per week,
+// regardless of which candidates — protects founder goodwill beyond the
+// per-candidate limit.
+const COMPANY_WEEKLY_CAP = 3;
 
 type RequestBody = {
   jobId?: string;
@@ -88,6 +90,20 @@ Deno.serve(async (request) => {
         return jsonResponse(ineligible("pitch_video_required"));
       }
       return jsonError("A pitch video is required before emailing founders", 422);
+    }
+
+    // T9: per-company weekly cap — checked before per-candidate quota so the
+    // preview can surface the right reason.
+    const { count: companySends, error: companyCapError } = await admin
+      .from("founder_outreach_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", job.company_id)
+      .gt("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .neq("delivery_status", "failed");
+    if (companyCapError) return jsonError(companyCapError.message);
+    if ((companySends ?? 0) >= COMPANY_WEEKLY_CAP) {
+      if (mode === "preview") return jsonResponse(ineligible("company_capped"));
+      return jsonError("This founder has reached their weekly pitch limit", 429);
     }
 
     // Quota.
