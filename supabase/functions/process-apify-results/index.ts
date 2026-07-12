@@ -382,13 +382,20 @@ Deno.serve(async (request) => {
     const adminClient = createAdminClient();
 
     // Load existing source URLs for deduplication
-    // TODO(deferred): N+1 / unbounded load. This pulls every jobs.source_url
-    // into memory per run and (below) inserts scraped rows one at a time.
-    // Fix: scope the existence check to this batch's URLs with .in(...) and
-    // bulk-insert. Admin scrape pipeline (cron), not user-facing, so deferred.
-    // Effort: small/medium. See docs/DEFERRED_WORK.md.
-    const { data: existing } = await adminClient.from("jobs").select("source_url").not("source_url", "is", null);
-    const existingURLs = new Set((existing ?? []).map((j) => j.source_url as string));
+    // T3: existence check scoped to THIS batch's URLs — no more loading the
+    // entire jobs.source_url column into memory (unbounded as jobs grows).
+    const batchURLs = items
+      .map((item) => normalise(item, platform)?.sourceURL)
+      .filter((u): u is string => Boolean(u));
+    const existingURLs = new Set<string>();
+    // .in() has practical URL-length limits; chunk defensively.
+    for (let i = 0; i < batchURLs.length; i += 200) {
+      const { data: existing } = await adminClient
+        .from("jobs")
+        .select("source_url")
+        .in("source_url", batchURLs.slice(i, i + 200));
+      for (const row of existing ?? []) existingURLs.add(row.source_url as string);
+    }
 
     // Per-query stat map keyed by display label
     const statMap = new Map<string, QueryStat>();
@@ -432,9 +439,10 @@ Deno.serve(async (request) => {
       candidates.map((c) => classifyPost(c.post.caption)),
     );
 
-    // ── Pass 3: insert ─────────────────────────────────────────────────────────
+    // ── Pass 3: build all rows, then one bulk insert (T3) ─────────────────────
+    const rows: Record<string, unknown>[] = [];
     for (let i = 0; i < candidates.length; i++) {
-      const { post, stat } = candidates[i];
+      const { post } = candidates[i];
       const cls = classifications[i];
 
       const applicationEmail = extractEmail(post.caption);
@@ -445,7 +453,7 @@ Deno.serve(async (request) => {
         : null;
       const title = post.creatorName ? `${post.creatorName} is hiring` : `${post.platform === "tiktok" ? "TikTok" : "Instagram"} hiring post`;
 
-      const { error } = await adminClient.from("jobs").insert({
+      rows.push({
         title,
         company_name: post.creatorName ?? (post.platform === "tiktok" ? "TikTok" : "Instagram"),
         description: post.caption || null,
@@ -472,11 +480,18 @@ Deno.serve(async (request) => {
         compensation_min_hourly: cls.compensation_min_hourly,
         compensation_max_hourly: cls.compensation_max_hourly,
       });
+    }
 
-      if (!error) {
-        stat.inserted++;
-      } else if (!error.message?.includes("jobs_source_url_unique")) {
-        console.error("Insert error:", error.message);
+    if (rows.length > 0) {
+      // upsert + ignoreDuplicates = ON CONFLICT DO NOTHING on source_url, so
+      // a race with another run can't fail the whole batch.
+      const { error } = await adminClient
+        .from("jobs")
+        .upsert(rows, { onConflict: "source_url", ignoreDuplicates: true });
+      if (error) {
+        console.error("Bulk insert error:", error.message);
+      } else {
+        for (const { stat } of candidates) stat.inserted++;
       }
     }
 

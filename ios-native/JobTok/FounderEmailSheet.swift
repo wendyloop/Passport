@@ -22,6 +22,7 @@ struct FounderEmailSheet: View {
         case loading
         case videoGate
         case noContact
+        case companyCapped
         case compose(FounderEmailPreview)
         case sending(FounderEmailPreview)
         case sent(remaining: Int, limit: Int)
@@ -57,6 +58,9 @@ struct FounderEmailSheet: View {
 
         case .noContact:
             noContactView
+
+        case .companyCapped:
+            companyCappedView
 
         case .compose(let preview), .sending(let preview):
             composeView(preview: preview, isSending: isSending)
@@ -110,6 +114,33 @@ struct FounderEmailSheet: View {
                 .foregroundStyle(PassportTheme.textPrimary)
 
             Text("We haven't found a founder for \(job.companyName) yet. The regular application still gets you in the door.")
+                .foregroundStyle(PassportTheme.textSecondary)
+
+            Button {
+                dismiss()
+                onFallbackApply()
+            } label: {
+                Text("Apply instead")
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .background(PassportTheme.accent)
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .padding(20)
+        .jobTokCard(cornerRadius: 28)
+        .padding(20)
+    }
+
+    private var companyCappedView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("This founder's inbox is full this week")
+                .font(.title2.weight(.black))
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Text("A few candidates already pitched \(job.companyName) this week — we cap it so every pitch actually gets read. The regular application still works, or come back next week.")
                 .foregroundStyle(PassportTheme.textSecondary)
 
             Button {
@@ -306,6 +337,8 @@ struct FounderEmailSheet: View {
                 phase = .videoGate
             case "no_contact":
                 phase = .noContact
+            case "company_capped":
+                phase = .companyCapped
             default:
                 phase = .compose(preview)
             }
