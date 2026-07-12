@@ -1,4 +1,5 @@
 import { corsHeaders } from "../_shared/cors.ts";
+import { requireCronSecret } from "../_shared/cron_auth.ts";
 
 const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -181,6 +182,9 @@ async function startRun(
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const unauthorized = requireCronSecret(request);
+  if (unauthorized) return unauthorized;
 
   if (!APIFY_API_TOKEN) {
     return new Response(
