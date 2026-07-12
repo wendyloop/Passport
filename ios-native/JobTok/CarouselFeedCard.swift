@@ -37,7 +37,7 @@ struct CarouselFeedCard: View {
 
                 TabView(selection: $currentIndex) {
                     ForEach(Array(slides.enumerated()), id: \.element.id) { index, slide in
-                        SlideView(slide: slide, theme: theme, job: job)
+                        SlideView(slide: slide, theme: theme, job: job, onEmailFounder: onEmailFounder)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .tag(index)
                     }
@@ -131,6 +131,9 @@ struct CarouselFeedCard: View {
                                 label: "Save",
                                 action: onSave
                             )
+                            if let shareURL = ShareConfig.shareURL(forJobID: job.id) {
+                                FeedShareButton(url: shareURL)
+                            }
                         }
                         .frame(width: 56)
                     }
@@ -159,6 +162,7 @@ private struct SlideView: View {
     let slide: CarouselSlide
     let theme: CarouselTheme
     let job: JobPostingRecord
+    let onEmailFounder: (() -> Void)?
 
     var body: some View {
         switch slide {
@@ -167,6 +171,7 @@ private struct SlideView: View {
         case .role(let s):          BulletSlideView(title: "what you'd actually do", bullets: s.bullets, theme: theme)
         case .requirements(let s):  BulletSlideView(title: "you're a fit if", bullets: s.bullets, theme: theme)
         case .perks(let s):         BulletSlideView(title: "the good stuff", bullets: s.bullets, theme: theme)
+        case .founder(let s):       FounderSlideView(slide: s, theme: theme, onPitch: onEmailFounder)
         case .details(let s):       DetailsSlideView(slide: s, theme: theme, job: job)
         // Filtered out of `slides` before we get here; render nothing if one
         // ever reaches this view.
@@ -238,19 +243,28 @@ private struct CoverSlideView: View {
                 .multilineTextAlignment(centeredLayout ? .center : .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // The 90%-signal: one concrete line about what you'd actually do.
+            // The 90%-signal: one concrete line about what you'd actually do,
+            // styled like a TikTok caption highlight (F1).
             if let youd = slide.youdLine, !youd.isEmpty {
                 Text(youd)
-                    .font(theme.bodyFont)
-                    .foregroundStyle(theme.textPrimary.opacity(0.85))
+                    .font(theme.bodyFont.weight(.semibold))
+                    .foregroundStyle(theme.surface)
                     .multilineTextAlignment(centeredLayout ? .center : .leading)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .rotationEffect(.degrees(centeredLayout ? 0 : -1.2))
             }
 
             factChips
                 .padding(.top, 2)
 
             Spacer()
+
+            SwipeHint(theme: theme)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 28)
         .padding(.bottom, FeedLayout.slideContentClearance)
@@ -293,8 +307,11 @@ private struct CoverSlideView: View {
         }
     }
 
+    // Sticker-style chips (F1): solid fill, white edge, soft shadow, and a
+    // tiny deterministic wobble per chip so the row feels hand-placed.
     private func coverChip(icon: String, text: String) -> some View {
-        HStack(spacing: 6) {
+        let wobble = Double((text.unicodeScalars.first?.value ?? 0) % 5) - 2.0
+        return HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .bold))
             Text(text)
@@ -303,9 +320,12 @@ private struct CoverSlideView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(theme.accent.opacity(0.16))
+        .background(theme.surface)
         .foregroundStyle(theme.accent)
         .clipShape(Capsule())
+        .overlay(Capsule().stroke(theme.accent.opacity(0.35), lineWidth: 1))
+        .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
+        .rotationEffect(.degrees(wobble * 0.9))
     }
 }
 
@@ -431,6 +451,8 @@ private struct BulletSlideView: View {
     let bullets: [String]
     let theme: CarouselTheme
 
+    @State private var revealed = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Spacer(minLength: 60)
@@ -440,7 +462,7 @@ private struct BulletSlideView: View {
                 .foregroundStyle(theme.textPrimary)
 
             VStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(bullets.enumerated()), id: \.offset) { _, bullet in
+                ForEach(Array(bullets.enumerated()), id: \.offset) { index, bullet in
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: theme.bulletGlyph)
                             .font(.system(size: 14, weight: .bold))
@@ -452,6 +474,76 @@ private struct BulletSlideView: View {
                             .foregroundStyle(theme.textPrimary.opacity(0.92))
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    // F1: bullets cascade in as the slide appears.
+                    .opacity(revealed ? 1 : 0)
+                    .offset(y: revealed ? 0 : 14)
+                    .animation(
+                        .spring(response: 0.4, dampingFraction: 0.8)
+                            .delay(Double(index) * 0.08),
+                        value: revealed
+                    )
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, FeedLayout.slideContentClearance)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { revealed = true }
+        .onDisappear { revealed = false }
+    }
+}
+
+// F7: "meet the founder" — the person a pitch actually reaches. CTA wires
+// to the same founder-pitch flow as the feed pill (nil for big-cos, where
+// the backend also skips emitting this slide).
+private struct FounderSlideView: View {
+    let slide: FounderSlide
+    let theme: CarouselTheme
+    let onPitch: (() -> Void)?
+
+    private var firstName: String {
+        slide.name?.split(separator: " ").first.map(String.init) ?? "the founder"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Spacer(minLength: 60)
+
+            ZStack {
+                Circle()
+                    .fill(theme.accent.opacity(0.2))
+                    .frame(width: 84, height: 84)
+                Text(String(firstName.prefix(1)).uppercased())
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .foregroundStyle(theme.accent)
+            }
+
+            Text("meet \(firstName) 👋")
+                .font(theme.titleFont)
+                .foregroundStyle(theme.textPrimary)
+
+            if let name = slide.name {
+                Text([name, slide.roleTitle].compactMap { $0 }.joined(separator: " · "))
+                    .font(theme.bodyFont)
+                    .foregroundStyle(theme.textSecondary)
+            }
+
+            Text("your pitch lands in their inbox — not an ATS black hole.")
+                .font(theme.bodyFont)
+                .foregroundStyle(theme.textPrimary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let onPitch {
+                Button(action: onPitch) {
+                    Label("Pitch \(firstName)", systemImage: "paperplane.fill")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(theme.accent)
+                        .foregroundStyle(theme.surface)
+                        .clipShape(Capsule())
                 }
             }
 
@@ -600,5 +692,24 @@ struct SourceBadgeView: View {
             .background(style.background)
             .foregroundStyle(.white)
             .clipShape(Capsule())
+    }
+}
+
+// F1: gentle pulsing "swipe →" affordance on the cover slide.
+private struct SwipeHint: View {
+    let theme: CarouselTheme
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("swipe")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+            Image(systemName: "arrow.right")
+                .font(.system(size: 12, weight: .bold))
+        }
+        .foregroundStyle(theme.textSecondary.opacity(pulse ? 0.9 : 0.45))
+        .offset(x: pulse ? 4 : 0)
+        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+        .onAppear { pulse = true }
     }
 }

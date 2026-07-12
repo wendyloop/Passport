@@ -199,10 +199,6 @@ final class SupabaseService {
                 session: session
             )
             let merged = try await videos + carousels
-            // TODO(deferred): Feature backlog D5 — add saved/applied
-            // job_function affinity ranking (For-You v0) as the next tier.
-            // See docs/DEFERRED_WORK.md.
-            //
             // Feed ranking tiers, most important first:
             //  1. FIRST-100-USERS founder-fatigue: founder reached today →
             //     bottom; this week → slightly less demoted. Spreads early
@@ -210,19 +206,15 @@ final class SupabaseService {
             //     (migration 20260708140000).
             //  2. F8 big-company demotion: 1000+/acquired/IPO rank below
             //     startups — the product promise is startup jobs.
-            //  3. F3 comp transparency: salary-listed jobs first (they
+            //  3. F6 For-You affinity (applied post-fetch by the store,
+            //     where saves/applies are known — see JobPostingRecord.feedRank).
+            //  4. F3 comp transparency: salary-listed jobs first (they
             //     convert 30-44% better per LinkedIn/SHRM research).
-            //  4. Freshness.
+            //  5. Freshness.
             let now = Date()
-            func rank(_ job: JobPostingRecord) -> (Int, Int, Int) {
-                (
-                    job.founderFatigueBucket(now: now),
-                    job.isBigCompany ? 1 : 0,
-                    job.compensationSummary == nil ? 1 : 0
-                )
-            }
             return merged.sorted { a, b in
-                let ra = rank(a), rb = rank(b)
+                let ra = a.feedRank(now: now, affinity: [])
+                let rb = b.feedRank(now: now, affinity: [])
                 if ra != rb { return ra < rb }
                 return a.createdAt > b.createdAt
             }

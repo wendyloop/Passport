@@ -331,6 +331,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
     case role(RoleSlide)
     case requirements(RequirementsSlide)
     case perks(PerksSlide)
+    case founder(FounderSlide)
     case details(DetailsSlide)
     // A slide type this build doesn't recognize — e.g. a new layout added by
     // a newer backend. It decodes successfully (so the surrounding carousel
@@ -347,6 +348,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
         case .role(let s):          return s.order
         case .requirements(let s):  return s.order
         case .perks(let s):         return s.order
+        case .founder(let s):       return s.order
         case .details(let s):       return s.order
         case .unknown(let order):   return order
         }
@@ -371,6 +373,7 @@ enum CarouselSlide: Codable, Equatable, Identifiable {
         case "role":          self = .role(try RoleSlide(from: decoder))
         case "requirements":  self = .requirements(try RequirementsSlide(from: decoder))
         case "perks":         self = .perks(try PerksSlide(from: decoder))
+        case "founder":       self = .founder(try FounderSlide(from: decoder))
         case "details":       self = .details(try DetailsSlide(from: decoder))
         default:
             self = .unknown(order: (try? c.decode(Int.self, forKey: .order)) ?? 0)
@@ -430,6 +433,17 @@ struct RequirementsSlide: Codable, Equatable {
 struct PerksSlide: Codable, Equatable {
     let order: Int
     let bullets: [String]
+}
+
+struct FounderSlide: Codable, Equatable {
+    let order: Int
+    let name: String?
+    let roleTitle: String?
+
+    enum CodingKeys: String, CodingKey {
+        case order, name
+        case roleTitle = "role_title"
+    }
 }
 
 struct DetailsSlide: Codable, Equatable {
