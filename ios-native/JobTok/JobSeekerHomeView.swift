@@ -47,6 +47,8 @@ struct JobSeekerHomeView: View {
     @State private var selectedLocation = "all"
     @State private var selectedJobFunctionRawValue = "all"
     @State private var selectedPayFilter: JobPayFilter = .all
+    @State private var selectedExperienceFilter: ExperienceFilter = .all
+    @State private var selectedWorkModeFilter: WorkModeFilter = .all
     @State private var selectedProfileTab: CandidateProfileTab = .video
     @State private var profileEditorTarget: CandidateProfileEditTarget?
     @State private var pendingVisibilityChange: CandidateVisibility?
@@ -115,10 +117,8 @@ struct JobSeekerHomeView: View {
         return values.sorted()
     }
 
-    // TODO(deferred): Feature backlog D1 + D3 — add experience_level /
-    // work_mode filter chips (columns exist as of carousel v3) and a
-    // startup-stage "founder-reachable" toggle (pre-seed→series B).
-    // See docs/DEFERRED_WORK.md (Feature backlog).
+    // TODO(deferred): Feature backlog D3 — startup-stage "founder-reachable"
+    // toggle (pre-seed→series B). See docs/DEFERRED_WORK.md.
     private var filteredJobs: [JobPostingRecord] {
         jobs.filter { job in
             let locationMatches: Bool = {
@@ -132,12 +132,15 @@ struct JobSeekerHomeView: View {
             }()
 
             let payMatches = selectedPayFilter.matches(job)
+            let experienceMatches = selectedExperienceFilter.matches(job)
+            let workModeMatches = selectedWorkModeFilter.matches(job)
             // Carousel-backed rows (ATS + board) need at least one slide this
             // build can draw. No carousel yet (generate-carousel hasn't run) or
             // a carousel made entirely of unknown slide types → nothing to
             // render, so hide it.
             let renderable = !job.sourceKind.rendersCarousel || (job.carousel?.hasRenderableSlides ?? false)
             return renderable && !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
+                && experienceMatches && workModeMatches
         }
     }
 
@@ -391,7 +394,7 @@ struct JobSeekerHomeView: View {
                     safeAreaBottom: safeAreaBottom,
                     isActive: currentJobID == job.id,
                     onApply: { handleApplyTap(for: job) },
-                    onEmailFounder: job.companyID == nil ? nil : { handleEmailFounderTap(for: job) },
+                    onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
                     onSave: { onToggleSavedJob(job.id) },
                     isSaved: savedJobIDs.contains(job.id)
                 )
@@ -404,7 +407,7 @@ struct JobSeekerHomeView: View {
                     isActive: currentJobID == job.id,
                     onToggleSaved: { onToggleSavedJob(job.id) },
                     onApply: { handleApplyTap(for: job) },
-                    onEmailFounder: job.companyID == nil ? nil : { handleEmailFounderTap(for: job) },
+                    onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
                     onBroken: { brokenJobIDs.insert(job.id) }
                 )
             }
@@ -613,6 +616,26 @@ struct JobSeekerHomeView: View {
                         }
                     } label: {
                         filterPill(title: selectedPayFilter.title)
+                    }
+
+                    Menu {
+                        ForEach(ExperienceFilter.allCases) { option in
+                            Button(option.title) {
+                                selectedExperienceFilter = option
+                            }
+                        }
+                    } label: {
+                        filterPill(title: selectedExperienceFilter.title)
+                    }
+
+                    Menu {
+                        ForEach(WorkModeFilter.allCases) { option in
+                            Button(option.title) {
+                                selectedWorkModeFilter = option
+                            }
+                        }
+                    } label: {
+                        filterPill(title: selectedWorkModeFilter.title)
                     }
                 }
             }
@@ -2925,5 +2948,59 @@ struct HeartBurstView: View {
     private func replay() {
         animate = false
         DispatchQueue.main.async { animate = true }
+    }
+}
+
+// MARK: - F2 feed filters (experience + work mode)
+
+enum ExperienceFilter: String, CaseIterable, Identifiable {
+    case all
+    case earlyCareer
+    case mid
+    case senior
+    case leadership
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Experience"
+        case .earlyCareer: return "Early career"
+        case .mid: return "Mid-level"
+        case .senior: return "Senior"
+        case .leadership: return "Leadership"
+        }
+    }
+
+    func matches(_ job: JobPostingRecord) -> Bool {
+        switch self {
+        case .all: return true
+        case .earlyCareer: return job.experienceLevel == "intern" || job.experienceLevel == "entry"
+        case .mid: return job.experienceLevel == "mid"
+        case .senior: return job.experienceLevel == "senior" || job.experienceLevel == "staff"
+        case .leadership: return job.experienceLevel == "exec"
+        }
+    }
+}
+
+enum WorkModeFilter: String, CaseIterable, Identifiable {
+    case all
+    case remote
+    case hybrid
+    case onsite
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Work mode"
+        case .remote: return "Remote"
+        case .hybrid: return "Hybrid"
+        case .onsite: return "In office"
+        }
+    }
+
+    func matches(_ job: JobPostingRecord) -> Bool {
+        self == .all || job.workMode == rawValue
     }
 }

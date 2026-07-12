@@ -152,6 +152,17 @@ final class ModelsDecodingTests: XCTestCase {
         }
     }
 
+    func testExperienceAndWorkModeDecode() throws {
+        let json = """
+        {"id": "j", "title": "t", "is_published": true,
+         "created_at": "2026-07-01T12:00:00Z",
+         "experience_level": "entry", "work_mode": "remote"}
+        """.data(using: .utf8)!
+        let job = try decoder.decode(JobPostingRecord.self, from: json)
+        XCTAssertEqual(job.experienceLevel, "entry")
+        XCTAssertEqual(job.workMode, "remote")
+    }
+
     func testFounderEmailPreviewDecodes() throws {
         let json = """
         {

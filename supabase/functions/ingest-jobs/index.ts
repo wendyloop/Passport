@@ -271,9 +271,27 @@ async function ingestFund(
   };
 }
 
-// TODO(deferred): Feature backlog D4 — skip aggregator apply URLs
-// (linkedin.com ≈ 1,546 un-enrichable rows) via a host blocklist here.
-// See docs/DEFERRED_WORK.md (Feature backlog).
+// Aggregator hosts whose apply URLs can never be enriched (no resolvable
+// ATS, no description) — they'd sit invisible in the feed forever while
+// burning pipeline cycles, so they're dropped at the door.
+const AGGREGATOR_HOSTS = new Set([
+  "linkedin.com",
+  "www.linkedin.com",
+  "indeed.com",
+  "www.indeed.com",
+  "glassdoor.com",
+  "www.glassdoor.com",
+]);
+
+function isAggregatorURL(applyURL: string | null): boolean {
+  if (!applyURL) return false;
+  try {
+    return AGGREGATOR_HOSTS.has(new URL(applyURL).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function buildJobRows(
   fund: FundRow,
   jobs: BoardJob[],
@@ -291,6 +309,7 @@ function buildJobRows(
   for (const job of jobs) {
     const companyId = companyIdByBoardExtId.get(job.company_board_external_id);
     if (!companyId) continue; // company upsert failed; skip its jobs
+    if (isAggregatorURL(job.apply_url)) continue; // F5: aggregator link, un-enrichable
 
     const company = companyByExtId.get(job.company_board_external_id);
     const resolution = classifyApplyURL(job.apply_url);

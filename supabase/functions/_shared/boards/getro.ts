@@ -12,7 +12,7 @@
 // Pagination is numeric, 0-indexed. We persist the next page number as
 // the cursor; on drain we return null so the orchestrator clears it.
 
-import { postJSON } from "../http.ts";
+import { fetchJSON } from "../http.ts";
 import type {
   AdapterInput,
   AdapterResult,
@@ -93,11 +93,12 @@ export async function getroAdapter(input: AdapterInput): Promise<AdapterResult> 
 
     let payload: GetroSearchResponse;
     try {
-      // TODO(deferred): use _shared/ats/http.ts fetchWithRetry instead of the
-      // plain postJSON — it adds 5xx/429 backoff. Board crawl is cron and
-      // resumes from its cursor next run, so transient failures are cheap;
-      // low priority. Effort: small. See docs/DEFERRED_WORK.md.
-      payload = await postJSON<GetroSearchResponse>(url, { hitsPerPage: HITS_PER_PAGE, page }, FETCH_TIMEOUT_MS);
+      payload = await fetchJSON<GetroSearchResponse>(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hitsPerPage: HITS_PER_PAGE, page }),
+        timeoutMs: FETCH_TIMEOUT_MS,
+      });
     } catch (error) {
       throw new Error(`Getro fetch failed for ${fund.slug} page ${page}: ${(error as Error).message}`);
     }

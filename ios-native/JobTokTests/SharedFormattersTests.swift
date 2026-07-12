@@ -50,6 +50,26 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertEqual(age("2026-06-20T08:00:00Z"), "2w ago")
     }
 
+    func testBigCompanyGating() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func job(stage: String?) throws -> JobPostingRecord {
+            let stageJSON = stage.map { "\"\($0)\"" } ?? "null"
+            let json = """
+            {"id": "j", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z", "company_id": "co-1",
+             "company": {"id": "co-1", "name": "Acme", "stage": \(stageJSON)}}
+            """.data(using: .utf8)!
+            return try decoder.decode(JobPostingRecord.self, from: json)
+        }
+        XCTAssertTrue(try job(stage: "seed").founderPitchAllowed)
+        XCTAssertTrue(try job(stage: nil).founderPitchAllowed)      // unknown = startup
+        XCTAssertFalse(try job(stage: "1000+ employees").founderPitchAllowed)
+        XCTAssertFalse(try job(stage: "acquisition").founderPitchAllowed)
+        XCTAssertFalse(try job(stage: "ipo").founderPitchAllowed)
+        XCTAssertTrue(try job(stage: "series_b").founderPitchAllowed)
+    }
+
     func testFounderFatigueBuckets() throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
