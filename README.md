@@ -16,7 +16,7 @@ Passport/
 ## Stack
 
 - `ios-native/`: standalone SwiftUI iOS app for running directly in Xcode
-- `services/`: supporting Node services for carousel rendering and scrape workers
+- `services/`: empty — the legacy Node carousel service was folded into the `generate-carousel` edge function
 - `supabase/`: database migrations, RLS policies, seeds, and Edge Functions
 - Supabase Auth for email/password and Google sign-in
 - Supabase Storage for resumes, videos, and avatars
@@ -33,8 +33,7 @@ Passport/
 
 - Native SwiftUI iPhone app for job seekers, employers, and admins
 - Supabase schema for profiles, jobs, applications, saved jobs, outreach, notifications, videos, and resume parsing
-- Edge functions for applying, outreach, resume parsing, ATS autofill telemetry, account deletion, social import, and scrape ingestion
-- Carousel rendering and scrape worker service in `services/carousel-service`
+- Edge functions for applying, outreach, resume parsing, ATS autofill telemetry, account deletion, social import, scrape ingestion, and carousel generation
 
 ## Notes
 
