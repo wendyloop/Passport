@@ -221,6 +221,12 @@ Then redeploy the function once so the setting is applied.
 
 ### DB-P1-2 · `match_candidate_essay` lets any authenticated user read any candidate's essay answers
 
+**RESOLVED 2026-07-13** — `20260713121000_lock_down_essay_rpc.sql` applied to
+the hosted project. Verified over live REST with real JWTs: the RPC returns
+403 for a signed-in user probing another candidate's id AND for the essay's
+own author (service-role only, matching the edge-function path); a
+`set local role service_role` execution still succeeds.
+
 [20260629010000_autofill_v2.sql:122](supabase/migrations/20260629010000_autofill_v2.sql#L122)
 grants it `to authenticated, service_role`. The function is `SECURITY
 DEFINER`, takes `p_profile_id` as a **parameter**, and never checks
@@ -241,6 +247,23 @@ grant execute on function public.match_candidate_essay(uuid, extensions.vector, 
 ```
 
 ### DB-P1-3 · `discovery_visibility` is not enforced by RLS — "private" candidates are fully readable, including email and phone
+
+**RESOLVED 2026-07-13** — `20260713122000_enforce_discovery_visibility.sql` +
+`20260713123000_fix_visibility_policy_recursion.sql` applied to the hosted
+project. As specced below, with two deltas: (1) the `profiles` employer arm is
+*also* gated by the candidate's visibility (not role-wide as sketched), so a
+private candidate's email is hidden from employers too; (2) the
+applied-to-employer probe runs through a new SECURITY DEFINER helper
+`candidate_applied_to_employer(uuid)` because the plain `job_applications`
+subquery recursed (job_applications' own select policy subqueries profiles →
+42P17 infinite recursion — caught by the REST verification harness, first
+push briefly broke all four tables' reads until the follow-up migration).
+Verified over live REST with real JWTs (private candidate with phone/comp who
+applied to the employer's job): another job seeker reads nothing from any of
+the four tables; the applied employer reads nothing while the candidate is
+private; flipping to discoverable opens the employer paths (base rows + the
+discovery view) while the other job seeker stays blocked; owner reads all
+their own rows throughout.
 
 The `employer_candidate_discovery` view filters on
 `discovery_visibility = 'discoverable_to_hiring_employers'` and viewer role,
@@ -385,6 +408,15 @@ and apply paths never do it), and note `profiles.email` remains visible to
 employers; if that's unwanted, move email behind a view next.
 
 ### DB-P1-4 · Employer "private" notes are readable by the candidate (= AUDIT P1-9) — schema fix
+
+**RESOLVED 2026-07-13** — `20260713120000_application_notes_table.sql` applied
+(as specced below) together with the iOS change: `updateApplication` writes
+notes via upsert to `application_notes`, employer application fetches embed
+`application_notes(notes)`, and `JobApplicationRecord.internalNotes` is a
+computed property over the embed. Verified over live REST with real JWTs:
+candidate gets 400 selecting the dropped column, zero `application_notes`
+rows, an empty embed, and a 403 writing to the table; the employer's
+write + embedded read both work.
 
 `job_applications.internal_notes`
 ([m3_trust.sql:33](supabase/migrations/20260711130000_m3_trust.sql#L33)) is on
@@ -908,7 +940,7 @@ select status, count(*) from net._http_response group by status;
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 2        |
-| P1       | 8    | 1        |
+| P1       | 5    | 4        |
 | P2       | 10   | 0        |
 
 ## Recommended order
@@ -917,8 +949,8 @@ select status, count(*) from net._http_response group by status;
 2. ~~**DB-P0-2**~~ done 2026-07-12 — restores the entire non-board ingest surface; Apify spend is
    currently pure waste.
 3. ~~**DB-P1-1**~~ done 2026-07-12 (config entry; redeploy still pending) and
-   **DB-P1-2** (revoke — still open, was scoped out of the P0 session).
-4. **DB-P1-3 / DB-P1-4** — PII and notes exposure, both before real users.
+   ~~**DB-P1-2**~~ done 2026-07-13 (revoked, REST-verified).
+4. ~~**DB-P1-3 / DB-P1-4**~~ done 2026-07-13 — both REST-verified with real JWTs.
 5. **DB-P1-5 + DB-P1-6** — pipeline correctness; cheap.
 6. **DB-P1-9** then **DB-P1-7/P1-8** — observability first, it verifies the rest.
 7. P2s opportunistically; DB-P2-1/P2-2 whenever query latency starts showing.

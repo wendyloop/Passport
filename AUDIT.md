@@ -172,7 +172,7 @@ the candidate exists. **Fix:** add a small cron pass that retries
 `email_delivery_status = 'failed'` rows (or at minimum surface them in the
 admin view).
 
-### P1-9 · Employer "private" notes are readable by the candidate *(added in reconciliation pass — new in M3 code)*
+### P1-9 · Employer "private" notes are readable by the candidate — RESOLVED 2026-07-13 *(added in reconciliation pass — new in M3 code)*
 [20260711130000_m3_trust.sql:33](supabase/migrations/20260711130000_m3_trust.sql#L33),
 select policy [20260519100000_jobtok_mvp.sql:160-174](supabase/migrations/20260519100000_jobtok_mvp.sql#L160),
 UI promise [EmployerHomeView.swift:1410](ios-native/JobTok/EmployerHomeView.swift#L1410)
@@ -185,6 +185,16 @@ delivered verbatim to the person it's about, while the notes editor promises
 "only your team sees these." **Fix:** move `internal_notes` out of candidate
 reach — either a candidate-facing view/column grant that excludes it, or a
 separate employer-only `application_notes` table.
+**RESOLVED:** migration `20260713120000_application_notes_table.sql` — new
+employer-only `application_notes` table (RLS `for all` scoped to the owning
+employer, with-check ties rows to the employer's own applications), existing
+notes migrated, `internal_notes` column dropped. iOS reads notes via the
+PostgREST embed `select=*,application_notes(notes)` on employer fetches
+(`JobApplicationRecord.internalNotes` is now a computed property over the
+embed) and writes via upsert to `application_notes`. Verified over live REST
+with real candidate/employer JWTs: candidate sees no notes rows, no embed
+content, gets 400 selecting the dropped column, and cannot write; employer
+write/read paths work. See DB_AUDIT DB-P1-4.
 
 ---
 
@@ -261,12 +271,12 @@ employers, resume, notifications one at a time before role data even starts.
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 3        |
-| P1       | 9    | 0        |
+| P1       | 8    | 1        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
-and P0-3 — both verified live/at build. Fix session 2026-07-13 resolved P0-1.
-**All P0s are closed.**)
+and P0-3 — both verified live/at build. Fix session 2026-07-13 resolved P0-1
+and P1-9. **All P0s are closed.**)
 
 ## Recommended order
 
@@ -275,7 +285,7 @@ and P0-3 — both verified live/at build. Fix session 2026-07-13 resolved P0-1.
 3. **P1-1** Keychain migration (do before there are real tokens to migrate)
 4. **P1-2** submitted-event fix (analytics is unfixable retroactively)
 5. **P1-4**, **P1-8** (dead-ends on the two sides of the core loop)
-6. **P1-9** internal-notes leak (fix before any employer writes a note),
+6. ~~**P1-9**~~ RESOLVED 2026-07-13 (application_notes table, REST-verified),
    **P1-5** outreach caps, **P1-6** autofill visibility (abuse surface)
 7. **P1-3** timeouts, **P1-7** atomic employer replace
 8. P2s opportunistically, in listed order.

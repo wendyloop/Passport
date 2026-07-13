@@ -627,10 +627,15 @@ struct JobApplicationRecord: Codable, Identifiable {
     let candidateCompensationRange: String?
     let resumeFilePath: String?
     let resumeFileName: String?
-    let internalNotes: String?
+    // AUDIT P1-9: employer notes live in the employer-only application_notes
+    // table (embedded on employer fetches), never on this candidate-readable
+    // row.
+    let applicationNotes: ApplicationNotesEmbed?
     let emailDeliveryStatus: String
     let emailDeliveryError: String?
     let appliedAt: Date
+
+    var internalNotes: String? { applicationNotes?.notes }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -656,11 +661,15 @@ struct JobApplicationRecord: Codable, Identifiable {
         case candidateCompensationRange = "candidate_compensation_range"
         case resumeFilePath = "resume_file_path"
         case resumeFileName = "resume_file_name"
-        case internalNotes = "internal_notes"
+        case applicationNotes = "application_notes"
         case emailDeliveryStatus = "email_delivery_status"
         case emailDeliveryError = "email_delivery_error"
         case appliedAt = "applied_at"
     }
+}
+
+struct ApplicationNotesEmbed: Codable {
+    let notes: String?
 }
 
 struct DiscoverableCandidateRecord: Codable, Identifiable {

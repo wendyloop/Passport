@@ -231,8 +231,10 @@ final class SupabaseService {
     }
 
     func fetchJobApplications(candidateID: String? = nil, employerID: String? = nil, session: AuthSession) async throws -> [JobApplicationRecord] {
+        // Employers also get their private notes (employer-only table, RLS
+        // keeps the embed empty for anyone else — AUDIT P1-9).
         var query: [(String, String)] = [
-            ("select", "*"),
+            ("select", employerID != nil ? "*,application_notes(notes)" : "*"),
             ("order", "applied_at.desc")
         ]
         if let candidateID {
@@ -338,16 +340,32 @@ final class SupabaseService {
         internalNotes: String? = nil,
         session: AuthSession
     ) async throws {
-        var body: [String: AnyEncodable] = [:]
-        if let status { body["status"] = AnyEncodable(status) }
-        if let internalNotes { body["internal_notes"] = AnyEncodable(internalNotes) }
-        guard !body.isEmpty else { return }
-        let _: EmptyPayload = try await transport.patchSingle(
-            path: "job_applications",
-            query: [("id", "eq.\(applicationID)")],
-            body: body,
-            session: session
-        )
+        if let status {
+            let body: [String: AnyEncodable] = ["status": AnyEncodable(status)]
+            let _: EmptyPayload = try await transport.patchSingle(
+                path: "job_applications",
+                query: [("id", "eq.\(applicationID)")],
+                body: body,
+                session: session
+            )
+        }
+        if let internalNotes {
+            // AUDIT P1-9: notes go to the employer-only application_notes
+            // table, never onto the candidate-readable application row.
+            let body: [String: AnyEncodable] = [
+                "application_id": AnyEncodable(applicationID),
+                "employer_profile_id": AnyEncodable(session.user.id),
+                "notes": AnyEncodable(internalNotes)
+            ]
+            _ = try await transport.postgrestWrite(
+                path: "application_notes",
+                method: "POST",
+                query: [("on_conflict", "application_id")],
+                body: body,
+                session: session,
+                prefer: "resolution=merge-duplicates,return=minimal"
+            ) as EmptyPayload
+        }
     }
 
     func resumeDownloadURL(applicationID: String, session: AuthSession) async throws -> URL {

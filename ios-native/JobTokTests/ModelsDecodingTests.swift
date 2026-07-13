@@ -206,4 +206,43 @@ final class ModelsDecodingTests: XCTestCase {
         let contact = try decoder.decode(FounderContactPreview.self, from: json)
         XCTAssertFalse(contact.isGuessedAddress)
     }
+
+    // AUDIT P1-9: employer fetches embed application_notes(notes) from the
+    // employer-only table; candidate fetches (plain select=*) have no such
+    // key. Both shapes must decode.
+    private func applicationJSON(extraField: String) -> Data {
+        """
+        {
+            "id": "app-1",
+            "job_id": "job-1",
+            "employer_profile_id": "emp-1",
+            "candidate_profile_id": "cand-1",
+            "status": "submitted",
+            "job_title": "iOS Engineer",
+            "company_name": "Acme",
+            "application_email": "jobs@acme.io",
+            "candidate_name": "Sam Seeker",
+            "candidate_previous_employers": [],
+            "email_delivery_status": "sent",
+            "applied_at": "2026-07-01T12:00:00Z"\(extraField)
+        }
+        """.data(using: .utf8)!
+    }
+
+    func testApplicationDecodesEmbeddedEmployerNotes() throws {
+        let json = applicationJSON(extraField: #", "application_notes": {"notes": "strong portfolio"}"#)
+        let application = try decoder.decode(JobApplicationRecord.self, from: json)
+        XCTAssertEqual(application.internalNotes, "strong portfolio")
+    }
+
+    func testApplicationDecodesNullNotesEmbed() throws {
+        let json = applicationJSON(extraField: #", "application_notes": null"#)
+        let application = try decoder.decode(JobApplicationRecord.self, from: json)
+        XCTAssertNil(application.internalNotes)
+    }
+
+    func testApplicationDecodesWithoutNotesEmbed() throws {
+        let application = try decoder.decode(JobApplicationRecord.self, from: applicationJSON(extraField: ""))
+        XCTAssertNil(application.internalNotes)
+    }
 }
