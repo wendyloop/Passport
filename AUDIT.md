@@ -163,7 +163,7 @@ your own candidates. **Fix:** add a per-employer daily cap and
 per-candidate cooldown mirroring `send-founder-email`, and cap
 subject/message lengths.
 
-### P1-6 · ATS autofill fills and captures invisible fields
+### P1-6 · ATS autofill fills and captures invisible fields — RESOLVED 2026-07-13
 [ApplyDrawerView.swift:301-307](ios-native/JobTok/ApplyDrawerView.swift#L301)
 (fill: [317-337](ios-native/JobTok/ApplyDrawerView.swift#L317), capture:
 [391-413](ios-native/JobTok/ApplyDrawerView.swift#L391))
@@ -175,6 +175,17 @@ submit listener also captures every filled field back to
 `store-application-fields`. **Fix:** require visibility (e.g.
 `el.offsetParent !== null` and non-zero client rect) in both `isFillable` and
 the capture pass.
+**RESOLVED (both halves):** (1) `isVisible()` — non-zero client rect +
+`checkVisibility()` (computed display/visibility/opacity fallback) — is now
+required by `isFillable`, which gates the fill pass, the essay collector,
+`fillEssayMatch`, and the submit-capture pass alike. (2) Injection is
+allowlisted to the 14 known ATS domains (`ATSAutofillPolicy`, single source
+of truth mirrored into the JS): both WKUserScripts start with a per-document,
+per-frame host gate — exact-or-dot-suffix match, so `greenhouse.io.evil.com`
+fails — and on any other host there is no fill, no capture, and no message
+posts at all. `ATSPlatform.detect` also moved from spoofable `contains` to
+suffix matching (+ smartrecruiters/recruitee coverage). 6 new tests, incl.
+executing the real injected JS gate in JavaScriptCore. Suite 50/50 + 16/16.
 
 ### P1-7 · Profile save can wipe the employer-history list
 [CandidateService.swift:83-101](ios-native/JobTok/CandidateService.swift#L83)
@@ -291,7 +302,7 @@ employers, resume, notifications one at a time before role data even starts.
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 3        |
-| P1       | 6    | 3        |
+| P1       | 5    | 4        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
@@ -306,6 +317,7 @@ and P1-9. **All P0s are closed.**)
 4. ~~**P1-2**~~ RESOLVED 2026-07-13 (always logs; e2e-verified on hosted)
 5. **P1-4**, **P1-8** (dead-ends on the two sides of the core loop)
 6. ~~**P1-9**~~ RESOLVED 2026-07-13 (application_notes table, REST-verified),
-   **P1-5** outreach caps, **P1-6** autofill visibility (abuse surface)
+   **P1-5** outreach caps, ~~**P1-6**~~ RESOLVED 2026-07-13 (visibility gate
+   + 14-domain allowlist)
 7. **P1-3** timeouts, **P1-7** atomic employer replace
 8. P2s opportunistically, in listed order.

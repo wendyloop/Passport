@@ -8,20 +8,75 @@ enum ATSPlatform: String {
     case lever      = "lever"
     case workday    = "workday"
     case ashby      = "ashby"
+    case smartrecruiters = "smartrecruiters"
+    case recruitee  = "recruitee"
     case rippling   = "rippling"   // blocked — open in Safari
     case other      = "other"
 
     static func detect(from url: URL) -> ATSPlatform {
         let host = url.host?.lowercased() ?? ""
-        if host.contains("greenhouse.io")  { return .greenhouse }
-        if host.contains("lever.co")       { return .lever }
-        if host.contains("myworkday.com") || host.contains("workday.com") { return .workday }
-        if host.contains("ashbyhq.com")    { return .ashby }
-        if host.contains("rippling.com")   { return .rippling }
+        // Suffix match, not contains — "greenhouse.io.evil.com" must not pass.
+        func matches(_ domain: String) -> Bool {
+            host == domain || host.hasSuffix("." + domain)
+        }
+        if matches("greenhouse.io")  { return .greenhouse }
+        if matches("lever.co")       { return .lever }
+        if matches("myworkday.com") || matches("workday.com") { return .workday }
+        if matches("ashbyhq.com")    { return .ashby }
+        if matches("smartrecruiters.com") { return .smartrecruiters }
+        if matches("recruitee.com")  { return .recruitee }
+        if matches("rippling.com")   { return .rippling }
         return .other
     }
 
     var isBlocked: Bool { self == .rippling }
+}
+
+/// AUDIT P1-6: autofill (fill AND capture) runs only on these 14 known ATS
+/// domains — matched as exact host or dot-suffix, mirrored into the injected
+/// JS. Any other host gets no prefill, no submit capture, no message posts,
+/// visible fields or not.
+enum ATSAutofillPolicy {
+    static let allowedDomains: [String] = [
+        "greenhouse.io",
+        "boards.greenhouse.io",
+        "job-boards.greenhouse.io",
+        "lever.co",
+        "jobs.lever.co",
+        "ashbyhq.com",
+        "jobs.ashbyhq.com",
+        "myworkday.com",
+        "workday.com",
+        "smartrecruiters.com",
+        "jobs.smartrecruiters.com",
+        "careers.smartrecruiters.com",
+        "recruitee.com",
+        "rippling.com"
+    ]
+
+    static func isHostAllowed(_ host: String?) -> Bool {
+        guard let host = host?.lowercased(), !host.isEmpty else { return false }
+        return allowedDomains.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    /// The allowlist as a JS array literal for injection.
+    static var domainsJSArray: String {
+        let quoted = allowedDomains.map { "'\($0)'" }.joined(separator: ",")
+        return "[\(quoted)]"
+    }
+
+    /// Shared prologue for every injected script: bail out unless the
+    /// document's own host is a known ATS. Runs per navigation and per frame.
+    static var hostGateJS: String {
+        """
+        var ATS_DOMAINS = \(domainsJSArray);
+          var __jtHost = (location.hostname || '').toLowerCase();
+          var __jtAllowed = ATS_DOMAINS.some(function(d) {
+            return __jtHost === d || __jtHost.slice(-(d.length + 1)) === '.' + d;
+          });
+          if (!__jtAllowed) return;
+        """
+    }
 }
 
 // MARK: - ApplyDrawerView
@@ -232,6 +287,8 @@ struct ApplyWebView: UIViewRepresentable {
 
         return """
         (function() {
+          // AUDIT P1-6: no autofill of any kind off the ATS allowlist.
+          \(ATSAutofillPolicy.hostGateJS)
           if (window.__jobtokAutofillInstalled) return;
           window.__jobtokAutofillInstalled = true;
 
@@ -298,12 +355,28 @@ struct ApplyWebView: UIViewRepresentable {
             return (el.getAttribute('aria-label') || el.placeholder || el.name || '').trim();
           }
 
+          // AUDIT P1-6: CSS-hidden fields are neither filled nor captured —
+          // a hostile page can't plant invisible "email"/"salary" inputs,
+          // let the prefill populate them, and read them back on submit.
+          function isVisible(el) {
+            if (!el) return false;
+            var rect = el.getBoundingClientRect();
+            if (rect.width < 1 || rect.height < 1) return false;
+            if (typeof el.checkVisibility === 'function') {
+              return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+            }
+            var style = window.getComputedStyle(el);
+            return style.display !== 'none'
+              && style.visibility !== 'hidden'
+              && parseFloat(style.opacity) > 0;
+          }
+
           function isFillable(el) {
             if (!el) return false;
             if (el.disabled || el.readOnly) return false;
             if (el.type === 'password' || el.type === 'hidden' || el.type === 'file' ||
                 el.type === 'submit' || el.type === 'button') return false;
-            return true;
+            return isVisible(el);
           }
 
           function matchesPattern(label, patterns) {
@@ -424,6 +497,8 @@ struct ApplyWebView: UIViewRepresentable {
         // after the new form mounts. Throttled to avoid hammering on every DOM tick.
         return """
         (function() {
+          // AUDIT P1-6: same host gate as the prefill script.
+          \(ATSAutofillPolicy.hostGateJS)
           var lastUrl = location.href;
           var timer = null;
           var obs = new MutationObserver(function() {
