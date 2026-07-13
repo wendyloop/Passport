@@ -43,6 +43,7 @@
 		AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */; };
 		AB0000010000000000000004 /* CarouselThemesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000004 /* CarouselThemesTests.swift */; };
 		AB0000010000000000000005 /* RenderSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000005 /* RenderSmokeTests.swift */; };
+		AB0000010000000000000006 /* AppSessionStoreBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000006 /* AppSessionStoreBootstrapTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -115,6 +116,7 @@
 		AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseErrorMappingTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000004 /* CarouselThemesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselThemesTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000005 /* RenderSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderSmokeTests.swift; sourceTree = "<group>"; };
+		AC0000010000000000000006 /* AppSessionStoreBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSessionStoreBootstrapTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000A00001 /* JobTokTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JobTokTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -223,6 +225,7 @@
 				AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */,
 				AC0000010000000000000004 /* CarouselThemesTests.swift */,
 				AC0000010000000000000005 /* RenderSmokeTests.swift */,
+				AC0000010000000000000006 /* AppSessionStoreBootstrapTests.swift */,
 			);
 			path = JobTokTests;
 			sourceTree = "<group>";
@@ -401,6 +404,7 @@
 				AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */,
 				AB0000010000000000000004 /* CarouselThemesTests.swift in Sources */,
 				AB0000010000000000000005 /* RenderSmokeTests.swift in Sources */,
+				AB0000010000000000000006 /* AppSessionStoreBootstrapTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

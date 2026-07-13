@@ -76,7 +76,7 @@ struct NativeRootView: View {
         switch store.phase {
         case .signedOut:
             PassportTheme.background
-        case .launching:
+        case .launching, .offline:
             PassportTheme.accent
         case .onboarding, .signedIn:
             LinearGradient(
@@ -92,6 +92,8 @@ struct NativeRootView: View {
         switch store.phase {
         case .launching:
             launchingView
+        case .offline:
+            offlineView
         case .signedOut:
             authView
         case .onboarding:
@@ -114,6 +116,40 @@ struct NativeRootView: View {
                 .tint(Color.black)
                 .padding(.top, 10)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // AUDIT P0-1: signed in but the backend is unreachable. The store retries
+    // on its own when connectivity returns; the button is a manual nudge.
+    private var offlineView: some View {
+        VStack(spacing: 16) {
+            Text("💼")
+                .font(.system(size: 70))
+
+            Text("scout22")
+                .font(.system(size: 44, weight: .black, design: .rounded))
+                .foregroundStyle(Color.black)
+
+            Text("You're offline. We'll reconnect automatically.")
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.7))
+                .multilineTextAlignment(.center)
+
+            Button {
+                Task { await store.retryConnection() }
+            } label: {
+                Text("Retry")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 12)
+                    .background(Color.black)
+                    .foregroundStyle(PassportTheme.accent)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 6)
+        }
+        .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

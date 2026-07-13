@@ -34,7 +34,7 @@ unpublished jobs; all 4 cron functions use the fail-closed cron secret.
 
 ## P0 — blocks launch
 
-### P0-1 · Any offline launch destroys the persisted session
+### P0-1 · Any offline launch destroys the persisted session — RESOLVED 2026-07-13
 [AppSessionStore.swift:124-139](ios-native/JobTok/AppSessionStore.swift#L124)
 `bootstrap()` treats *every* error from `ensureValidSession` /
 `loadCurrentUserState` — including plain network unreachability — as fatal:
@@ -44,6 +44,19 @@ signal) and you are logged out, every time. **Fix:** distinguish
 `URLError`-class failures from auth failures — keep the session, enter a
 "retry" state, and only clear on a definitive 400/401 from the refresh
 endpoint.
+**RESOLVED:** the transport now surfaces HTTP status codes
+(`SupabaseServiceError.httpError`); `refreshSession` maps a definitive
+400/401/403 from the refresh endpoint to `AuthServiceError.refreshRejected` —
+the *only* error that clears the persisted session. Every other bootstrap
+failure (URLError, 5xx, decode) keeps the session and enters a new
+`Phase.offline` state with an offline screen; `NWPathMonitor` retries the
+moment a network path appears, backed by an exponential-backoff timer (5s→60s
+cap) for reachable-but-failing servers, plus a manual Retry button. Covered by
+6 new unit tests in `AppSessionStoreBootstrapTests` (offline keeps
+session+persistence, 5xx keeps session, rejected refresh clears both, no-op
+without persisted session, and URLProtocol-stubbed proof that a real HTTP 400
+from `/auth/v1/token` maps to `refreshRejected` while URLErrors pass through).
+Suite 40/40 + 16/16.
 
 ### P0-2 · `trigger-apify-scrape` is invokable by anyone holding the anon key — RESOLVED 2026-07-11
 [trigger-apify-scrape/index.ts:183-186](supabase/functions/trigger-apify-scrape/index.ts#L183)
@@ -247,18 +260,18 @@ employers, resume, notifications one at a time before role data even starts.
 
 | Severity | Open | Resolved |
 |----------|------|----------|
-| P0       | 1    | 2        |
+| P0       | 0    | 3        |
 | P1       | 9    | 0        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
-and P0-3 — both verified live/at build. **P0-1 is the only remaining P0.**)
+and P0-3 — both verified live/at build. Fix session 2026-07-13 resolved P0-1.
+**All P0s are closed.**)
 
 ## Recommended order
 
 1. ~~**P0-3**~~ RESOLVED · ~~**P0-2**~~ RESOLVED
-2. **P0-1** (offline bootstrap; touches the first-run path every user hits) —
-   **the sole remaining launch blocker**
+2. ~~**P0-1**~~ RESOLVED 2026-07-13
 3. **P1-1** Keychain migration (do before there are real tokens to migrate)
 4. **P1-2** submitted-event fix (analytics is unfixable retroactively)
 5. **P1-4**, **P1-8** (dead-ends on the two sides of the core loop)

@@ -5,6 +5,26 @@ enum SocialAuthProvider: String {
     case apple
 }
 
+/// A definitive rejection of the refresh token by the auth server (revoked,
+/// reused, or malformed) — as opposed to a network or server failure. This is
+/// the only error that should destroy a persisted session (AUDIT P0-1).
+enum AuthServiceError: LocalizedError {
+    case refreshRejected(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .refreshRejected:
+            return "Your session has expired. Please sign in again."
+        }
+    }
+}
+
+/// The slice of AuthService that session bootstrap depends on — injectable so
+/// tests can simulate network-unreachable vs auth-rejected refresh outcomes.
+protocol SessionValidating {
+    func ensureValidSession(_ session: AuthSession) async throws -> AuthSession
+}
+
 /// Supabase Auth: password + OAuth sign-in, session refresh, sign-out.
 final class AuthService {
     private let transport: SupabaseTransport
@@ -109,7 +129,14 @@ final class AuthService {
                 "refresh_token": session.refreshToken
             ]
         )
-        let envelope = try await transport.execute(request, decode: AuthSessionEnvelope.self)
+        let envelope: AuthSessionEnvelope
+        do {
+            envelope = try await transport.execute(request, decode: AuthSessionEnvelope.self)
+        } catch SupabaseServiceError.httpError(let statusCode, let message) where [400, 401, 403].contains(statusCode) {
+            // The server saw the request and rejected the token; anything
+            // else (URLError, 5xx) is treated as retryable by callers.
+            throw AuthServiceError.refreshRejected(message)
+        }
         guard let session = envelope.session else {
             throw SupabaseServiceError.invalidResponse
         }
@@ -168,6 +195,8 @@ final class AuthService {
         return values
     }
 }
+
+extension AuthService: SessionValidating {}
 
 struct AuthSessionEnvelope: Codable {
     let accessToken: String?

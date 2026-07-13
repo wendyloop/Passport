@@ -5,6 +5,7 @@ enum SupabaseServiceError: LocalizedError {
     case invalidResponse
     case missingSession
     case apiError(String)
+    case httpError(statusCode: Int, message: String)
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum SupabaseServiceError: LocalizedError {
         case .missingSession:
             return "You need to be signed in."
         case .apiError(let message):
+            return message
+        case .httpError(_, let message):
             return message
         }
     }
@@ -219,13 +222,15 @@ final class SupabaseTransport {
         }
 
         guard 200..<300 ~= httpResponse.statusCode else {
+            let message: String
             if let apiError = try? decoder.decode(SupabaseAPIError.self, from: data) {
-                throw SupabaseServiceError.apiError(apiError.message)
+                message = apiError.message
+            } else if let body = String(data: data, encoding: .utf8), !body.isEmpty {
+                message = body
+            } else {
+                message = "Supabase request failed with status \(httpResponse.statusCode)."
             }
-            if let body = String(data: data, encoding: .utf8), !body.isEmpty {
-                throw SupabaseServiceError.apiError(body)
-            }
-            throw SupabaseServiceError.apiError("Supabase request failed with status \(httpResponse.statusCode).")
+            throw SupabaseServiceError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
         return data
     }

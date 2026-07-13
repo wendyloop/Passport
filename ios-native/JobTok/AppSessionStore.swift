@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 // TODO(deferred): CandidateStore split. This store still holds all three
 // roles' ~20 @Published props, which feed NativeRootView's per-role closures.
@@ -12,6 +13,10 @@ final class AppSessionStore: ObservableObject {
         case signedOut
         case onboarding
         case signedIn
+        // Signed in but the backend is unreachable (airplane mode, dead
+        // wifi, server down). The persisted session is kept; bootstrap
+        // retries automatically when connectivity returns.
+        case offline
     }
 
     @Published private(set) var phase: Phase = .launching
@@ -41,16 +46,37 @@ final class AppSessionStore: ObservableObject {
     private let service = SupabaseService.shared
     private var auth: AuthService { service.auth }
     private var candidate: CandidateService { service.candidate }
-    private let defaults = UserDefaults.standard
+    private let sessionValidator: any SessionValidating
+    private let defaults: UserDefaults
     private let sessionKey = SharedConstants.sessionDefaultsKey
-    private let sharedDefaults = UserDefaults(suiteName: SharedConstants.appGroupID)
+    private let sharedDefaults: UserDefaults?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init() {
+    // Offline bootstrap retry (AUDIT P0-1): NWPathMonitor wakes the retry as
+    // soon as a network path exists; the backoff task covers reachable-but-
+    // failing (server down) cases.
+    private let connectivityRetryEnabled: Bool
+    private var pathMonitor: NWPathMonitor?
+    private var offlineRetryTask: Task<Void, Never>?
+    private var offlineRetryAttempts = 0
+
+    init(
+        sessionValidator: (any SessionValidating)? = nil,
+        defaults: UserDefaults = .standard,
+        sharedDefaults: UserDefaults? = UserDefaults(suiteName: SharedConstants.appGroupID),
+        bootstrapsOnInit: Bool = true,
+        connectivityRetryEnabled: Bool = true
+    ) {
+        self.sessionValidator = sessionValidator ?? SupabaseService.shared.auth
+        self.defaults = defaults
+        self.sharedDefaults = sharedDefaults
+        self.connectivityRetryEnabled = connectivityRetryEnabled
         decoder.dateDecodingStrategy = .iso8601
         encoder.dateEncodingStrategy = .iso8601
-        Task { await bootstrap() }
+        if bootstrapsOnInit {
+            Task { await bootstrap() }
+        }
     }
 
     var role: UserRole? {
@@ -122,20 +148,70 @@ final class AppSessionStore: ObservableObject {
     }
 
     func bootstrap() async {
-        if let savedSession = loadPersistedSession() {
-            session = savedSession
-            do {
-                self.session = try await auth.ensureValidSession(savedSession)
-                try persistSessionIfNeeded()
-                try await loadCurrentUserState()
-            } catch {
-                clearSession()
-                phase = .signedOut
-                errorMessage = error.localizedDescription
-            }
-        } else {
+        guard let savedSession = loadPersistedSession() else {
             phase = .signedOut
+            return
         }
+        session = savedSession
+        do {
+            self.session = try await sessionValidator.ensureValidSession(savedSession)
+            try persistSessionIfNeeded()
+            try await loadCurrentUserState()
+            stopOfflineRetry()
+        } catch let error as AuthServiceError {
+            // The auth server definitively rejected the refresh token —
+            // the only failure that destroys the persisted session.
+            clearSession()
+            phase = .signedOut
+            errorMessage = error.localizedDescription
+        } catch {
+            // Network unreachable, timeout, or server hiccup: keep the
+            // session and retry when connectivity returns (AUDIT P0-1).
+            AppLog.session.info("Bootstrap deferred, retrying later: \(String(describing: error))")
+            phase = .offline
+            scheduleOfflineRetry()
+        }
+    }
+
+    /// Manual retry from the offline screen; connectivity changes and the
+    /// backoff timer call the same path automatically.
+    func retryConnection() async {
+        guard phase == .offline else { return }
+        await bootstrap()
+    }
+
+    private func scheduleOfflineRetry() {
+        guard connectivityRetryEnabled else { return }
+        startConnectivityMonitorIfNeeded()
+        offlineRetryTask?.cancel()
+        let delay = min(60.0, 5.0 * pow(2.0, Double(offlineRetryAttempts)))
+        offlineRetryAttempts += 1
+        offlineRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.retryConnection()
+        }
+    }
+
+    private func startConnectivityMonitorIfNeeded() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in
+                await self?.retryConnection()
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.jobtok.connectivity-retry"))
+        pathMonitor = monitor
+    }
+
+    private func stopOfflineRetry() {
+        offlineRetryTask?.cancel()
+        offlineRetryTask = nil
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        offlineRetryAttempts = 0
     }
 
     func signUp(email: String, password: String) async {
@@ -675,7 +751,7 @@ final class AppSessionStore: ObservableObject {
 
     private func loadCurrentUserState() async throws {
         let session = try await requireSession()
-        let validSession = try await auth.ensureValidSession(session)
+        let validSession = try await sessionValidator.ensureValidSession(session)
         self.session = validSession
         try persistSessionIfNeeded()
 
@@ -789,7 +865,7 @@ final class AppSessionStore: ObservableObject {
 
     private func requireSession() async throws -> AuthSession {
         guard let session else { throw SupabaseServiceError.missingSession }
-        let valid = try await auth.ensureValidSession(session)
+        let valid = try await sessionValidator.ensureValidSession(session)
         if valid.accessToken != session.accessToken {
             self.session = valid
             try persistSessionIfNeeded()
@@ -822,6 +898,7 @@ final class AppSessionStore: ObservableObject {
     }
 
     private func clearSession() {
+        stopOfflineRetry()
         session = nil
         profile = nil
         jobSeekerProfile = nil
