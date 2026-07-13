@@ -47,8 +47,9 @@ final class AppSessionStore: ObservableObject {
     private var auth: AuthService { service.auth }
     private var candidate: CandidateService { service.candidate }
     private let sessionValidator: any SessionValidating
-    private let defaults: UserDefaults
-    private let sessionKey = SharedConstants.sessionDefaultsKey
+    // AUDIT P1-1: the session lives in the Keychain (shared with the
+    // extension via the App Group access group), not UserDefaults.
+    private let sessionPersistence: any SessionPersisting
     private let sharedDefaults: UserDefaults?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -63,13 +64,13 @@ final class AppSessionStore: ObservableObject {
 
     init(
         sessionValidator: (any SessionValidating)? = nil,
-        defaults: UserDefaults = .standard,
+        sessionPersistence: (any SessionPersisting)? = nil,
         sharedDefaults: UserDefaults? = UserDefaults(suiteName: SharedConstants.appGroupID),
         bootstrapsOnInit: Bool = true,
         connectivityRetryEnabled: Bool = true
     ) {
         self.sessionValidator = sessionValidator ?? SupabaseService.shared.auth
-        self.defaults = defaults
+        self.sessionPersistence = sessionPersistence ?? KeychainSessionPersistence()
         self.sharedDefaults = sharedDefaults
         self.connectivityRetryEnabled = connectivityRetryEnabled
         decoder.dateDecodingStrategy = .iso8601
@@ -882,18 +883,22 @@ final class AppSessionStore: ObservableObject {
 
     private func persistSessionIfNeeded() throws {
         guard let session else {
-            defaults.removeObject(forKey: sessionKey)
-            sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.accessToken)
+            sessionPersistence.clear()
             return
         }
-        let data = try encoder.encode(session)
-        defaults.set(data, forKey: sessionKey)
-        sharedDefaults?.set(session.accessToken, forKey: SharedConstants.AppGroupKeys.accessToken)
+        try sessionPersistence.save(encoder.encode(session))
+        // Pre-Keychain builds kept the session in UserDefaults and mirrored
+        // the access token into the app-group plist; scrub both so old
+        // installs stop exposing them (no read-migration by design —
+        // pre-launch, re-login is fine). The extension reads the token from
+        // the shared keychain item now.
+        UserDefaults.standard.removeObject(forKey: SharedConstants.sessionDefaultsKey)
+        sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.accessToken)
         sharedDefaults?.set(PassportConfig.load().supabaseURL, forKey: SharedConstants.AppGroupKeys.supabaseURL)
     }
 
     private func loadPersistedSession() -> AuthSession? {
-        guard let data = defaults.data(forKey: sessionKey) else { return nil }
+        guard let data = sessionPersistence.load() else { return nil }
         return try? decoder.decode(AuthSession.self, from: data)
     }
 
@@ -915,7 +920,7 @@ final class AppSessionStore: ObservableObject {
         employerOutreachMessages = []
         adminJobs = []
         employerDirectoryItems = []
-        defaults.removeObject(forKey: sessionKey)
+        sessionPersistence.clear()
         sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.accessToken)
         sharedDefaults?.removeObject(forKey: SharedConstants.AppGroupKeys.userRole)
     }

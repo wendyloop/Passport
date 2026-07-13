@@ -3,19 +3,18 @@ import XCTest
 
 // AUDIT P0-1: bootstrap must distinguish "network unreachable" (keep the
 // persisted session, retry later) from "refresh token rejected" (sign out).
+// AUDIT P1-1: persistence goes through the SessionPersisting seam (Keychain
+// in production, in-memory here).
 @MainActor
 final class AppSessionStoreBootstrapTests: XCTestCase {
-    private static let suiteName = "AppSessionStoreBootstrapTests"
-    private var defaults: UserDefaults!
+    private var persistence: InMemorySessionPersistence!
 
     override func setUp() {
         super.setUp()
-        defaults = UserDefaults(suiteName: Self.suiteName)
-        defaults.removePersistentDomain(forName: Self.suiteName)
+        persistence = InMemorySessionPersistence()
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: Self.suiteName)
         RefreshEndpointStub.handler = nil
         URLProtocol.unregisterClass(RefreshEndpointStub.self)
         super.tearDown()
@@ -33,13 +32,13 @@ final class AppSessionStoreBootstrapTests: XCTestCase {
     private func persistSession() throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        defaults.set(try encoder.encode(makeSession()), forKey: SharedConstants.sessionDefaultsKey)
+        persistence.stored = try encoder.encode(makeSession())
     }
 
     private func makeStore(failingWith error: Error) -> AppSessionStore {
         AppSessionStore(
             sessionValidator: StubSessionValidator(error: error),
-            defaults: defaults,
+            sessionPersistence: persistence,
             sharedDefaults: nil,
             bootstrapsOnInit: false,
             connectivityRetryEnabled: false
@@ -56,7 +55,7 @@ final class AppSessionStoreBootstrapTests: XCTestCase {
         XCTAssertEqual(store.phase, .offline)
         XCTAssertNotNil(store.session)
         XCTAssertNotNil(
-            defaults.data(forKey: SharedConstants.sessionDefaultsKey),
+            persistence.stored,
             "an offline launch must not destroy the persisted session"
         )
     }
@@ -72,7 +71,7 @@ final class AppSessionStoreBootstrapTests: XCTestCase {
 
         XCTAssertEqual(store.phase, .offline)
         XCTAssertNotNil(store.session)
-        XCTAssertNotNil(defaults.data(forKey: SharedConstants.sessionDefaultsKey))
+        XCTAssertNotNil(persistence.stored)
     }
 
     // A definitive refresh rejection still signs the user out.
@@ -85,7 +84,7 @@ final class AppSessionStoreBootstrapTests: XCTestCase {
         XCTAssertEqual(store.phase, .signedOut)
         XCTAssertNil(store.session)
         XCTAssertNil(
-            defaults.data(forKey: SharedConstants.sessionDefaultsKey),
+            persistence.stored,
             "a rejected refresh token must clear the persisted session"
         )
     }
@@ -138,12 +137,42 @@ final class AppSessionStoreBootstrapTests: XCTestCase {
     }
 }
 
+// AUDIT P1-1: the real Keychain store round-trips in the hosted app (the
+// host holds the App Group entitlement the access group needs).
+final class KeychainStoreTests: XCTestCase {
+    override func tearDown() {
+        KeychainStore.delete()
+        super.tearDown()
+    }
+
+    func testSaveLoadDeleteRoundTrip() throws {
+        let payload = Data(#"{"accessToken":"kc-test"}"#.utf8)
+        try KeychainStore.save(payload)
+        XCTAssertEqual(KeychainStore.load(), payload)
+
+        let replacement = Data(#"{"accessToken":"kc-test-2"}"#.utf8)
+        try KeychainStore.save(replacement)
+        XCTAssertEqual(KeychainStore.load(), replacement, "save must overwrite, not duplicate")
+
+        KeychainStore.delete()
+        XCTAssertNil(KeychainStore.load())
+    }
+}
+
 private struct StubSessionValidator: SessionValidating {
     let error: Error
 
     func ensureValidSession(_ session: AuthSession) async throws -> AuthSession {
         throw error
     }
+}
+
+private final class InMemorySessionPersistence: SessionPersisting {
+    var stored: Data?
+
+    func save(_ data: Data) throws { stored = data }
+    func load() -> Data? { stored }
+    func clear() { stored = nil }
 }
 
 /// Intercepts only the Supabase auth token endpoint on the shared URLSession.

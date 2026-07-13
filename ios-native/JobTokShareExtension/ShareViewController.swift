@@ -4,9 +4,14 @@ import UniformTypeIdentifiers
 final class ShareViewController: UIViewController {
 
     private let appGroupID  = SharedConstants.appGroupID
-    private let tokenKey    = SharedConstants.AppGroupKeys.accessToken
     private let supabaseKey = SharedConstants.AppGroupKeys.supabaseURL
     private let roleKey     = SharedConstants.AppGroupKeys.userRole
+
+    /// Minimal slice of the session JSON the app stores in the shared
+    /// keychain item (AUDIT P1-1) — the extension only needs the JWT.
+    private struct StoredSessionToken: Decodable {
+        let accessToken: String
+    }
 
     // MARK: - UI
 
@@ -139,7 +144,11 @@ final class ShareViewController: UIViewController {
     private func ingest(url: URL) {
         let shared = UserDefaults(suiteName: appGroupID)
 
-        guard let token = shared?.string(forKey: tokenKey), !token.isEmpty else {
+        // AUDIT P1-1: the session lives in the shared keychain item, not the
+        // app-group plist.
+        guard let sessionData = KeychainStore.load(),
+              let token = try? JSONDecoder().decode(StoredSessionToken.self, from: sessionData).accessToken,
+              !token.isEmpty else {
             finish(success: false, message: "Sign in to scout22 first, then try again.")
             return
         }

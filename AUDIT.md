@@ -97,7 +97,7 @@ report CFBundleVersion 3 / short 1.2. They can no longer drift.
 
 ## P1 — fix before real users
 
-### P1-1 · Auth tokens live in UserDefaults, not the Keychain
+### P1-1 · Auth tokens live in UserDefaults, not the Keychain — RESOLVED 2026-07-13
 [AppSessionStore.swift:44-46](ios-native/JobTok/AppSessionStore.swift#L44),
 [807-817](ios-native/JobTok/AppSessionStore.swift#L807)
 The full session (access + refresh token) is JSON-encoded into
@@ -106,6 +106,19 @@ defaults for the share extension — plaintext plists, included in unencrypted
 backups. **Fix:** persist the session in the Keychain
 (`kSecAttrAccessibleAfterFirstUnlock` + shared keychain access group so the
 extension can still read it).
+**RESOLVED:** new `KeychainStore` (compiled into both targets) holds the
+session as one generic-password item with
+`kSecAttrAccessibleAfterFirstUnlock`, shared via the App Group ID as the
+keychain access group (valid on iOS; both targets already had the group
+entitlement, so no entitlement changes). `AppSessionStore` persists through a
+`SessionPersisting` seam (Keychain in prod, in-memory in tests); the share
+extension decodes just the access token from the shared item. The App Group
+plist token mirror is gone and pre-Keychain leftovers (standard-defaults
+session + mirrored token) are scrubbed on next sign-in. No read-migration by
+design — wiping test devices / re-login is fine pre-launch. Covered by a
+Keychain save/load/overwrite/delete roundtrip test in the hosted app (same
+access group the extension uses). Manual follow-up: exercise one share-sheet
+import on a signed-in build. Suite 44/44 + 16/16.
 
 ### P1-2 · The "submitted" funnel event is never logged on the happy path — RESOLVED 2026-07-13
 [ApplyDrawerView.swift:140-160](ios-native/JobTok/ApplyDrawerView.swift#L140)
@@ -278,7 +291,7 @@ employers, resume, notifications one at a time before role data even starts.
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 3        |
-| P1       | 7    | 2        |
+| P1       | 6    | 3        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
@@ -289,7 +302,7 @@ and P1-9. **All P0s are closed.**)
 
 1. ~~**P0-3**~~ RESOLVED · ~~**P0-2**~~ RESOLVED
 2. ~~**P0-1**~~ RESOLVED 2026-07-13
-3. **P1-1** Keychain migration (do before there are real tokens to migrate)
+3. ~~**P1-1**~~ RESOLVED 2026-07-13 (Keychain via App Group access group)
 4. ~~**P1-2**~~ RESOLVED 2026-07-13 (always logs; e2e-verified on hosted)
 5. **P1-4**, **P1-8** (dead-ends on the two sides of the core loop)
 6. ~~**P1-9**~~ RESOLVED 2026-07-13 (application_notes table, REST-verified),

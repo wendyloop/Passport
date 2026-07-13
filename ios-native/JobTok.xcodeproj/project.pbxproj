@@ -37,6 +37,8 @@
 		A10000010000000000000030 /* SupabaseErrorMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* SupabaseErrorMapping.swift */; };
 		A10000010000000000000031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
 		A100000100000000000E0031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
+		A10000010000000000000032 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* KeychainStore.swift */; };
+		A100000100000000000E0032 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* KeychainStore.swift */; };
 		A2D918232FD8BC580087EF97 /* JobTokShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AB0000010000000000000001 /* ModelsDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000001 /* ModelsDecodingTests.swift */; };
 		AB0000010000000000000002 /* SharedFormattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000002 /* SharedFormattersTests.swift */; };
@@ -109,6 +111,7 @@
 		A2000001000000000000002F /* ResumeTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeTextExtractor.swift; sourceTree = "<group>"; };
 		A20000010000000000000030 /* SupabaseErrorMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseErrorMapping.swift; sourceTree = "<group>"; };
 		A20000010000000000000031 /* SharedConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedConstants.swift; sourceTree = "<group>"; };
+		A20000010000000000000032 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000020 /* JobTok.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JobTok.entitlements; sourceTree = "<group>"; };
 		A2D918192FD8BC580087EF97 /* JobTokShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobTokShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC0000010000000000000001 /* ModelsDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsDecodingTests.swift; sourceTree = "<group>"; };
@@ -202,6 +205,7 @@
 				A2000001000000000000002F /* ResumeTextExtractor.swift */,
 				A20000010000000000000030 /* SupabaseErrorMapping.swift */,
 				A20000010000000000000031 /* SharedConstants.swift */,
+				A20000010000000000000032 /* KeychainStore.swift */,
 				A20000010000000000000020 /* JobTok.entitlements */,
 			);
 			path = JobTok;
@@ -359,6 +363,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A100000100000000000E0031 /* SharedConstants.swift in Sources */,
+				A100000100000000000E0032 /* KeychainStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -392,6 +397,7 @@
 				A1000001000000000000002F /* ResumeTextExtractor.swift in Sources */,
 				A10000010000000000000030 /* SupabaseErrorMapping.swift in Sources */,
 				A10000010000000000000031 /* SharedConstants.swift in Sources */,
+				A10000010000000000000032 /* KeychainStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
