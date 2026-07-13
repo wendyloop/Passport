@@ -37,3 +37,6 @@ ios-native/JobTok/JobTok.local.xcconfig
 
 # Xcode build products
 ios-native/build/
+
+# Xcode per-user UI state
+*.xcuserstate
