@@ -107,7 +107,7 @@ backups. **Fix:** persist the session in the Keychain
 (`kSecAttrAccessibleAfterFirstUnlock` + shared keychain access group so the
 extension can still read it).
 
-### P1-2 · The "submitted" funnel event is never logged on the happy path
+### P1-2 · The "submitted" funnel event is never logged on the happy path — RESOLVED 2026-07-13
 [ApplyDrawerView.swift:140-160](ios-native/JobTok/ApplyDrawerView.swift#L140)
 `handleSubmission` only logs an event of type `"submitted"` when the earlier
 `"opened"` log *failed* (`eventId == nil`); otherwise it reuses the opened
@@ -117,6 +117,13 @@ the planned apply-funnel analytics per
 — will record ~zero submissions. **Fix:** always log a `submitted` event on
 submission (carrying the opened event's id as a parent, or attach fields to
 the new event).
+**RESOLVED:** `handleSubmission` now always logs a `submitted` event; captured
+fields attach to the submitted event (opened event only as fallback if that
+log fails). Verified end-to-end against the deployed functions with a real
+fixture candidate JWT + test job, replaying the app's exact call sequence
+(`scripts/verify-funnel-item3.sh`, self-cleaning): one `opened` + one
+`submitted` row in `application_events`, one `application_fields` row on the
+submitted event.
 
 ### P1-3 · No timeouts or retries on any Supabase request
 [SupabaseTransport.swift:216](ios-native/JobTok/SupabaseTransport.swift#L216)
@@ -271,7 +278,7 @@ employers, resume, notifications one at a time before role data even starts.
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 3        |
-| P1       | 8    | 1        |
+| P1       | 7    | 2        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
@@ -283,7 +290,7 @@ and P1-9. **All P0s are closed.**)
 1. ~~**P0-3**~~ RESOLVED · ~~**P0-2**~~ RESOLVED
 2. ~~**P0-1**~~ RESOLVED 2026-07-13
 3. **P1-1** Keychain migration (do before there are real tokens to migrate)
-4. **P1-2** submitted-event fix (analytics is unfixable retroactively)
+4. ~~**P1-2**~~ RESOLVED 2026-07-13 (always logs; e2e-verified on hosted)
 5. **P1-4**, **P1-8** (dead-ends on the two sides of the core loop)
 6. ~~**P1-9**~~ RESOLVED 2026-07-13 (application_notes table, REST-verified),
    **P1-5** outreach caps, **P1-6** autofill visibility (abuse surface)

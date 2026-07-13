@@ -140,13 +140,13 @@ struct ApplyDrawerView: View {
     private func handleSubmission(payload: CapturedSubmission) {
         submittedSuccessfully = true
         Task {
-            let eid: String?
-            if let existing = eventId {
-                eid = existing
-            } else {
-                eid = await logEvent(type: "submitted", applicationId: nil)
-            }
-            if let eid, (!payload.shortFields.isEmpty || !payload.essays.isEmpty) {
+            // AUDIT P1-2: always log the submitted funnel event. It used to
+            // be logged only when the earlier "opened" log had failed, so
+            // application_events recorded ~zero submissions. Captured fields
+            // attach to the submitted event (opened event as fallback).
+            let submittedEventId = await logEvent(type: "submitted", applicationId: nil)
+            if let eid = submittedEventId ?? eventId,
+               !payload.shortFields.isEmpty || !payload.essays.isEmpty {
                 try? await service.storeApplicationFields(
                     eventID: eid,
                     shortFields: payload.shortFields,
