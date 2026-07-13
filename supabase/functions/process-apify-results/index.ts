@@ -1,4 +1,5 @@
 import { createAdminClient } from "../_shared/client.ts";
+import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 
 const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN") ?? "";
 const APIFY_WEBHOOK_SECRET = Deno.env.get("APIFY_WEBHOOK_SECRET") ?? "";
@@ -361,6 +362,7 @@ Deno.serve(async (request) => {
 
   const platform = url.searchParams.get("platform") ?? "";
   const runDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const startedAt = Date.now();
 
   try {
     const payload = await request.json().catch(() => ({})) as Record<string, unknown>;
@@ -538,12 +540,27 @@ Deno.serve(async (request) => {
       accuracyPct: totals.pulled > 0 ? Math.round((totals.passed / totals.pulled) * 100) : 0,
     }));
 
+    await recordPipelineRun(
+      adminClient,
+      "process-apify-results",
+      startedAt,
+      { event: "apify_ingest_complete", platform, runId, queries: statsRows.length, ...totals },
+      0,
+    );
+
     return new Response(JSON.stringify({ ...totals, queries: statsRows.length }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("process-apify-results error:", message);
+    await recordPipelineRun(
+      createAdminClient(),
+      "process-apify-results",
+      startedAt,
+      { event: "apify_ingest_error", platform, error: message },
+      1,
+    );
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

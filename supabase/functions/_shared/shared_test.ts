@@ -6,6 +6,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 import { jsonError, jsonResponse } from "./http.ts";
 import { escapeHtml } from "./email.ts";
 import { firstNameOf, guessFounderEmail, normalizeDomain } from "./contacts.ts";
+import { buildPipelineRunRow } from "./pipeline_runs.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -91,4 +92,28 @@ Deno.test("classifyWorkMode: from location string only", () => {
   assertEquals(classifyWorkMode("New York (Hybrid)"), "hybrid");
   assertEquals(classifyWorkMode("San Francisco, CA"), null);
   assertEquals(classifyWorkMode(null), null);
+});
+
+// ─── pipeline_runs.ts (DB-P1-9) ─────────────────────────────────────────────
+
+Deno.test("buildPipelineRunRow shapes the run row", () => {
+  const started = Date.parse("2026-07-13T06:00:00Z");
+  const row = buildPipelineRunRow(
+    "ingest-jobs",
+    started,
+    { event: "ingest_jobs_run", jobs_inserted: 12 },
+    2,
+    started + 45_000,
+  );
+  assertEquals(row.function_name, "ingest-jobs");
+  assertEquals(row.started_at, "2026-07-13T06:00:00.000Z");
+  assertEquals(row.duration_ms, 45_000);
+  assertEquals(row.summary, { event: "ingest_jobs_run", jobs_inserted: 12 });
+  assertEquals(row.error_count, 2);
+});
+
+Deno.test("buildPipelineRunRow clamps negative durations", () => {
+  const now = Date.now();
+  const row = buildPipelineRunRow("x", now + 5_000, {}, 0, now);
+  assertEquals(row.duration_ms, 0);
 });

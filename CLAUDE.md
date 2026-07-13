@@ -65,13 +65,27 @@ cd ios-native
 xcodebuild build -project JobTok.xcodeproj -scheme JobTok \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 xcodebuild test  -project JobTok.xcodeproj -scheme JobTok \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 34 unit tests
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 50 unit tests
 ```
 
-Edge-function tests (pure-logic helpers in `_shared/`):
+Edge-function tests (pure-logic helpers in `_shared/`) — run from the **repo
+root**, not `ios-native/` (the test path is relative):
 
 ```bash
-deno test --allow-env supabase/functions/_shared/shared_test.ts   # 16 tests
+deno test --allow-env supabase/functions/_shared/shared_test.ts   # 18 tests
+```
+
+**"Full test suite" = both commands above.** Run both after every change;
+both must pass before committing.
+
+Live-backend verification harnesses (self-cleaning: each creates namespaced
+fixture users/rows on the hosted project, asserts over real REST/RPC with
+real user JWTs, and deletes everything on exit — even on failure). They need
+the Supabase CLI keychain token and `JobTok.local.xcconfig`:
+
+```bash
+scripts/verify-rls-item2.sh      # 21 RLS checks: discovery visibility, notes table, essay RPC ACL
+scripts/verify-funnel-item3.sh   # apply-funnel opened/submitted events, end-to-end vs deployed fns
 ```
 
 Backend deploy targets the hosted project (`zqfurscyhmxlvrfendnc`):

@@ -21,6 +21,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient } from "../_shared/client.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
+import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { callStructured } from "../_shared/openai.ts";
 import {
   type FounderCandidate,
@@ -126,6 +127,7 @@ Deno.serve(async (request) => {
     duration_ms: Date.now() - startedAt,
   };
   console.log(JSON.stringify(summary));
+  await recordPipelineRun(admin, "enrich-company-contacts", startedAt, summary, summary.errored);
 
   return jsonResponse({ summary, outcomes });
 });

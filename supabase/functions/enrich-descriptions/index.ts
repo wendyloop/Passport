@@ -25,6 +25,7 @@ import { getAdapter } from "../_shared/ats/adapters/index.ts";
 import type { ATSType, NormalizedJob } from "../_shared/ats/models.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
+import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { insertPostingEmailContact } from "../_shared/contacts.ts";
 
 const RUN_BUDGET_MS = 50_000;
@@ -125,6 +126,7 @@ Deno.serve(async (request) => {
     duration_ms: Date.now() - startedAt,
   };
   console.log(JSON.stringify(summary));
+  await recordPipelineRun(admin, "enrich-descriptions", startedAt, summary, summary.errored);
 
   return jsonResponse({ summary, outcomes });
 });

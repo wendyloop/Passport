@@ -32,6 +32,7 @@ import {
 import type { FundRow } from "../_shared/ats/models.ts";
 import type { BoardCompany, BoardJob } from "../_shared/boards/types.ts";
 import { jsonError } from "../_shared/http.ts";
+import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
 import { classifyExperience, classifyTitle, classifyWorkMode } from "../_shared/title_classify.ts";
 
@@ -134,6 +135,7 @@ Deno.serve(async (request) => {
     duration_ms: Date.now() - startedAt,
   };
   console.log(JSON.stringify(summary));
+  await recordPipelineRun(admin, "ingest-jobs", startedAt, summary, summary.errored);
 
   return new Response(JSON.stringify({ summary, outcomes }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -598,6 +598,23 @@ applications?) — decide explicitly, don't leave it to the default.
 
 ### DB-P1-9 · Pipeline failures are only visible in ephemeral function logs; cron HTTP results are discarded
 
+**RESOLVED 2026-07-13 (schema live; function deploys pending approval)** —
+`20260713124000_pipeline_runs.sql` applied to the hosted project (as specced,
+with the admin-read policy using the `auth_role_in` helper from DB-P1-3's
+fix). Verified live in a self-cleaning transaction: service-role insert
+works, a non-admin authenticated user sees zero rows. New
+`_shared/pipeline_runs.ts` (`recordPipelineRun`, fail-open + pure
+`buildPipelineRunRow` covered by 2 Deno tests); one insert call added to all
+four cron functions **and** `process-apify-results` (success and error paths
+— gateway-level drops surface as row *absence*, which is the query that
+catches them). All five functions typecheck. **Remaining step (awaiting
+approval):** `supabase functions deploy` for `ingest-jobs`,
+`enrich-descriptions`, `generate-carousel`, `enrich-company-contacts`,
+`process-apify-results` — the last one also completes DB-P1-1's pending
+redeploy. Then confirm with one zero-work run:
+`ingest-jobs` with `{"fund_slug":"nonexistent"}` + cron secret →
+`select * from pipeline_runs order by started_at desc limit 1`.
+
 - ingest-jobs / enrich-descriptions / generate-carousel / enrich-company-contacts
   all report rich per-run summaries — as `console.log` JSON only. Supabase
   function logs rotate quickly; there is no queryable history. (Contrast:
@@ -940,7 +957,7 @@ select status, count(*) from net._http_response group by status;
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 2        |
-| P1       | 5    | 4        |
+| P1       | 4    | 5        |
 | P2       | 10   | 0        |
 
 ## Recommended order
@@ -952,5 +969,6 @@ select status, count(*) from net._http_response group by status;
    ~~**DB-P1-2**~~ done 2026-07-13 (revoked, REST-verified).
 4. ~~**DB-P1-3 / DB-P1-4**~~ done 2026-07-13 — both REST-verified with real JWTs.
 5. **DB-P1-5 + DB-P1-6** — pipeline correctness; cheap.
-6. **DB-P1-9** then **DB-P1-7/P1-8** — observability first, it verifies the rest.
+6. ~~**DB-P1-9**~~ done 2026-07-13 (schema live; function deploys pending
+   approval) then **DB-P1-7/P1-8** — observability first, it verifies the rest.
 7. P2s opportunistically; DB-P2-1/P2-2 whenever query latency starts showing.
