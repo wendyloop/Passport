@@ -216,13 +216,18 @@ Deno.serve(async (request) => {
       return jsonError(delivery.error ?? "Email delivery failed", 502);
     }
 
-    await admin.from("notifications").insert({
+    // DB-P1-6: this insert failed silently for weeks because the enum label
+    // didn't exist — never leave a notification insert unchecked again.
+    const { error: notifyError } = await admin.from("notifications").insert({
       profile_id: user.id,
       type: "founder_email_sent",
       title: "Founder intro sent",
       body: `Your intro for ${job.title ?? "the role"} at ${job.company_name ?? "the company"} is on its way.`,
       metadata: { outreach_id: outreachId, job_id: job.id },
     });
+    if (notifyError) {
+      console.error(`founder_email_sent notification insert failed: ${notifyError.message}`);
+    }
 
     // FIRST-100-USERS: stamp the job so the feed deprioritizes it — spread
     // intros across founders instead of piling onto one job. See

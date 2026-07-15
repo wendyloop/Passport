@@ -523,6 +523,14 @@ hash-matched job also leaves the queue under the old trigger semantics.
 
 ### DB-P1-6 · `founder_email_sent` notification type doesn't exist in the enum — insert silently fails
 
+**RESOLVED 2026-07-15** — `20260715122000_founder_email_sent_notification.sql`
+applied (`add value if not exists 'founder_email_sent'`). Confirmed live in a
+self-cleaning transaction: an insert with the exact shape send-founder-email
+uses succeeds and the enum label is present. Code follow-up shipped too: the
+insert error is now checked and logged so enum drift can't be silent again
+(deploy of `send-founder-email` pending approval — the fix works without it,
+since the enum was the failing half).
+
 [send-founder-email/index.ts:221](supabase/functions/send-founder-email/index.ts#L221)
 inserts `type: "founder_email_sent"`, but `notification_type` only has the 10
 labels from init/mvp/phase2 (checked all `alter type … add value` migrations).
