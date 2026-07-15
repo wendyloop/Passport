@@ -146,12 +146,24 @@ spinner (or a disabled `isBusy` UI) hanging for a minute with no recovery.
 **Fix:** give the transport its own `URLSession` with
 `timeoutIntervalForRequest` ≈ 15–30 s and a single retry for idempotent GETs.
 
-### P1-4 · Employer "open resume" fails silently
+### P1-4 · Employer "open resume" fails silently — RESOLVED 2026-07-15
 [EmployerHomeView.swift:256-262](ios-native/JobTok/EmployerHomeView.swift#L256)
 `try? await onRequestResumeURL(...)` swallows every failure (expired session,
 403, network), so tapping the resume button does visibly nothing — a dead-end
 on the employer's single most important action. **Fix:** route the error into
 the store's `errorMessage` alert instead of `try?`.
+**RESOLVED:** the `try?` is now a do/catch that sets a `resumeErrorMessage`
+state shown in a "Couldn't open resume" alert (friendly-mapped message).
+Verified at the API boundary with a real employer-role JWT against the
+deployed gateway — which surfaced the REAL root cause: **`get-resume-url` has
+never been deployed to the hosted project** (gateway 404 "Requested function
+was not found"), so every resume tap failed, invisibly until this alert.
+Deploy pending approval: `supabase functions deploy get-resume-url`.
+Same sweep found `job-share` also undeployed (share links dead) and five
+legacy Passport-era functions still deployed that no longer exist in the
+repo (`approve-interview`, `consume-referral-invite`,
+`create-referral-invite`, `crawl-rosters`, `sync-availability`) — old attack
+surface worth deleting from the dashboard.
 
 ### P1-5 · Employer outreach has no rate limit or size cap
 [reach-out-to-candidate/index.ts:73-158](supabase/functions/reach-out-to-candidate/index.ts#L73)
@@ -302,7 +314,7 @@ employers, resume, notifications one at a time before role data even starts.
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 3        |
-| P1       | 5    | 4        |
+| P1       | 4    | 5        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
@@ -315,7 +327,8 @@ and P1-9. **All P0s are closed.**)
 2. ~~**P0-1**~~ RESOLVED 2026-07-13
 3. ~~**P1-1**~~ RESOLVED 2026-07-13 (Keychain via App Group access group)
 4. ~~**P1-2**~~ RESOLVED 2026-07-13 (always logs; e2e-verified on hosted)
-5. **P1-4**, **P1-8** (dead-ends on the two sides of the core loop)
+5. ~~**P1-4**~~ RESOLVED 2026-07-15 (alert + found get-resume-url was never
+   deployed), **P1-8** (dead-end on the candidate side of the core loop)
 6. ~~**P1-9**~~ RESOLVED 2026-07-13 (application_notes table, REST-verified),
    **P1-5** outreach caps, ~~**P1-6**~~ RESOLVED 2026-07-13 (visibility gate
    + 14-domain allowlist)

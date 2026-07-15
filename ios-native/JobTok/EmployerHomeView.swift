@@ -31,6 +31,7 @@ struct EmployerHomeView: View {
     @State private var selectedCandidateForOutreach: DiscoverableCandidateRecord?
     @State private var isEditingProfile = false
     @State private var notesEditorTarget: JobApplicationRecord?
+    @State private var resumeErrorMessage: String?
     @State private var showingVideoStudio = false
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
@@ -255,8 +256,14 @@ struct EmployerHomeView: View {
                                 onEditNotes: { notesEditorTarget = application },
                                 onOpenResume: {
                                     Task {
-                                        if let url = try? await onRequestResumeURL(application.id) {
+                                        do {
+                                            // AUDIT P1-4: failures (expired
+                                            // session, 403, network) used to
+                                            // be silently swallowed here.
+                                            let url = try await onRequestResumeURL(application.id)
                                             await UIApplication.shared.open(url)
+                                        } catch {
+                                            resumeErrorMessage = SupabaseErrorMapping.friendlyMessage(for: error)
                                         }
                                     }
                                 }
@@ -267,6 +274,16 @@ struct EmployerHomeView: View {
                 .padding(20)
             }
             .background(PassportTheme.background)
+            .alert("Couldn't open resume", isPresented: Binding(
+                get: { resumeErrorMessage != nil },
+                set: { newValue in
+                    if !newValue { resumeErrorMessage = nil }
+                }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(resumeErrorMessage ?? "")
+            }
         }
     }
 
