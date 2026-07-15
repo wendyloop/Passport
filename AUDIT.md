@@ -206,7 +206,7 @@ second request — if the insert fails (timeout, RLS hiccup, app kill), the
 user's previous-employers list is gone. **Fix:** replace both calls with one
 transactional RPC (`replace_job_seeker_employers`).
 
-### P1-8 · Failed application emails dead-end with no retry or alert
+### P1-8 · Failed application emails dead-end with no retry or alert — RESOLVED 2026-07-15
 [apply-to-job/index.ts:341-363](supabase/functions/apply-to-job/index.ts#L341)
 If Resend fails, the application row is stamped
 `email_delivery_status: "failed"` and the candidate still sees "submitted" —
@@ -214,6 +214,20 @@ but nothing ever retries, and no one is notified, so the employer never learns
 the candidate exists. **Fix:** add a small cron pass that retries
 `email_delivery_status = 'failed'` rows (or at minimum surface them in the
 admin view).
+**RESOLVED (both halves):** (1) new `retry-application-emails` cron function
+(cron-secret gated, hourly at :20 via pg_cron+Vault — migration
+`20260715121000`) re-sends failed rows from their snapshot columns using the
+same email builder as apply-to-job (extracted to
+`_shared/application_email.ts`, +2 Deno tests), capped by a new
+`email_delivery_attempts` column (max 5), and records a `pipeline_runs` row
+per run. Migration applied; column + active cron confirmed live.
+(2) Truthful candidate state: the application card now shows
+"Sent to employer" / orange "Delivery issue — retrying" / "Sending…" instead
+of a cryptic gray status word. **Deploy pending approval:**
+`supabase functions deploy retry-application-emails` (config.toml entry
+added) and `supabase functions deploy apply-to-job` (shared-builder
+refactor); until the first deploy the hourly cron 404s harmlessly and
+visibly (pipeline_runs absence).
 
 ### P1-9 · Employer "private" notes are readable by the candidate — RESOLVED 2026-07-13 *(added in reconciliation pass — new in M3 code)*
 [20260711130000_m3_trust.sql:33](supabase/migrations/20260711130000_m3_trust.sql#L33),
@@ -314,7 +328,7 @@ employers, resume, notifications one at a time before role data even starts.
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 3        |
-| P1       | 4    | 5        |
+| P1       | 3    | 6        |
 | P2       | 10   | 0        |
 
 (Reconciliation 2026-07-11 added P1-9. Fix session 2026-07-11 resolved P0-2
@@ -328,7 +342,8 @@ and P1-9. **All P0s are closed.**)
 3. ~~**P1-1**~~ RESOLVED 2026-07-13 (Keychain via App Group access group)
 4. ~~**P1-2**~~ RESOLVED 2026-07-13 (always logs; e2e-verified on hosted)
 5. ~~**P1-4**~~ RESOLVED 2026-07-15 (alert + found get-resume-url was never
-   deployed), **P1-8** (dead-end on the candidate side of the core loop)
+   deployed), ~~**P1-8**~~ RESOLVED 2026-07-15 (hourly retry cron + truthful
+   candidate state)
 6. ~~**P1-9**~~ RESOLVED 2026-07-13 (application_notes table, REST-verified),
    **P1-5** outreach caps, ~~**P1-6**~~ RESOLVED 2026-07-13 (visibility gate
    + 14-domain allowlist)

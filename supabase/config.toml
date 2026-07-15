@@ -412,6 +412,9 @@ verify_jwt = false
 [functions.trigger-apify-scrape]
 verify_jwt = false
 
+[functions.retry-application-emails]
+verify_jwt = false
+
 # Apify result webhooks authenticate via x-apify-webhook-secret, not a JWT.
 [functions.process-apify-results]
 verify_jwt = false

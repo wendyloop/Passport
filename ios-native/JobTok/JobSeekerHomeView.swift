@@ -2618,7 +2618,7 @@ private struct MinimalApplicationRow: View {
                     if let location = application.jobLocation, !location.isEmpty {
                         Label(location, systemImage: "mappin.and.ellipse")
                     }
-                    Label(application.emailDeliveryStatus.capitalized, systemImage: "paperplane")
+                    deliveryStatusLabel
                 }
                 .font(.caption)
                 .foregroundStyle(PassportTheme.textSecondary)
@@ -2631,6 +2631,25 @@ private struct MinimalApplicationRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
+    }
+
+    // AUDIT P1-8: never imply the employer received the application when the
+    // email didn't send. Failed/skipped rows are retried hourly server-side
+    // (retry-application-emails); this label tells the candidate the truth
+    // in the meantime.
+    @ViewBuilder
+    private var deliveryStatusLabel: some View {
+        switch application.emailDeliveryStatus {
+        case "sent":
+            Label("Sent to employer", systemImage: "paperplane")
+        case "failed", "skipped":
+            Label("Delivery issue — retrying", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        case "pending":
+            Label("Sending…", systemImage: "paperplane")
+        default:
+            Label(application.emailDeliveryStatus.capitalized, systemImage: "paperplane")
+        }
     }
 
     private func formattedAppliedDate(_ date: Date) -> String {

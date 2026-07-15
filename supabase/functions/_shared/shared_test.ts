@@ -7,6 +7,7 @@ import { jsonError, jsonResponse } from "./http.ts";
 import { escapeHtml } from "./email.ts";
 import { firstNameOf, guessFounderEmail, normalizeDomain } from "./contacts.ts";
 import { buildPipelineRunRow } from "./pipeline_runs.ts";
+import { buildApplicationEmailContent } from "./application_email.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -116,4 +117,36 @@ Deno.test("buildPipelineRunRow clamps negative durations", () => {
   const now = Date.now();
   const row = buildPipelineRunRow("x", now + 5_000, {}, 0, now);
   assertEquals(row.duration_ms, 0);
+});
+
+// ─── application_email.ts (AUDIT P1-8 shared builder) ──────────────────────
+
+Deno.test("buildApplicationEmailContent shapes subject/text and escapes HTML", () => {
+  const content = buildApplicationEmailContent({
+    to: "jobs@acme.io",
+    employerCompany: "Acme <&> Co",
+    jobTitle: "iOS Engineer",
+    candidateName: "Sam <script>",
+    previousEmployers: ["PrevCo"],
+    resumeSignedURL: "https://example.com/resume.pdf",
+  });
+  assertEquals(content.subject, "New applicant: Sam <script> for iOS Engineer");
+  assertEquals(content.text.includes("Candidate: Sam <script>"), true);
+  assertEquals(content.text.includes("Previous employers: PrevCo"), true);
+  assertEquals(content.text.includes("Resume: https://example.com/resume.pdf"), true);
+  assertEquals(content.html.includes("<script>"), false, "candidate name must be escaped in HTML");
+  assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
+});
+
+Deno.test("buildApplicationEmailContent handles missing optionals", () => {
+  const content = buildApplicationEmailContent({
+    to: "jobs@acme.io",
+    employerCompany: "Acme",
+    jobTitle: "PM",
+    candidateName: "Sam",
+    previousEmployers: [],
+  });
+  assertEquals(content.text.includes("Previous employers: Not provided"), true);
+  assertEquals(content.text.includes("Resume: No resume uploaded"), true);
+  assertEquals(content.text.includes("Pitch video: Not provided"), true);
 });
