@@ -473,6 +473,16 @@ column) — ship together.
 
 ### DB-P1-5 · Carousel queue re-wedges: every nightly ingest marks all ~30k jobs as "needs regeneration"
 
+**RESOLVED 2026-07-15** — `20260715123000_jobs_content_updated_at.sql`
+applied: `jobs.updated_at` now means *content* changed (lifecycle columns —
+last_seen_at / is_active / closed_at / last_founder_touch_at — no longer
+bump it). Verified live in a self-cleaning transaction: a lifecycle-only
+update leaves a pinned 2020 updated_at untouched; a title change bumps it.
+Belt-and-braces code change shipped too: generate-carousel's hash-skip
+branch now bumps `carousels.generated_at`, so hash-matched jobs leave the
+queue under either trigger semantics (deploy of `generate-carousel` pending
+approval — already on the list from DB-P1-9).
+
 Chain: `upsert_board_jobs` bumps `last_seen_at` on every re-seen job → the
 generic `set_jobs_updated_at` trigger
 ([jobtok_mvp.sql:109-112](supabase/migrations/20260519100000_jobtok_mvp.sql#L109))
@@ -965,7 +975,7 @@ select status, count(*) from net._http_response group by status;
 | Severity | Open | Resolved |
 |----------|------|----------|
 | P0       | 0    | 2        |
-| P1       | 4    | 5        |
+| P1       | 2    | 7        |
 | P2       | 10   | 0        |
 
 ## Recommended order
@@ -976,7 +986,8 @@ select status, count(*) from net._http_response group by status;
 3. ~~**DB-P1-1**~~ done 2026-07-12 (config entry; redeploy still pending) and
    ~~**DB-P1-2**~~ done 2026-07-13 (revoked, REST-verified).
 4. ~~**DB-P1-3 / DB-P1-4**~~ done 2026-07-13 — both REST-verified with real JWTs.
-5. **DB-P1-5 + DB-P1-6** — pipeline correctness; cheap.
+5. ~~**DB-P1-5 + DB-P1-6**~~ done 2026-07-15 — trigger + hash-skip bump;
+   enum label + checked insert.
 6. ~~**DB-P1-9**~~ done 2026-07-13 (schema live; function deploys pending
    approval) then **DB-P1-7/P1-8** — observability first, it verifies the rest.
 7. P2s opportunistically; DB-P2-1/P2-2 whenever query latency starts showing.

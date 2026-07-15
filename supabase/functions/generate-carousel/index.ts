@@ -264,6 +264,13 @@ Deno.serve(async (request) => {
 
     const sourceHash = await computeSourceHash(job, company, fundName, founder?.full_name ?? null);
     if (existingHashByJobId.get(job.id) === sourceHash) {
+      // DB-P1-5: content unchanged — refresh generated_at so this job
+      // actually leaves the needs-carousel queue instead of re-surfacing in
+      // the same 90-job window every 30-minute run.
+      await admin
+        .from("carousels")
+        .update({ generated_at: new Date().toISOString() })
+        .eq("job_id", job.id);
       outcomes.push({ job_id: job.id, status: "skipped", theme_id: null, slide_count: null, error: null });
       continue;
     }
