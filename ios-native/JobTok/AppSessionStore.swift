@@ -340,7 +340,6 @@ final class AppSessionStore: ObservableObject {
                     instagramUsername: normalizedUsername(candidateDraft.instagramUsername),
                     tiktokUsername: normalizedUsername(candidateDraft.tiktokUsername),
                     introVideoURL: uploadedVideoPublicURL,
-                    visibility: .appliedRolesOnly,
                     githubURL: normalizedOptionalURL(candidateDraft.githubURL),
                     portfolioURL: normalizedOptionalURL(candidateDraft.portfolioURL),
                     session: session
@@ -393,7 +392,6 @@ final class AppSessionStore: ObservableObject {
                 instagramUsername: normalizedUsername(draft.instagramUsername),
                 tiktokUsername: normalizedUsername(draft.tiktokUsername),
                 introVideoURL: draft.introVideoURL,
-                visibility: draft.visibility,
                 githubURL: normalizedOptionalURL(draft.githubURL),
                 portfolioURL: normalizedOptionalURL(draft.portfolioURL),
                 session: session
@@ -468,7 +466,6 @@ final class AppSessionStore: ObservableObject {
                 instagramUsername: normalizedUsername(draft.instagramUsername),
                 tiktokUsername: normalizedUsername(draft.tiktokUsername),
                 introVideoURL: upload.publicURL,
-                visibility: draft.visibility,
                 githubURL: normalizedOptionalURL(draft.githubURL),
                 portfolioURL: normalizedOptionalURL(draft.portfolioURL),
                 session: session

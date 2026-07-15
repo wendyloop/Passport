@@ -181,6 +181,17 @@ R=$(rest "$JWT_E" GET "/rest/v1/employer_candidate_discovery?select=candidate_id
 check "discovery view returns candA to empE" "[{\"candidate_id\":\"$CAND_A\"}]" "$(body_of "$R")"
 R=$(rest "$JWT_B" GET "/rest/v1/job_seeker_profiles?profile_id=eq.$CAND_A&select=phone")
 check "candB still blocked even when candA discoverable" "[]" "$(body_of "$R")"
+# Candidate-only v0 public default (2026-07-15): discoverable is the DEFAULT
+# for every candidate now, so candidate→candidate isolation while
+# discoverable is the live posture — assert it on every table.
+R=$(rest "$JWT_B" GET "/rest/v1/profiles?id=eq.$CAND_A&select=email")
+check "candB cannot read DISCOVERABLE candA profiles row" "[]" "$(body_of "$R")"
+R=$(rest "$JWT_B" GET "/rest/v1/candidate_videos?profile_id=eq.$CAND_A&select=video_url")
+check "candB cannot read DISCOVERABLE candA videos" "[]" "$(body_of "$R")"
+R=$(rest "$JWT_B" GET "/rest/v1/job_seeker_employers?profile_id=eq.$CAND_A&select=employer_name")
+check "candB cannot read DISCOVERABLE candA employer history" "[]" "$(body_of "$R")"
+R=$(rest "$JWT_B" GET "/rest/v1/employer_candidate_discovery?select=candidate_id&candidate_id=eq.$CAND_A")
+check "discovery view returns nothing to another candidate" "[]" "$(body_of "$R")"
 
 echo ""
 echo "=== RESULTS ==="

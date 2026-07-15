@@ -772,13 +772,8 @@ struct JobSeekerHomeView: View {
                     ProfileStatCell(title: "Checklist", value: "\(completedChecklistCount)/5")
                 }
                 .buttonStyle(.plain)
-
-                Button {
-                    toggleVisibilityMode()
-                } label: {
-                    ProfileStatCell(title: "Mode", value: visibilityLabel)
-                }
-                .buttonStyle(.plain)
+                // The "Mode" (visibility) stat cell is hidden for candidate-only
+                // v0 — see visibilityModeCard for the full rationale.
             }
         }
         .frame(maxWidth: .infinity)
@@ -978,7 +973,8 @@ struct JobSeekerHomeView: View {
         VStack(alignment: .leading, spacing: 18) {
             checklistCard
             aboutSummaryCard
-            visibilityModeCard
+            // visibilityModeCard intentionally omitted — candidate-only v0,
+            // see the comment on the card below.
             profileAssetsCard
         }
     }
@@ -1313,6 +1309,17 @@ struct JobSeekerHomeView: View {
         .jobTokCard(cornerRadius: 28)
     }
 
+    // HIDDEN for candidate-only v0 (deliberately kept compiled, not rendered):
+    // there is no employer or admin view yet and candidates can never read
+    // each other's content (enforced by the discovery_visibility RLS policies,
+    // which remain fully intact server-side). The toggle therefore has no
+    // user-facing effect today, and everyone stays on the server default —
+    // public/discoverable (migration 20260715120000) — because employer-side
+    // discovery needs a full candidate pool and available videos are the
+    // bottleneck to launching the employer side. When the employer view ships:
+    // re-add this card to profileAboutTab, restore the "Mode" stat cell, and
+    // reintroduce the discovery_visibility write in
+    // CandidateService.upsertJobSeekerProfile.
     private var visibilityModeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Mode")
@@ -2026,32 +2033,12 @@ private struct CandidateProfileEditor: View {
                         .jobTokCard(cornerRadius: 22)
                         .id(CandidateProfileEditTarget.jobFunction)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Visibility")
-                                .font(.headline)
-                                .foregroundStyle(PassportTheme.textPrimary)
-
-                            Toggle(isOn: Binding(
-                                get: { profile.visibility == .discoverableToHiringEmployers },
-                                set: { isOn in
-                                    pendingVisibilityChange = isOn ? .discoverableToHiringEmployers : .appliedRolesOnly
-                                }
-                            )) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(profile.visibility == .discoverableToHiringEmployers ? "Public mode" : "Private mode")
-                                        .font(.subheadline.weight(.bold))
-                                        .foregroundStyle(PassportTheme.textPrimary)
-                                    Text(profile.visibility == .discoverableToHiringEmployers
-                                         ? "All employers"
-                                         : "Applied companies only")
-                                        .font(.footnote)
-                                        .foregroundStyle(PassportTheme.textSecondary)
-                                }
-                            }
-                            .tint(PassportTheme.accent)
-                        }
-                        .padding(18)
-                        .jobTokCard(cornerRadius: 22)
+                        // The editor's Visibility toggle is hidden for
+                        // candidate-only v0 (same rationale as
+                        // visibilityModeCard: no employer view yet, everyone
+                        // stays on the public server default, and the client
+                        // no longer writes discovery_visibility at all).
+                        // Restore this section when the employer view ships.
 
                         if let validationMessage {
                             Text(validationMessage)

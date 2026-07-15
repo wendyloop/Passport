@@ -45,7 +45,6 @@ final class CandidateService {
         instagramUsername: String?,
         tiktokUsername: String?,
         introVideoURL: String?,
-        visibility: CandidateVisibility,
         githubURL: String? = nil,
         portfolioURL: String? = nil,
         city: String? = nil,
@@ -63,7 +62,12 @@ final class CandidateService {
             "instagram_username": AnyEncodable(instagramUsername),
             "tiktok_username": AnyEncodable(tiktokUsername),
             "intro_video_url": AnyEncodable(introVideoURL),
-            "discovery_visibility": AnyEncodable(visibility.rawValue),
+            // Candidate-only v0: discovery_visibility is deliberately NOT
+            // written by the client — every row stays on the server default
+            // (public/discoverable, set by migration 20260715120000) so the
+            // future employer view launches with a full candidate pool. The
+            // hidden toggle lives in JobSeekerHomeView.visibilityModeCard;
+            // when it's re-surfaced, reintroduce the column write here.
             "github_url": AnyEncodable(githubURL),
             "portfolio_url": AnyEncodable(portfolioURL),
             "city": AnyEncodable(city),
