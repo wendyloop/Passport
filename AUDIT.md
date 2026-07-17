@@ -158,12 +158,12 @@ Verified at the API boundary with a real employer-role JWT against the
 deployed gateway — which surfaced the REAL root cause: **`get-resume-url` has
 never been deployed to the hosted project** (gateway 404 "Requested function
 was not found"), so every resume tap failed, invisibly until this alert.
-Deploy pending approval: `supabase functions deploy get-resume-url`.
-Same sweep found `job-share` also undeployed (share links dead) and five
-legacy Passport-era functions still deployed that no longer exist in the
-repo (`approve-interview`, `consume-referral-invite`,
-`create-referral-invite`, `crawl-rosters`, `sync-availability`) — old attack
-surface worth deleting from the dashboard.
+Update 2026-07-17: `get-resume-url` and `job-share` were deployed 2026-07-16
+(resume button + share links now live), and the five legacy Passport-era
+functions the sweep found (`approve-interview`, `consume-referral-invite`,
+`create-referral-invite`, `crawl-rosters`, `sync-availability` — all
+verified orphaned, four broken against dropped schema) were deleted from the
+hosted project after a per-function inventory review.
 
 ### P1-5 · Employer outreach has no rate limit or size cap
 [reach-out-to-candidate/index.ts:73-158](supabase/functions/reach-out-to-candidate/index.ts#L73)
@@ -223,11 +223,9 @@ same email builder as apply-to-job (extracted to
 per run. Migration applied; column + active cron confirmed live.
 (2) Truthful candidate state: the application card now shows
 "Sent to employer" / orange "Delivery issue — retrying" / "Sending…" instead
-of a cryptic gray status word. **Deploy pending approval:**
-`supabase functions deploy retry-application-emails` (config.toml entry
-added) and `supabase functions deploy apply-to-job` (shared-builder
-refactor); until the first deploy the hourly cron 404s harmlessly and
-visibly (pipeline_runs absence).
+of a cryptic gray status word. Both functions deployed 2026-07-16; the
+hourly cron is live and recording clean pipeline_runs rows (25 no-op runs,
+0 errors, as of 2026-07-17).
 
 ### P1-9 · Employer "private" notes are readable by the candidate — RESOLVED 2026-07-13 *(added in reconciliation pass — new in M3 code)*
 [20260711130000_m3_trust.sql:33](supabase/migrations/20260711130000_m3_trust.sql#L33),

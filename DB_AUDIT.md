@@ -480,8 +480,8 @@ bump it). Verified live in a self-cleaning transaction: a lifecycle-only
 update leaves a pinned 2020 updated_at untouched; a title change bumps it.
 Belt-and-braces code change shipped too: generate-carousel's hash-skip
 branch now bumps `carousels.generated_at`, so hash-matched jobs leave the
-queue under either trigger semantics (deploy of `generate-carousel` pending
-approval — already on the list from DB-P1-9).
+queue under either trigger semantics (`generate-carousel` deployed
+2026-07-16; 99 clean runs recorded by 2026-07-17).
 
 Chain: `upsert_board_jobs` bumps `last_seen_at` on every re-seen job → the
 generic `set_jobs_updated_at` trigger
@@ -538,8 +538,7 @@ applied (`add value if not exists 'founder_email_sent'`). Confirmed live in a
 self-cleaning transaction: an insert with the exact shape send-founder-email
 uses succeeds and the enum label is present. Code follow-up shipped too: the
 insert error is now checked and logged so enum drift can't be silent again
-(deploy of `send-founder-email` pending approval — the fix works without it,
-since the enum was the failing half).
+(`send-founder-email` deployed 2026-07-16).
 
 [send-founder-email/index.ts:221](supabase/functions/send-founder-email/index.ts#L221)
 inserts `type: "founder_email_sent"`, but `notification_type` only has the 10
@@ -616,7 +615,7 @@ applications?) — decide explicitly, don't leave it to the default.
 
 ### DB-P1-9 · Pipeline failures are only visible in ephemeral function logs; cron HTTP results are discarded
 
-**RESOLVED 2026-07-13 (schema live; function deploys pending approval)** —
+**RESOLVED 2026-07-13; fully live 2026-07-16** —
 `20260713124000_pipeline_runs.sql` applied to the hosted project (as specced,
 with the admin-read policy using the `auth_role_in` helper from DB-P1-3's
 fix). Verified live in a self-cleaning transaction: service-role insert
@@ -625,13 +624,12 @@ works, a non-admin authenticated user sees zero rows. New
 `buildPipelineRunRow` covered by 2 Deno tests); one insert call added to all
 four cron functions **and** `process-apify-results` (success and error paths
 — gateway-level drops surface as row *absence*, which is the query that
-catches them). All five functions typecheck. **Remaining step (awaiting
-approval):** `supabase functions deploy` for `ingest-jobs`,
-`enrich-descriptions`, `generate-carousel`, `enrich-company-contacts`,
-`process-apify-results` — the last one also completes DB-P1-1's pending
-redeploy. Then confirm with one zero-work run:
-`ingest-jobs` with `{"fund_slug":"nonexistent"}` + cron secret →
-`select * from pipeline_runs order by started_at desc limit 1`.
+catches them). All five functions were deployed 2026-07-16 (which also completed DB-P1-1's
+pending redeploy). Confirmed end-to-end 2026-07-17: all five record rows —
+99 generate-carousel runs (0 errors), 50 enrich-descriptions runs (130
+company-level errors logged — real signal, worth investigating),
+2 ingest-jobs runs (0 errors), 25 retry-application-emails runs (0 errors),
+2 enrich-company-contacts runs (9 errors).
 
 - ingest-jobs / enrich-descriptions / generate-carousel / enrich-company-contacts
   all report rich per-run summaries — as `console.log` JSON only. Supabase
@@ -983,11 +981,12 @@ select status, count(*) from net._http_response group by status;
 1. ~~**DB-P0-1**~~ done 2026-07-12 — one revoke statement; anon-key feed injection is live now.
 2. ~~**DB-P0-2**~~ done 2026-07-12 — restores the entire non-board ingest surface; Apify spend is
    currently pure waste.
-3. ~~**DB-P1-1**~~ done 2026-07-12 (config entry; redeploy still pending) and
+3. ~~**DB-P1-1**~~ done 2026-07-12, redeploy landed 2026-07-16, and
    ~~**DB-P1-2**~~ done 2026-07-13 (revoked, REST-verified).
 4. ~~**DB-P1-3 / DB-P1-4**~~ done 2026-07-13 — both REST-verified with real JWTs.
 5. ~~**DB-P1-5 + DB-P1-6**~~ done 2026-07-15 — trigger + hash-skip bump;
    enum label + checked insert.
-6. ~~**DB-P1-9**~~ done 2026-07-13 (schema live; function deploys pending
-   approval) then **DB-P1-7/P1-8** — observability first, it verifies the rest.
+6. ~~**DB-P1-9**~~ done 2026-07-13, fully live 2026-07-16 (all five functions
+   recording runs) then **DB-P1-7/P1-8** — observability first, it verifies
+   the rest.
 7. P2s opportunistically; DB-P2-1/P2-2 whenever query latency starts showing.
