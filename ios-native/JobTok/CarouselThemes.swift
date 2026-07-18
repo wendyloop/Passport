@@ -13,6 +13,12 @@ struct CarouselTheme: Equatable {
     let accent: Color
     let textPrimary: Color
     let textSecondary: Color
+    /// Ink for text sitting on an accent-filled control (caption highlight,
+    /// founder CTA pill). Defaults to white, which reads on dark accents;
+    /// themes with light accents override with a dark ink. (Historically
+    /// these controls used `surface` as ink, which is near-invisible on
+    /// most accents.)
+    var onAccent: Color = .white
     let bulletGlyph: String           // SF Symbol used for list bullets
     let titleFont: Font
     let bodyFont: Font
@@ -58,6 +64,7 @@ extension CarouselTheme {
         accent:           Color(red: 0.45, green: 0.62, blue: 1.00),
         textPrimary:      .white,
         textSecondary:    Color.white.opacity(0.72),
+        onAccent:         Color(red: 0.04, green: 0.07, blue: 0.18),
         bulletGlyph:      "square.grid.2x2.fill",
         titleFont:        .system(size: 32, weight: .heavy, design: .rounded),
         bodyFont:         .system(size: 17, weight: .medium, design: .rounded)
@@ -71,6 +78,7 @@ extension CarouselTheme {
         accent:           Color(red: 0.55, green: 0.82, blue: 0.95),
         textPrimary:      .white,
         textSecondary:    Color.white.opacity(0.70),
+        onAccent:         Color(red: 0.05, green: 0.09, blue: 0.13),
         bulletGlyph:      "circle.fill",
         titleFont:        .system(size: 32, weight: .heavy, design: .rounded),
         bodyFont:         .system(size: 17, weight: .medium, design: .rounded)
@@ -84,6 +92,7 @@ extension CarouselTheme {
         accent:           .white,
         textPrimary:      .white,
         textSecondary:    Color.white.opacity(0.62),
+        onAccent:         .black,
         bulletGlyph:      "line.diagonal",
         titleFont:        .system(size: 30, weight: .heavy, design: .monospaced),
         bodyFont:         .system(size: 16, weight: .medium, design: .monospaced)
@@ -136,6 +145,7 @@ extension CarouselTheme {
         accent:           Color(red: 0.85, green: 0.92, blue: 0.55),
         textPrimary:      Color(red: 0.96, green: 0.95, blue: 0.88),
         textSecondary:    Color(red: 0.82, green: 0.84, blue: 0.74),
+        onAccent:         Color(red: 0.10, green: 0.16, blue: 0.08),
         bulletGlyph:      "leaf.fill",
         titleFont:        .system(size: 32, weight: .heavy, design: .serif),
         bodyFont:         .system(size: 17, weight: .medium, design: .serif)
@@ -162,6 +172,7 @@ extension CarouselTheme {
         accent:           Color(red: 0.20, green: 1.00, blue: 0.65),
         textPrimary:      .white,
         textSecondary:    Color(red: 0.90, green: 0.65, blue: 1.00),
+        onAccent:         Color(red: 0.02, green: 0.10, blue: 0.06),
         bulletGlyph:      "bolt.fill",
         titleFont:        .system(size: 34, weight: .black, design: .rounded),
         bodyFont:         .system(size: 17, weight: .bold, design: .rounded)

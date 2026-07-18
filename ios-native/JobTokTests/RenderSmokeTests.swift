@@ -48,8 +48,65 @@ final class RenderSmokeTests: XCTestCase {
         XCTAssertGreaterThan(unwrapped.size.height, 600)
     }
 
+    // Every layout archetype must render every slide type without crashing
+    // or collapsing to zero size. Job ids are brute-forced per archetype so
+    // the card's internal CarouselStyle.resolve lands where we want.
+    func testCarouselCardRendersEveryArchetype() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        for archetype in CarouselArchetype.active {
+            let jobID = try XCTUnwrap(
+                (0..<400).map({ "smoke-job-\($0)" }).first {
+                    CarouselStyle.resolve(jobID: $0, themeID: "sunset-paper").archetype == archetype
+                },
+                "no synthetic job id resolves to \(archetype)"
+            )
+
+            let json = """
+            {"id": "\(jobID)", "title": "Senior Product Designer", "company_name": "Ramp",
+             "is_published": true, "created_at": "2026-07-01T12:00:00Z",
+             "source_kind": "board", "company_id": "co-1",
+             "company": {"id": "co-1", "name": "Ramp", "stage": "seed"},
+             "carousel": {"theme_id": "sunset-paper", "slide_count": 7, "status": "generated",
+               "content": [
+                 {"type": "cover", "order": 1, "role": "Senior Product Designer", "company": "Ramp",
+                  "hook": "design money software people love", "location": "NYC",
+                  "compensation": "$150k+", "youd_line": "you'd own the design system",
+                  "experience": "senior", "work_mode": "hybrid"},
+                 {"type": "about_company", "order": 2, "company": "Ramp",
+                  "blurb": "Ramp builds finance automation software.",
+                  "industry": "fintech", "stage": "series_d", "backed_by": "Founders Fund"},
+                 {"type": "role", "order": 3, "bullets": ["ship the mobile app", "own onboarding"]},
+                 {"type": "requirements", "order": 4, "bullets": ["5+ years design", "systems thinking"]},
+                 {"type": "perks", "order": 5, "bullets": ["equity", "health cover"]},
+                 {"type": "founder", "order": 6, "name": "Jane Doe", "role_title": "CEO"},
+                 {"type": "details", "order": 7, "location": "NYC", "employment": "Full-time",
+                  "compensation": "$150k+"}
+               ]}}
+            """.data(using: .utf8)!
+            let job = try decoder.decode(JobPostingRecord.self, from: json)
+            let carousel = try XCTUnwrap(job.carousel)
+
+            let image = render(CarouselFeedCard(
+                job: job,
+                carousel: carousel,
+                safeAreaBottom: 34,
+                isActive: false,
+                onApply: {},
+                onEmailFounder: {},
+                onSave: {},
+                isSaved: false
+            ))
+            let unwrapped = try XCTUnwrap(image, "\(archetype) card failed to render")
+            XCTAssertGreaterThan(unwrapped.size.width, 300, "\(archetype) rendered too narrow")
+            XCTAssertGreaterThan(unwrapped.size.height, 600, "\(archetype) rendered too short")
+        }
+    }
+
     func testHeartBurstRenders() throws {
         let image = render(HeartBurstView(trigger: 1), size: CGSize(width: 200, height: 200))
         XCTAssertNotNil(image)
     }
+
 }

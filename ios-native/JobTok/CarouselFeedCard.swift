@@ -3,7 +3,12 @@ import SwiftUI
 // CarouselFeedCard renders one ATS job as a vertical-feed card whose interior
 // is a horizontal pager of structured slides. The slides come from the
 // generate-carousel edge function (cover, about_company, role, requirements,
-// details). Theme is resolved client-side from `carousel.theme_id`.
+// details). Visuals are resolved client-side: `carousel.theme_id` gives the
+// palette family, and CarouselStyle picks a per-job layout archetype
+// (poster / editorial / neon card / notification / scrapbook) so the feed
+// reads like a mixed Instagram timeline instead of one recolored template.
+// Covers live in CarouselCovers.swift; interior slides share the
+// parameterized layouts below.
 
 private let slideAutoAdvanceSeconds: TimeInterval = 3.0
 
@@ -24,7 +29,11 @@ struct CarouselFeedCard: View {
     @State private var currentIndex: Int = 0
     @State private var autoAdvanceTask: Task<Void, Never>?
 
-    private var theme: CarouselTheme { CarouselTheme.resolve(carousel.themeId) }
+    private var style: CarouselStyle {
+        CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId)
+    }
+
+    private var theme: CarouselTheme { style.theme }
 
     private var slides: [CarouselSlide] {
         carousel.renderableSlides
@@ -37,7 +46,7 @@ struct CarouselFeedCard: View {
 
                 TabView(selection: $currentIndex) {
                     ForEach(Array(slides.enumerated()), id: \.element.id) { index, slide in
-                        SlideView(slide: slide, theme: theme, job: job, onEmailFounder: onEmailFounder)
+                        SlideView(slide: slide, style: style, job: job, onEmailFounder: onEmailFounder)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .tag(index)
                     }
@@ -160,36 +169,135 @@ struct CarouselFeedCard: View {
 
 private struct SlideView: View {
     let slide: CarouselSlide
-    let theme: CarouselTheme
+    let style: CarouselStyle
     let job: JobPostingRecord
     let onEmailFounder: (() -> Void)?
 
     var body: some View {
         switch slide {
-        case .cover(let s):         CoverSlideView(slide: s, theme: theme, job: job)
-        case .aboutCompany(let s):  AboutCompanySlideView(slide: s, theme: theme)
-        case .role(let s):          BulletSlideView(title: "what you'd actually do", bullets: s.bullets, theme: theme)
-        case .requirements(let s):  BulletSlideView(title: "you're a fit if", bullets: s.bullets, theme: theme)
-        case .perks(let s):         BulletSlideView(title: "the good stuff", bullets: s.bullets, theme: theme)
-        case .founder(let s):       FounderSlideView(slide: s, theme: theme, onPitch: onEmailFounder)
-        case .details(let s):       DetailsSlideView(slide: s, theme: theme, job: job)
+        case .cover(let s):         cover(s)
+        case .aboutCompany(let s):  AboutCompanySlideView(slide: s, style: style)
+        case .role(let s):          BulletSlideView(title: "what you'd actually do", bullets: s.bullets, style: style)
+        case .requirements(let s):  BulletSlideView(title: "you're a fit if", bullets: s.bullets, style: style)
+        case .perks(let s):         BulletSlideView(title: "the good stuff", bullets: s.bullets, style: style)
+        case .founder(let s):       FounderSlideView(slide: s, style: style, onPitch: onEmailFounder)
+        case .details(let s):       DetailsSlideView(slide: s, style: style, job: job)
         // Filtered out of `slides` before we get here; render nothing if one
         // ever reaches this view.
         case .unknown:              EmptyView()
+        }
+    }
+
+    // Covers are fully custom per archetype (CarouselCovers.swift); the
+    // poster case keeps the original CoverSlideView untouched.
+    @ViewBuilder
+    private func cover(_ s: CoverSlide) -> some View {
+        switch style.archetype {
+        case .poster:       CoverSlideView(slide: s, theme: style.theme, job: job)
+        case .editorial:    EditorialCoverView(slide: s, style: style, job: job)
+        case .neonCard:     NeonCardCoverView(slide: s, style: style, job: job)
+        case .notification: NotificationCoverView(slide: s, style: style, job: job)
+        case .scrapbook:    ScrapbookCoverView(slide: s, style: style, job: job)
+        }
+    }
+}
+
+// MARK: - Interior slide chrome
+
+// Shared interior scaffold: vertical placement, bottom clearance, and the
+// per-archetype container — neonCard and notification wrap their content in
+// a card, everything else renders full-bleed.
+private struct SlideScaffold<Content: View>: View {
+    let style: CarouselStyle
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer(minLength: 60)
+            container
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, style.archetype == .neonCard || style.archetype == .notification ? 20 : 28)
+        .padding(.bottom, FeedLayout.slideContentClearance)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var container: some View {
+        switch style.archetype {
+        case .neonCard:
+            inner
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color.white.opacity(0.03))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(style.theme.accent.opacity(0.85), lineWidth: 1.5)
+                )
+                .shadow(color: style.theme.accent.opacity(0.4), radius: 16)
+        case .notification:
+            inner
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(style.theme.surface)
+                )
+                .shadow(color: .black.opacity(0.10), radius: 14, y: 6)
+                .rotationEffect(.degrees(-0.6))
+        default:
+            inner
+        }
+    }
+
+    private var inner: some View {
+        VStack(alignment: .leading, spacing: 22) { content() }
+    }
+}
+
+// Section header ("the backstory", "the deets", …) in the archetype's voice:
+// editorial gets newsprint rules, neonCard an accent bar, the rest type only.
+private struct SlideHeader: View {
+    let title: String
+    let style: CarouselStyle
+
+    var body: some View {
+        switch style.archetype {
+        case .editorial:
+            VStack(alignment: .leading, spacing: 8) {
+                Rectangle().fill(style.theme.textPrimary).frame(height: 2)
+                Text(style.headerText(title))
+                    .font(style.headerFont)
+                    .tracking(1.5)
+                    .foregroundStyle(style.headerColor)
+                Rectangle().fill(style.theme.textPrimary.opacity(0.35)).frame(height: 0.8)
+            }
+        case .neonCard:
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(style.theme.accent)
+                    .frame(width: 5, height: 24)
+                Text(style.headerText(title))
+                    .font(style.headerFont)
+                    .foregroundStyle(style.headerColor)
+            }
+        default:
+            Text(style.headerText(title))
+                .font(style.headerFont)
+                .foregroundStyle(style.headerColor)
         }
     }
 }
 
 // MARK: - Individual slide layouts
 
-// TODO(deferred): Feature backlog C — social visual language: sticker
-// chips with rotation, caption-highlight text blocks, doodle accents,
-// cascade-in bullets, "swipe →" affordance, founder slide with email CTA.
-// See docs/DEFERRED_WORK.md (Feature backlog).
-// Fact-first cover: job title is the headline; company, location, and pay
-// are scannable chips. No tagline — candidates decide from facts in under a
-// second, TikTok-speed. Two layouts alternate deterministically per job so
-// the feed doesn't feel stamped from one template.
+// Poster cover (the original archetype). Fact-first: job title is the
+// headline; company, location, and pay are scannable chips. No tagline —
+// candidates decide from facts in under a second, TikTok-speed. Two
+// alignments alternate deterministically per job.
 private struct CoverSlideView: View {
     let slide: CoverSlide
     let theme: CarouselTheme
@@ -206,10 +314,6 @@ private struct CoverSlideView: View {
 
     private var companyName: String? {
         slide.company ?? job.displayCompanyName.nonEmpty
-    }
-
-    private var compensation: String? {
-        slide.compensation ?? job.compensationSummary ?? job.compensationText
     }
 
     var body: some View {
@@ -248,7 +352,7 @@ private struct CoverSlideView: View {
             if let youd = slide.youdLine, !youd.isEmpty {
                 Text(youd)
                     .font(theme.bodyFont.weight(.semibold))
-                    .foregroundStyle(theme.surface)
+                    .foregroundStyle(theme.onAccent)
                     .multilineTextAlignment(centeredLayout ? .center : .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 10)
@@ -272,38 +376,12 @@ private struct CoverSlideView: View {
     }
 
     private var factChips: some View {
-        // Order = decision weight from job-seeker research: salary first
-        // (89% call it the most helpful element), then experience fit,
-        // work mode, location, freshness.
+        // Fact order = decision weight; see CoverFacts (CarouselStyles.swift),
+        // shared with every archetype cover.
         FlowChips(alignment: centeredLayout ? .center : .leading) {
-            if let comp = compensation, !comp.isEmpty {
-                coverChip(icon: "dollarsign.circle.fill", text: comp)
+            ForEach(CoverFacts.build(slide: slide, job: job)) { fact in
+                coverChip(icon: fact.icon, text: fact.text)
             }
-            if let exp = slide.experience, !exp.isEmpty {
-                coverChip(icon: "chart.bar.fill", text: experienceLabel(exp))
-            }
-            if let mode = slide.workMode, !mode.isEmpty {
-                coverChip(icon: "house.fill", text: mode)
-            }
-            if let loc = slide.location ?? job.location, !loc.isEmpty {
-                coverChip(icon: "mappin.and.ellipse", text: loc)
-            }
-            if let type = job.employmentType?.title {
-                coverChip(icon: "briefcase.fill", text: type)
-            }
-            coverChip(icon: "clock.fill", text: SharedFormatters.relativeAge(of: job.createdAt))
-        }
-    }
-
-    private func experienceLabel(_ raw: String) -> String {
-        switch raw {
-        case "intern": return "internship"
-        case "entry": return "0-2 yrs"
-        case "mid": return "2-5 yrs"
-        case "senior": return "senior"
-        case "staff": return "staff+"
-        case "exec": return "leadership"
-        default: return raw
         }
     }
 
@@ -331,7 +409,8 @@ private struct CoverSlideView: View {
 
 // Wrapping chip row — chips flow onto the next line when they don't fit,
 // so a long location plus a salary range never overflows the slide.
-private struct FlowChips: Layout {
+// Internal: archetype covers in CarouselCovers.swift reuse it.
+struct FlowChips: Layout {
     var alignment: HorizontalAlignment = .leading
     var spacing: CGFloat = 8
 
@@ -389,21 +468,19 @@ private struct FlowChips: Layout {
 
 private struct AboutCompanySlideView: View {
     let slide: AboutCompanySlide
-    let theme: CarouselTheme
+    let style: CarouselStyle
+
+    private var theme: CarouselTheme { style.theme }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Spacer(minLength: 60)
-
-            Text("the backstory")
-                .font(.system(size: 14, weight: .heavy, design: .rounded))
+        SlideScaffold(style: style) {
+            Text(style.headerText("the backstory"))
+                .font(kickerFont)
                 .tracking(2)
                 .foregroundStyle(theme.textSecondary)
 
             if let company = slide.company {
-                Text(company)
-                    .font(theme.titleFont)
-                    .foregroundStyle(theme.textPrimary)
+                SlideHeader(title: company, style: style)
             }
 
             if let blurb = slide.blurb {
@@ -425,12 +502,16 @@ private struct AboutCompanySlideView: View {
                 }
             }
             .padding(.top, 6)
-
-            Spacer()
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, FeedLayout.slideContentClearance)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var kickerFont: Font {
+        switch style.archetype {
+        case .editorial:    return .system(size: 12, weight: .bold, design: .serif)
+        case .scrapbook:    return .system(size: 13, weight: .semibold, design: .serif).italic()
+        case .notification: return .system(size: 13, weight: .semibold)
+        default:            return .system(size: 14, weight: .heavy, design: .rounded)
+        }
     }
 
     private func factRow(icon: String, label: String) -> some View {
@@ -449,49 +530,86 @@ private struct AboutCompanySlideView: View {
 private struct BulletSlideView: View {
     let title: String
     let bullets: [String]
-    let theme: CarouselTheme
+    let style: CarouselStyle
 
     @State private var revealed = false
 
+    private var theme: CarouselTheme { style.theme }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Spacer(minLength: 60)
+        SlideScaffold(style: style) {
+            SlideHeader(title: title, style: style)
 
-            Text(title)
-                .font(theme.titleFont)
-                .foregroundStyle(theme.textPrimary)
-
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: style.archetype == .scrapbook ? 12 : 16) {
                 ForEach(Array(bullets.enumerated()), id: \.offset) { index, bullet in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: theme.bulletGlyph)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(theme.accent)
-                            .frame(width: 22, alignment: .center)
-                            .padding(.top, 4)
-                        Text(bullet)
-                            .font(theme.bodyFont)
-                            .foregroundStyle(theme.textPrimary.opacity(0.92))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    // F1: bullets cascade in as the slide appears.
-                    .opacity(revealed ? 1 : 0)
-                    .offset(y: revealed ? 0 : 14)
-                    .animation(
-                        .spring(response: 0.4, dampingFraction: 0.8)
-                            .delay(Double(index) * 0.08),
-                        value: revealed
-                    )
+                    bulletRow(index: index, text: bullet)
+                        // F1: bullets cascade in as the slide appears.
+                        .opacity(revealed ? 1 : 0)
+                        .offset(y: revealed ? 0 : 14)
+                        .animation(
+                            .spring(response: 0.4, dampingFraction: 0.8)
+                                .delay(Double(index) * 0.08),
+                            value: revealed
+                        )
                 }
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, FeedLayout.slideContentClearance)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { revealed = true }
         .onDisappear { revealed = false }
+    }
+
+    // Bullet treatment in the archetype's voice: numbered newsprint rows,
+    // neon chevrons, notification dots, sticker cards — poster keeps the
+    // original SF-symbol glyph rows.
+    @ViewBuilder
+    private func bulletRow(index: Int, text: String) -> some View {
+        switch style.archetype {
+        case .editorial:
+            HStack(alignment: .top, spacing: 12) {
+                Text(String(format: "%02d", index + 1))
+                    .font(.system(size: 15, weight: .heavy, design: .serif))
+                    .foregroundStyle(theme.accent)
+                    .padding(.top, 2)
+                Text(text)
+                    .font(theme.bodyFont)
+                    .foregroundStyle(theme.textPrimary.opacity(0.92))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .notification:
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(theme.accent)
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 6)
+                Text(text)
+                    .font(theme.bodyFont)
+                    .foregroundStyle(theme.textPrimary.opacity(0.92))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .scrapbook:
+            Text(text)
+                .font(theme.bodyFont)
+                .foregroundStyle(theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: .black.opacity(0.08), radius: 3, y: 2)
+                .rotationEffect(.degrees((Double(index % 3) - 1.0) * 0.8))
+        default:
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: theme.bulletGlyph)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(theme.accent)
+                    .frame(width: 22, alignment: .center)
+                    .padding(.top, 4)
+                Text(text)
+                    .font(theme.bodyFont)
+                    .foregroundStyle(theme.textPrimary.opacity(0.92))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 
@@ -500,17 +618,17 @@ private struct BulletSlideView: View {
 // the backend also skips emitting this slide).
 private struct FounderSlideView: View {
     let slide: FounderSlide
-    let theme: CarouselTheme
+    let style: CarouselStyle
     let onPitch: (() -> Void)?
+
+    private var theme: CarouselTheme { style.theme }
 
     private var firstName: String {
         slide.name?.split(separator: " ").first.map(String.init) ?? "the founder"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Spacer(minLength: 60)
-
+        SlideScaffold(style: style) {
             ZStack {
                 Circle()
                     .fill(theme.accent.opacity(0.2))
@@ -520,9 +638,9 @@ private struct FounderSlideView: View {
                     .foregroundStyle(theme.accent)
             }
 
-            Text("meet \(firstName) 👋")
-                .font(theme.titleFont)
-                .foregroundStyle(theme.textPrimary)
+            Text(style.headerText("meet \(firstName) 👋"))
+                .font(style.headerFont)
+                .foregroundStyle(style.headerColor)
 
             if let name = slide.name {
                 Text([name, slide.roleTitle].compactMap { $0 }.joined(separator: " · "))
@@ -542,31 +660,24 @@ private struct FounderSlideView: View {
                         .padding(.horizontal, 18)
                         .padding(.vertical, 12)
                         .background(theme.accent)
-                        .foregroundStyle(theme.surface)
+                        .foregroundStyle(style.onAccent)
                         .clipShape(Capsule())
                 }
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, FeedLayout.slideContentClearance)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 private struct DetailsSlideView: View {
     let slide: DetailsSlide
-    let theme: CarouselTheme
+    let style: CarouselStyle
     let job: JobPostingRecord
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Spacer(minLength: 60)
+    private var theme: CarouselTheme { style.theme }
 
-            Text("the deets")
-                .font(theme.titleFont)
-                .foregroundStyle(theme.textPrimary)
+    var body: some View {
+        SlideScaffold(style: style) {
+            SlideHeader(title: "the deets", style: style)
 
             VStack(alignment: .leading, spacing: 14) {
                 if let loc = slide.location ?? job.location {
@@ -601,12 +712,7 @@ private struct DetailsSlideView: View {
                     }
                 }
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, FeedLayout.slideContentClearance)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func detailRow(icon: String, label: String, value: String) -> some View {
@@ -696,7 +802,8 @@ struct SourceBadgeView: View {
 }
 
 // F1: gentle pulsing "swipe →" affordance on the cover slide.
-private struct SwipeHint: View {
+// Internal: archetype covers in CarouselCovers.swift reuse it.
+struct SwipeHint: View {
     let theme: CarouselTheme
     @State private var pulse = false
 
