@@ -25,6 +25,17 @@ enum CarouselArchetype: String, CaseIterable {
     case notification
     /// Cream paper, italic serif, sticker chips, playful glyph accents.
     case scrapbook
+    /// Retro terminal window: title bar, chromatic-aberration type,
+    /// snake_case prompt lines, decorative progress bar.
+    case glitchWindow
+    /// Y2K chrome: metallic sparkles over a soft gradient, white serif card.
+    case chromeStar
+    /// Outlined card above a neon perspective grid running to the horizon.
+    case cyberGrid
+    /// Dark metallic card with a soft liquid sheen; quiet serif type.
+    case liquidChrome
+    /// Brutalist full-bleed type poster; each word's tail dipped in accent.
+    case giantType
 
     // An `editorial` newspaper archetype existed briefly and was cut by
     // product decision (2026-07-18) — restore from git history if wanted.
@@ -32,7 +43,10 @@ enum CarouselArchetype: String, CaseIterable {
     /// The selection pool. Selection is hash(job.id) mod count, so editing
     /// this list reshuffles which job gets which look — safe, since the
     /// choice is never persisted anywhere.
-    static let active: [CarouselArchetype] = [.poster, .neonCard, .notification, .scrapbook]
+    static let active: [CarouselArchetype] = [
+        .poster, .neonCard, .notification, .scrapbook,
+        .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome, .giantType,
+    ]
 }
 
 // Palette family, derived from the backend theme_id so the industry bias
@@ -101,6 +115,11 @@ extension CarouselStyle {
         case .neonCard:     return .system(size: 24, weight: .heavy, design: .rounded)
         case .notification: return .system(size: 22, weight: .bold)
         case .scrapbook:    return .system(size: 26, weight: .bold, design: .serif).italic()
+        case .glitchWindow: return .system(size: 21, weight: .heavy, design: .monospaced)
+        case .chromeStar:   return .system(size: 24, weight: .bold, design: .serif)
+        case .cyberGrid:    return .system(size: 23, weight: .heavy)
+        case .liquidChrome: return .system(size: 24, weight: .semibold, design: .serif)
+        case .giantType:    return .system(size: 28, weight: .black)
         }
     }
 
@@ -109,11 +128,25 @@ extension CarouselStyle {
     }
 
     /// Header copy transform: notification reads like a notification title,
-    /// everyone else keeps the lowercase feed voice.
+    /// glitch speaks snake_case, the poster-brutalists shout, everyone else
+    /// keeps the lowercase feed voice.
     func headerText(_ raw: String) -> String {
         switch archetype {
-        case .notification: return raw.prefix(1).uppercased() + raw.dropFirst()
-        default:            return raw
+        case .notification:          return raw.prefix(1).uppercased() + raw.dropFirst()
+        case .glitchWindow:          return raw.replacingOccurrences(of: " ", with: "_")
+        case .cyberGrid, .giantType: return raw.uppercased()
+        default:                     return raw
+        }
+    }
+
+    /// Interior slides of carded archetypes wrap their content in chrome;
+    /// the rest render full-bleed. Drives SlideScaffold and its insets.
+    var usesInteriorCard: Bool {
+        switch archetype {
+        case .neonCard, .notification, .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome:
+            return true
+        case .poster, .scrapbook, .giantType:
+            return false
         }
     }
 
@@ -145,6 +178,11 @@ extension CarouselArchetype {
         case .neonCard:     return CarouselArchetype.neonCardPalettes[family]!
         case .notification: return CarouselArchetype.notificationPalettes[family]!
         case .scrapbook:    return CarouselArchetype.scrapbookPalettes[family]!
+        case .glitchWindow: return CarouselArchetype.glitchWindowPalettes[family]!
+        case .chromeStar:   return CarouselArchetype.chromeStarPalettes[family]!
+        case .cyberGrid:    return CarouselArchetype.cyberGridPalettes[family]!
+        case .liquidChrome: return CarouselArchetype.liquidChromePalettes[family]!
+        case .giantType:    return CarouselArchetype.giantTypePalettes[family]!
         }
     }
 
@@ -312,6 +350,147 @@ extension CarouselArchetype {
             titleFont:        .system(size: 30, weight: .bold, design: .serif).italic(),
             bodyFont:         .system(size: 16, weight: .medium, design: .serif)
         ),
+    ]
+
+    // Vaporwave terminal: near-black blue ground, one phosphor accent.
+    // The magenta/cyan glitch fringes are universal (see GlitchText) —
+    // only the phosphor varies by family.
+    private static func glitchWindowPalette(_ suffix: String, accent: Color) -> CarouselTheme {
+        CarouselTheme(
+            id: "glitch-window-\(suffix)",
+            backgroundTop:    Color(red: 0.04, green: 0.04, blue: 0.07),
+            backgroundBottom: Color(red: 0.06, green: 0.06, blue: 0.10),
+            surface:          Color.white.opacity(0.06),
+            accent:           accent,
+            textPrimary:      Color(red: 0.95, green: 0.96, blue: 0.97),
+            textSecondary:    Color.white.opacity(0.55),
+            onAccent:         Color(red: 0.04, green: 0.04, blue: 0.07),
+            bulletGlyph:      "chevron.right",
+            titleFont:        .system(size: 27, weight: .heavy, design: .monospaced),
+            bodyFont:         .system(size: 15, weight: .medium, design: .monospaced)
+        )
+    }
+
+    private static let glitchWindowPalettes: [CarouselPaletteFamily: CarouselTheme] = [
+        .cool:    glitchWindowPalette("cool",    accent: Color(red: 0.23, green: 0.90, blue: 0.93)),
+        .warm:    glitchWindowPalette("warm",    accent: Color(red: 1.00, green: 0.69, blue: 0.23)),
+        .earthy:  glitchWindowPalette("earthy",  accent: Color(red: 0.32, green: 0.94, blue: 0.47)),
+        .playful: glitchWindowPalette("playful", accent: Color(red: 1.00, green: 0.31, blue: 0.64)),
+    ]
+
+    // Y2K chrome: soft gradient wallpaper behind a white serif card.
+    // textPrimary is the on-card ink; textSecondary reads on both grounds.
+    private static func chromeStarPalette(
+        _ suffix: String, top: Color, bottom: Color, ink: Color, secondary: Color
+    ) -> CarouselTheme {
+        CarouselTheme(
+            id: "chrome-star-\(suffix)",
+            backgroundTop:    top,
+            backgroundBottom: bottom,
+            surface:          Color.white.opacity(0.97),
+            accent:           ink,
+            textPrimary:      ink,
+            textSecondary:    secondary,
+            bulletGlyph:      "sparkle",
+            titleFont:        .system(size: 25, weight: .bold, design: .serif),
+            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
+        )
+    }
+
+    private static let chromeStarPalettes: [CarouselPaletteFamily: CarouselTheme] = [
+        .cool: chromeStarPalette("cool",
+            top:    Color(red: 0.66, green: 0.72, blue: 0.85),
+            bottom: Color(red: 0.56, green: 0.64, blue: 0.80),
+            ink:    Color(red: 0.12, green: 0.16, blue: 0.31),
+            secondary: Color(red: 0.33, green: 0.38, blue: 0.53)),
+        .warm: chromeStarPalette("warm",
+            top:    Color(red: 0.85, green: 0.72, blue: 0.68),
+            bottom: Color(red: 0.80, green: 0.63, blue: 0.62),
+            ink:    Color(red: 0.30, green: 0.14, blue: 0.19),
+            secondary: Color(red: 0.50, green: 0.34, blue: 0.38)),
+        .earthy: chromeStarPalette("earthy",
+            top:    Color(red: 0.69, green: 0.77, blue: 0.71),
+            bottom: Color(red: 0.60, green: 0.70, blue: 0.63),
+            ink:    Color(red: 0.13, green: 0.25, blue: 0.17),
+            secondary: Color(red: 0.34, green: 0.44, blue: 0.38)),
+        .playful: chromeStarPalette("playful",
+            top:    Color(red: 0.76, green: 0.69, blue: 0.85),
+            bottom: Color(red: 0.67, green: 0.61, blue: 0.80),
+            ink:    Color(red: 0.21, green: 0.15, blue: 0.31),
+            secondary: Color(red: 0.42, green: 0.36, blue: 0.53)),
+    ]
+
+    // Tron horizon: deep teal-black, one neon line color doing everything.
+    private static func cyberGridPalette(_ suffix: String, accent: Color) -> CarouselTheme {
+        CarouselTheme(
+            id: "cyber-grid-\(suffix)",
+            backgroundTop:    Color(red: 0.02, green: 0.06, blue: 0.08),
+            backgroundBottom: Color(red: 0.03, green: 0.09, blue: 0.11),
+            surface:          Color.white.opacity(0.04),
+            accent:           accent,
+            textPrimary:      .white,
+            textSecondary:    Color.white.opacity(0.60),
+            onAccent:         Color(red: 0.02, green: 0.06, blue: 0.08),
+            bulletGlyph:      "play.fill",
+            titleFont:        .system(size: 28, weight: .heavy),
+            bodyFont:         .system(size: 16, weight: .medium)
+        )
+    }
+
+    private static let cyberGridPalettes: [CarouselPaletteFamily: CarouselTheme] = [
+        .cool:    cyberGridPalette("cool",    accent: Color(red: 0.18, green: 0.85, blue: 0.96)),
+        .warm:    cyberGridPalette("warm",    accent: Color(red: 1.00, green: 0.59, blue: 0.20)),
+        .earthy:  cyberGridPalette("earthy",  accent: Color(red: 0.23, green: 0.94, blue: 0.63)),
+        .playful: cyberGridPalette("playful", accent: Color(red: 0.89, green: 0.31, blue: 1.00)),
+    ]
+
+    // Liquid chrome: near-black ground, gunmetal card, pale metallic accent.
+    private static func liquidChromePalette(_ suffix: String, accent: Color) -> CarouselTheme {
+        CarouselTheme(
+            id: "liquid-chrome-\(suffix)",
+            backgroundTop:    Color(red: 0.07, green: 0.07, blue: 0.08),
+            backgroundBottom: Color(red: 0.05, green: 0.05, blue: 0.06),
+            surface:          Color.white.opacity(0.05),
+            accent:           accent,
+            textPrimary:      Color(red: 0.94, green: 0.94, blue: 0.95),
+            textSecondary:    Color.white.opacity(0.52),
+            onAccent:         Color(red: 0.07, green: 0.07, blue: 0.08),
+            bulletGlyph:      "minus",
+            titleFont:        .system(size: 25, weight: .semibold, design: .serif),
+            bodyFont:         .system(size: 16, weight: .regular)
+        )
+    }
+
+    private static let liquidChromePalettes: [CarouselPaletteFamily: CarouselTheme] = [
+        .cool:    liquidChromePalette("cool",    accent: Color(red: 0.78, green: 0.82, blue: 0.89)),
+        .warm:    liquidChromePalette("warm",    accent: Color(red: 0.89, green: 0.82, blue: 0.76)),
+        .earthy:  liquidChromePalette("earthy",  accent: Color(red: 0.79, green: 0.85, blue: 0.79)),
+        .playful: liquidChromePalette("playful", accent: Color(red: 0.84, green: 0.79, blue: 0.89)),
+    ]
+
+    // Brutalist type poster: warm near-black, cream ink, one loud accent
+    // for the letter dips.
+    private static func giantTypePalette(_ suffix: String, accent: Color) -> CarouselTheme {
+        CarouselTheme(
+            id: "giant-type-\(suffix)",
+            backgroundTop:    Color(red: 0.07, green: 0.07, blue: 0.06),
+            backgroundBottom: Color(red: 0.09, green: 0.09, blue: 0.08),
+            surface:          Color.white.opacity(0.07),
+            accent:           accent,
+            textPrimary:      Color(red: 0.94, green: 0.92, blue: 0.87),
+            textSecondary:    Color(red: 0.56, green: 0.53, blue: 0.48),
+            onAccent:         Color(red: 0.07, green: 0.07, blue: 0.06),
+            bulletGlyph:      "arrow.right",
+            titleFont:        .system(size: 30, weight: .black),
+            bodyFont:         .system(size: 16, weight: .semibold)
+        )
+    }
+
+    private static let giantTypePalettes: [CarouselPaletteFamily: CarouselTheme] = [
+        .cool:    giantTypePalette("cool",    accent: Color(red: 0.44, green: 0.83, blue: 1.00)),
+        .warm:    giantTypePalette("warm",    accent: Color(red: 1.00, green: 0.69, blue: 0.23)),
+        .earthy:  giantTypePalette("earthy",  accent: Color(red: 0.65, green: 0.96, blue: 0.28)),
+        .playful: giantTypePalette("playful", accent: Color(red: 1.00, green: 0.44, blue: 0.72)),
     ]
 }
 

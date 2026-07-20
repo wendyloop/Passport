@@ -204,6 +204,11 @@ private struct SlideView: View {
         case .neonCard:     NeonCardCoverView(slide: s, style: style, job: job)
         case .notification: NotificationCoverView(slide: s, style: style, job: job)
         case .scrapbook:    ScrapbookCoverView(slide: s, style: style, job: job)
+        case .glitchWindow: GlitchWindowCoverView(slide: s, style: style, job: job)
+        case .chromeStar:   ChromeStarCoverView(slide: s, style: style, job: job)
+        case .cyberGrid:    CyberGridCoverView(slide: s, style: style, job: job)
+        case .liquidChrome: LiquidChromeCoverView(slide: s, style: style, job: job)
+        case .giantType:    GiantTypeCoverView(slide: s, style: style, job: job)
         }
     }
 }
@@ -223,7 +228,7 @@ private struct SlideScaffold<Content: View>: View {
             container
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, style.archetype == .neonCard || style.archetype == .notification ? 20 : 28)
+        .padding(.horizontal, style.usesInteriorCard ? 20 : 28)
         .padding(.bottom, FeedLayout.slideContentClearance)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -254,6 +259,41 @@ private struct SlideScaffold<Content: View>: View {
                 )
                 .shadow(color: .black.opacity(0.10), radius: 14, y: 6)
                 .rotationEffect(.degrees(-0.6))
+        case .glitchWindow:
+            inner
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.6)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(style.theme.accent.opacity(0.9), lineWidth: 1.5)
+                )
+        case .chromeStar:
+            inner
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(style.theme.surface)
+                )
+                .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
+        case .cyberGrid:
+            inner
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(style.theme.accent.opacity(0.9), lineWidth: 1.2)
+                )
+        case .liquidChrome:
+            inner
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(LiquidChromeCardBackground())
         default:
             inner
         }
@@ -265,7 +305,7 @@ private struct SlideScaffold<Content: View>: View {
 }
 
 // Section header ("the backstory", "the deets", …) in the archetype's voice:
-// neonCard gets an accent bar, the rest type only.
+// neonCard gets an accent bar, glitch a prompt chevron, the rest type only.
 private struct SlideHeader: View {
     let title: String
     let style: CarouselStyle
@@ -277,6 +317,15 @@ private struct SlideHeader: View {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(style.theme.accent)
                     .frame(width: 5, height: 24)
+                Text(style.headerText(title))
+                    .font(style.headerFont)
+                    .foregroundStyle(style.headerColor)
+            }
+        case .glitchWindow:
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(">")
+                    .font(style.headerFont)
+                    .foregroundStyle(style.theme.accent)
                 Text(style.headerText(title))
                     .font(style.headerFont)
                     .foregroundStyle(style.headerColor)
@@ -489,9 +538,12 @@ private struct AboutCompanySlideView: View {
 
     private var kickerFont: Font {
         switch style.archetype {
-        case .scrapbook:    return .system(size: 13, weight: .semibold, design: .serif).italic()
-        case .notification: return .system(size: 13, weight: .semibold)
-        default:            return .system(size: 14, weight: .heavy, design: .rounded)
+        case .scrapbook:                 return .system(size: 13, weight: .semibold, design: .serif).italic()
+        case .notification:              return .system(size: 13, weight: .semibold)
+        case .glitchWindow:              return .system(size: 12, weight: .bold, design: .monospaced)
+        case .chromeStar, .liquidChrome: return .system(size: 13, weight: .semibold, design: .serif)
+        case .cyberGrid, .giantType:     return .system(size: 12, weight: .heavy)
+        default:                         return .system(size: 14, weight: .heavy, design: .rounded)
         }
     }
 
