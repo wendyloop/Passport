@@ -5,8 +5,8 @@ import SwiftUI
 // generate-carousel edge function (cover, about_company, role, requirements,
 // details). Visuals are resolved client-side: `carousel.theme_id` gives the
 // palette family, and CarouselStyle picks a per-job layout archetype
-// (poster / editorial / neon card / notification / scrapbook) so the feed
-// reads like a mixed Instagram timeline instead of one recolored template.
+// (poster / neon card / notification / scrapbook) so the feed reads like a
+// mixed Instagram timeline instead of one recolored template.
 // Covers live in CarouselCovers.swift; interior slides share the
 // parameterized layouts below.
 
@@ -36,7 +36,14 @@ struct CarouselFeedCard: View {
     private var theme: CarouselTheme { style.theme }
 
     private var slides: [CarouselSlide] {
-        carousel.renderableSlides
+        carousel.renderableSlides.filter { slide in
+            // The backend always emits a details slide (3-slide minimum).
+            // When neither the slide nor the job has location/type/comp/perks
+            // it would render as a bare "the deets" header — drop it rather
+            // than end the carousel on an empty card.
+            guard case .details(let details) = slide else { return true }
+            return details.hasRenderableContent(for: job)
+        }
     }
 
     var body: some View {
@@ -194,7 +201,6 @@ private struct SlideView: View {
     private func cover(_ s: CoverSlide) -> some View {
         switch style.archetype {
         case .poster:       CoverSlideView(slide: s, theme: style.theme, job: job)
-        case .editorial:    EditorialCoverView(slide: s, style: style, job: job)
         case .neonCard:     NeonCardCoverView(slide: s, style: style, job: job)
         case .notification: NotificationCoverView(slide: s, style: style, job: job)
         case .scrapbook:    ScrapbookCoverView(slide: s, style: style, job: job)
@@ -259,22 +265,13 @@ private struct SlideScaffold<Content: View>: View {
 }
 
 // Section header ("the backstory", "the deets", …) in the archetype's voice:
-// editorial gets newsprint rules, neonCard an accent bar, the rest type only.
+// neonCard gets an accent bar, the rest type only.
 private struct SlideHeader: View {
     let title: String
     let style: CarouselStyle
 
     var body: some View {
         switch style.archetype {
-        case .editorial:
-            VStack(alignment: .leading, spacing: 8) {
-                Rectangle().fill(style.theme.textPrimary).frame(height: 2)
-                Text(style.headerText(title))
-                    .font(style.headerFont)
-                    .tracking(1.5)
-                    .foregroundStyle(style.headerColor)
-                Rectangle().fill(style.theme.textPrimary.opacity(0.35)).frame(height: 0.8)
-            }
         case .neonCard:
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 2)
@@ -346,21 +343,6 @@ private struct CoverSlideView: View {
                 .foregroundStyle(theme.textPrimary)
                 .multilineTextAlignment(centeredLayout ? .center : .leading)
                 .fixedSize(horizontal: false, vertical: true)
-
-            // The 90%-signal: one concrete line about what you'd actually do,
-            // styled like a TikTok caption highlight (F1).
-            if let youd = slide.youdLine, !youd.isEmpty {
-                Text(youd)
-                    .font(theme.bodyFont.weight(.semibold))
-                    .foregroundStyle(theme.onAccent)
-                    .multilineTextAlignment(centeredLayout ? .center : .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .rotationEffect(.degrees(centeredLayout ? 0 : -1.2))
-            }
 
             factChips
                 .padding(.top, 2)
@@ -507,7 +489,6 @@ private struct AboutCompanySlideView: View {
 
     private var kickerFont: Font {
         switch style.archetype {
-        case .editorial:    return .system(size: 12, weight: .bold, design: .serif)
         case .scrapbook:    return .system(size: 13, weight: .semibold, design: .serif).italic()
         case .notification: return .system(size: 13, weight: .semibold)
         default:            return .system(size: 14, weight: .heavy, design: .rounded)
@@ -558,23 +539,11 @@ private struct BulletSlideView: View {
         .onDisappear { revealed = false }
     }
 
-    // Bullet treatment in the archetype's voice: numbered newsprint rows,
-    // neon chevrons, notification dots, sticker cards — poster keeps the
-    // original SF-symbol glyph rows.
+    // Bullet treatment in the archetype's voice: neon chevrons, notification
+    // dots, sticker cards — poster keeps the original SF-symbol glyph rows.
     @ViewBuilder
     private func bulletRow(index: Int, text: String) -> some View {
         switch style.archetype {
-        case .editorial:
-            HStack(alignment: .top, spacing: 12) {
-                Text(String(format: "%02d", index + 1))
-                    .font(.system(size: 15, weight: .heavy, design: .serif))
-                    .foregroundStyle(theme.accent)
-                    .padding(.top, 2)
-                Text(text)
-                    .font(theme.bodyFont)
-                    .foregroundStyle(theme.textPrimary.opacity(0.92))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         case .notification:
             HStack(alignment: .top, spacing: 12) {
                 Circle()
@@ -731,6 +700,21 @@ private struct DetailsSlideView: View {
                     .foregroundStyle(theme.textPrimary)
             }
         }
+    }
+}
+
+// MARK: - DetailsSlide helpers
+
+extension DetailsSlide {
+    /// Whether DetailsSlideView would have at least one row to draw, given
+    /// its job-field fallbacks. Mirrors that view's row conditions; empty
+    /// strings count as missing.
+    func hasRenderableContent(for job: JobPostingRecord) -> Bool {
+        if let loc = location ?? job.location, !loc.isEmpty { return true }
+        if let emp = employment ?? job.employmentType?.title, !emp.isEmpty { return true }
+        if let comp = compensation ?? job.compensationText, !comp.isEmpty { return true }
+        if let perks, !perks.isEmpty { return true }
+        return false
     }
 }
 

@@ -76,10 +76,30 @@ final class CarouselStyleTests: XCTestCase {
         }
     }
 
-    // The barcode motif is part of a deterministic cover: same job, same bars.
-    func testBarcodeWidthsAreDeterministic() {
-        XCTAssertEqual(BarcodeMotif.barWidths(seed: "job-1"), BarcodeMotif.barWidths(seed: "job-1"))
-        XCTAssertEqual(BarcodeMotif.barWidths(seed: "job-1").count, 20)
+    // The backend always emits a details slide; when neither it nor the job
+    // carries location/type/comp/perks, the card drops it instead of ending
+    // the carousel on a bare "the deets" header.
+    func testEmptyDetailsSlideIsNotRenderable() throws {
+        let job = try minimalJob()
+        let empty = DetailsSlide(order: 3, location: nil, employment: nil, compensation: nil, perks: nil)
+        XCTAssertFalse(empty.hasRenderableContent(for: job))
+
+        let blank = DetailsSlide(order: 3, location: "", employment: nil, compensation: "", perks: [])
+        XCTAssertFalse(blank.hasRenderableContent(for: job))
+
+        let located = DetailsSlide(order: 3, location: "NYC", employment: nil, compensation: nil, perks: nil)
+        XCTAssertTrue(located.hasRenderableContent(for: job))
+
+        let perked = DetailsSlide(order: 3, location: nil, employment: nil, compensation: nil, perks: ["equity"])
+        XCTAssertTrue(perked.hasRenderableContent(for: job))
+    }
+
+    // Job-level fallbacks count as content — the view renders them even when
+    // the slide's own fields are empty.
+    func testDetailsSlideFallsBackToJobFields() throws {
+        let job = try minimalJob(extra: ", \"location\": \"Remote\"")
+        let empty = DetailsSlide(order: 3, location: nil, employment: nil, compensation: nil, perks: nil)
+        XCTAssertTrue(empty.hasRenderableContent(for: job))
     }
 
     // MARK: - Helpers
@@ -90,5 +110,18 @@ final class CarouselStyleTests: XCTestCase {
         (0..<200)
             .map { "job-\($0)" }
             .first { CarouselStyle.resolve(jobID: $0, themeID: themeID).archetype == archetype }
+    }
+
+    /// Bare job record with no location/type/comp; `extra` splices extra
+    /// top-level JSON fields into the fixture.
+    private func minimalJob(extra: String = "") throws -> JobPostingRecord {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let json = """
+        {"id": "job-min", "title": "Designer", "company_name": "Acme",
+         "is_published": true, "created_at": "2026-07-01T12:00:00Z",
+         "source_kind": "board"\(extra)}
+        """.data(using: .utf8)!
+        return try decoder.decode(JobPostingRecord.self, from: json)
     }
 }

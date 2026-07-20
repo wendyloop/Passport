@@ -8,107 +8,6 @@ import SwiftUI
 // and keep content above FeedLayout.slideContentClearance so the apply
 // controls never overlap.
 
-// MARK: - Editorial (newspaper front page)
-
-struct EditorialCoverView: View {
-    let slide: CoverSlide
-    let style: CarouselStyle
-    let job: JobPostingRecord
-
-    private var theme: CarouselTheme { style.theme }
-
-    private var companyName: String {
-        slide.company ?? job.displayCompanyName
-    }
-
-    private var year: String {
-        String(Calendar.current.component(.year, from: job.createdAt))
-    }
-
-    // Newsprint body rows under the headline: hook + you'd-line + top facts,
-    // capped so long JDs can't push the barcode off the page.
-    private var deckLines: [String] {
-        var lines: [String] = []
-        if let hook = slide.hook, !hook.isEmpty { lines.append(hook) }
-        if let youd = slide.youdLine, !youd.isEmpty { lines.append(youd) }
-        lines.append(contentsOf: CoverFacts.build(slide: slide, job: job).prefix(3).map(\.text))
-        return Array(lines.prefix(4))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Spacer(minLength: 40)
-
-            masthead
-
-            Text("NOW HIRING")
-                .font(.system(size: 11, weight: .heavy, design: .serif))
-                .tracking(1.5)
-                .foregroundStyle(theme.onAccent)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(theme.accent)
-                .clipShape(RoundedRectangle(cornerRadius: 2))
-                .padding(.top, 6)
-
-            Text(slide.role ?? job.title)
-                .font(theme.titleFont)
-                .foregroundStyle(theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 9) {
-                ForEach(deckLines, id: \.self) { line in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("↳")
-                            .font(theme.bodyFont.weight(.bold))
-                            .foregroundStyle(theme.accent)
-                        Text(line)
-                            .font(theme.bodyFont)
-                            .foregroundStyle(theme.textPrimary.opacity(0.85))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-
-            Spacer()
-
-            HStack(alignment: .bottom) {
-                SwipeHint(theme: theme)
-                Spacer()
-                BarcodeMotif(seed: job.id, color: theme.textPrimary)
-            }
-        }
-        .padding(.horizontal, 26)
-        .padding(.bottom, FeedLayout.slideContentClearance)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var masthead: some View {
-        VStack(spacing: 8) {
-            Rectangle().fill(theme.textPrimary).frame(height: 3)
-            Text(companyName.uppercased())
-                .font(.system(size: 38, weight: .black, design: .serif))
-                .tracking(3)
-                .lineLimit(1)
-                .minimumScaleFactor(0.4)
-                .foregroundStyle(theme.textPrimary)
-                .frame(maxWidth: .infinity)
-            Rectangle().fill(theme.textPrimary.opacity(0.5)).frame(height: 0.8)
-            HStack {
-                Text("ISSUE 01")
-                Spacer()
-                Text("HIRING EDITION")
-                Spacer()
-                Text(year)
-            }
-            .font(.system(size: 11, weight: .semibold, design: .serif))
-            .tracking(1.5)
-            .foregroundStyle(theme.textSecondary)
-            Rectangle().fill(theme.textPrimary.opacity(0.5)).frame(height: 0.8)
-        }
-    }
-}
-
 // MARK: - Neon card (dark, glowing border)
 
 struct NeonCardCoverView: View {
@@ -140,13 +39,6 @@ struct NeonCardCoverView: View {
                     .font(theme.titleFont)
                     .foregroundStyle(theme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-
-                if let youd = slide.youdLine, !youd.isEmpty {
-                    Text(youd)
-                        .font(theme.bodyFont)
-                        .foregroundStyle(theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
 
                 FlowChips(alignment: .leading) {
                     ForEach(CoverFacts.build(slide: slide, job: job).prefix(4)) { fact in
@@ -331,19 +223,6 @@ struct ScrapbookCoverView: View {
                 .foregroundStyle(theme.accent)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let youd = slide.youdLine, !youd.isEmpty {
-                Text(youd)
-                    .font(theme.bodyFont.weight(.semibold))
-                    .foregroundStyle(theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .shadow(color: .black.opacity(0.10), radius: 4, y: 2)
-                    .rotationEffect(.degrees(-1.5))
-            }
-
             FlowChips(alignment: .leading) {
                 ForEach(Array(CoverFacts.build(slide: slide, job: job).enumerated()), id: \.element.id) { index, fact in
                     stickerChip(fact, index: index)
@@ -411,34 +290,3 @@ struct CompanyMonogram: View {
     }
 }
 
-// Deterministic fake barcode for the editorial cover's corner. Widths come
-// from an LCG over the seed so the same job always prints the same bars.
-struct BarcodeMotif: View {
-    let seed: String
-    let color: Color
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 1.5) {
-            ForEach(Array(Self.barWidths(seed: seed).enumerated()), id: \.offset) { _, width in
-                Rectangle()
-                    .fill(color)
-                    .frame(width: width, height: 24)
-            }
-        }
-    }
-
-    static func barWidths(seed: String) -> [CGFloat] {
-        var state = CarouselStyle.hash32(seed)
-        var widths: [CGFloat] = []
-        for _ in 0..<20 {
-            state = state &* 1664525 &+ 1013904223
-            switch (state >> 28) & 0b11 {
-            case 0:  widths.append(1)
-            case 1:  widths.append(1.5)
-            case 2:  widths.append(2.5)
-            default: widths.append(3.5)
-            }
-        }
-        return widths
-    }
-}

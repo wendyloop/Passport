@@ -17,8 +17,6 @@ import SwiftUI
 enum CarouselArchetype: String, CaseIterable {
     /// The original full-bleed layout (pre-archetype look).
     case poster
-    /// Newspaper front page: masthead, rules, NOW HIRING tag, barcode.
-    case editorial
     /// Dark card with a glowing neon border and monogram byline.
     case neonCard
     /// Push-notification illustration on a pastel gradient wallpaper.
@@ -28,10 +26,13 @@ enum CarouselArchetype: String, CaseIterable {
     /// Cream paper, italic serif, sticker chips, playful glyph accents.
     case scrapbook
 
+    // An `editorial` newspaper archetype existed briefly and was cut by
+    // product decision (2026-07-18) — restore from git history if wanted.
+
     /// The selection pool. Selection is hash(job.id) mod count, so editing
     /// this list reshuffles which job gets which look — safe, since the
     /// choice is never persisted anywhere.
-    static let active: [CarouselArchetype] = [.poster, .editorial, .neonCard, .notification, .scrapbook]
+    static let active: [CarouselArchetype] = [.poster, .neonCard, .notification, .scrapbook]
 }
 
 // Palette family, derived from the backend theme_id so the industry bias
@@ -97,7 +98,6 @@ extension CarouselStyle {
     var headerFont: Font {
         switch archetype {
         case .poster:       return theme.titleFont
-        case .editorial:    return .system(size: 24, weight: .heavy, design: .serif)
         case .neonCard:     return .system(size: 24, weight: .heavy, design: .rounded)
         case .notification: return .system(size: 22, weight: .bold)
         case .scrapbook:    return .system(size: 26, weight: .bold, design: .serif).italic()
@@ -108,11 +108,10 @@ extension CarouselStyle {
         archetype == .scrapbook ? theme.accent : theme.textPrimary
     }
 
-    /// Header copy transform: editorial shouts, notification reads like a
-    /// notification title, everyone else keeps the lowercase feed voice.
+    /// Header copy transform: notification reads like a notification title,
+    /// everyone else keeps the lowercase feed voice.
     func headerText(_ raw: String) -> String {
         switch archetype {
-        case .editorial:    return raw.uppercased()
         case .notification: return raw.prefix(1).uppercased() + raw.dropFirst()
         default:            return raw
         }
@@ -143,68 +142,12 @@ extension CarouselArchetype {
     func palette(for family: CarouselPaletteFamily, themeID: String) -> CarouselTheme {
         switch self {
         case .poster:       return CarouselTheme.resolve(themeID)
-        case .editorial:    return CarouselArchetype.editorialPalettes[family]!
         case .neonCard:     return CarouselArchetype.neonCardPalettes[family]!
         case .notification: return CarouselArchetype.notificationPalettes[family]!
         case .scrapbook:    return CarouselArchetype.scrapbookPalettes[family]!
         }
     }
 
-    // Newsprint: paper ground, near-black ink, one loud accent.
-    private static let editorialPalettes: [CarouselPaletteFamily: CarouselTheme] = [
-        .cool: CarouselTheme(
-            id: "editorial-cool",
-            backgroundTop:    Color(red: 0.96, green: 0.95, blue: 0.91),
-            backgroundBottom: Color(red: 0.93, green: 0.92, blue: 0.87),
-            surface:          Color.black.opacity(0.06),
-            accent:           Color(red: 0.78, green: 0.16, blue: 0.16),
-            textPrimary:      Color(red: 0.12, green: 0.11, blue: 0.10),
-            textSecondary:    Color(red: 0.36, green: 0.34, blue: 0.31),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "square.fill",
-            titleFont:        .system(size: 30, weight: .heavy, design: .serif),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-        .warm: CarouselTheme(
-            id: "editorial-warm",
-            backgroundTop:    Color(red: 0.98, green: 0.95, blue: 0.89),
-            backgroundBottom: Color(red: 0.95, green: 0.91, blue: 0.84),
-            surface:          Color.black.opacity(0.06),
-            accent:           Color(red: 0.80, green: 0.36, blue: 0.12),
-            textPrimary:      Color(red: 0.16, green: 0.11, blue: 0.07),
-            textSecondary:    Color(red: 0.40, green: 0.32, blue: 0.26),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "square.fill",
-            titleFont:        .system(size: 30, weight: .heavy, design: .serif),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-        .earthy: CarouselTheme(
-            id: "editorial-earthy",
-            backgroundTop:    Color(red: 0.95, green: 0.95, blue: 0.89),
-            backgroundBottom: Color(red: 0.91, green: 0.92, blue: 0.85),
-            surface:          Color.black.opacity(0.06),
-            accent:           Color(red: 0.15, green: 0.40, blue: 0.24),
-            textPrimary:      Color(red: 0.10, green: 0.13, blue: 0.10),
-            textSecondary:    Color(red: 0.32, green: 0.36, blue: 0.31),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "square.fill",
-            titleFont:        .system(size: 30, weight: .heavy, design: .serif),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-        .playful: CarouselTheme(
-            id: "editorial-playful",
-            backgroundTop:    Color(red: 0.97, green: 0.94, blue: 0.93),
-            backgroundBottom: Color(red: 0.95, green: 0.90, blue: 0.90),
-            surface:          Color.black.opacity(0.06),
-            accent:           Color(red: 0.72, green: 0.14, blue: 0.45),
-            textPrimary:      Color(red: 0.14, green: 0.10, blue: 0.12),
-            textSecondary:    Color(red: 0.38, green: 0.31, blue: 0.35),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "square.fill",
-            titleFont:        .system(size: 30, weight: .heavy, design: .serif),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-    ]
 
     // Near-black ground, one neon accent doing all the work.
     private static let neonCardPalettes: [CarouselPaletteFamily: CarouselTheme] = [

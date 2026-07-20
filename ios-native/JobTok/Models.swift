@@ -393,8 +393,10 @@ struct CoverSlide: Codable, Equatable {
     let location: String?
     // The backend has always sent this; the client just never decoded it.
     let compensation: String?
-    // v3 fact-first fields: one concrete "you'd ..." line plus experience
-    // level and work mode extracted from the full JD.
+    // v3 fact-first fields: experience level and work mode extracted from
+    // the full JD. `youd_line` is still sent by the backend but no longer
+    // rendered anywhere (cut by product decision 2026-07-18); it stays
+    // decoded as a wire-format mirror.
     let youdLine: String?
     let experience: String?
     let workMode: String?
