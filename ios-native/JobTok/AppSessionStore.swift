@@ -28,6 +28,9 @@ final class AppSessionStore: ObservableObject {
     @Published private(set) var latestResume: ResumeUploadRecord?
     @Published private(set) var notifications: [NotificationRecord] = []
     @Published private(set) var jobFeed: [JobPostingRecord] = []
+    // Current server-side feed filters; refreshJobSeekerData re-applies them
+    // on every fetch so pull-to-refresh keeps the user's filter state.
+    private(set) var feedFilters = FeedFilters()
     @Published private(set) var savedJobRecords: [SavedJobRecord] = []
     @Published private(set) var candidateApplications: [JobApplicationRecord] = []
     @Published private(set) var employerJobs: [JobPostingRecord] = []
@@ -733,6 +736,16 @@ final class AppSessionStore: ObservableObject {
         }
     }
 
+    /// Feed filters are applied server-side (the fetch window is a slice of
+    /// the catalog); a change re-queries jobs for the new filter set.
+    func applyFeedFilters(_ filters: FeedFilters) async {
+        guard filters != feedFilters else { return }
+        feedFilters = filters
+        await runBusyTask { [self] in
+            try await refreshJobSeekerData()
+        }
+    }
+
     func parseSharedJobPosting(sourceURL: String) async throws -> ImportedJobSuggestion {
         let session = try await requireSession()
         return try await service.parseSharedJobPosting(sourceURL: sourceURL, session: session)
@@ -767,10 +780,16 @@ final class AppSessionStore: ObservableObject {
             switch role {
             case .jobSeeker:
                 try await refreshJobSeekerData()
+            // PRE-LAUNCH (2026-07-20): employer/admin surfaces are hidden in
+            // NativeRootView — those roles get the candidate experience, so
+            // load candidate data for them too. Restore the original refreshes
+            // together with the routing.
             case .employer:
-                try await refreshEmployerData()
+                try await refreshJobSeekerData()
+                // try await refreshEmployerData()
             case .admin:
-                try await refreshAdminData()
+                try await refreshJobSeekerData()
+                // try await refreshAdminData()
             }
             phase = .signedIn
         } else if profile != nil {
@@ -784,7 +803,7 @@ final class AppSessionStore: ObservableObject {
     private func refreshJobSeekerData() async throws {
         let session = try await requireSession()
         let userID = try requireUserID()
-        jobFeed = try await service.fetchJobs(publishedOnly: true, session: session)
+        jobFeed = try await service.fetchJobs(publishedOnly: true, filters: feedFilters, session: session)
         savedJobRecords = try await candidate.fetchSavedJobs(userID: userID, session: session)
         candidateApplications = try await service.fetchJobApplications(candidateID: userID, session: session)
 

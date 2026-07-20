@@ -166,13 +166,22 @@ final class SupabaseService {
 
     // MARK: - Jobs (shared: candidate feed + employer/admin management)
 
-    func fetchJobs(publishedOnly: Bool = false, employerID: String? = nil, session: AuthSession) async throws -> [JobPostingRecord] {
+    func fetchJobs(
+        publishedOnly: Bool = false,
+        employerID: String? = nil,
+        filters: FeedFilters = FeedFilters(),
+        session: AuthSession
+    ) async throws -> [JobPostingRecord] {
         // The candidate feed (publishedOnly) splits into two queries so we never
         // fetch board/ATS rows that have no carousel — otherwise the 32k+ newly
         // ingested board rows would crowd out the older reels under PostgREST's
         // default row cap. Reels/employer posts come back regardless; board/ATS
         // come back only with an `!inner` join on a generated carousel.
+        //
+        // Filters run server-side: the fetch window is 200+200 rows of a 33k
+        // catalog, so client-only filtering would miss nearly all matches.
         if publishedOnly && employerID == nil {
+            let filterParams = filters.postgrestParams
             async let videos: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
@@ -182,7 +191,7 @@ final class SupabaseService {
                     ("source_kind", "in.(reel,employer_post)"),
                     ("order", "created_at.desc"),
                     ("limit", "200")
-                ],
+                ] + filterParams,
                 session: session
             )
             async let carousels: [JobPostingRecord] = transport.selectArray(
@@ -195,7 +204,7 @@ final class SupabaseService {
                     ("carousel.status", "eq.generated"),
                     ("order", "created_at.desc"),
                     ("limit", "200")
-                ],
+                ] + filterParams,
                 session: session
             )
             let merged = try await videos + carousels

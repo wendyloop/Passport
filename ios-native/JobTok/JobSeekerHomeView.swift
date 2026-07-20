@@ -26,6 +26,9 @@ struct JobSeekerHomeView: View {
     let onShowNotifications: () -> Void
     let onSignOut: () -> Void
     let onDeleteAccount: () -> Void
+    // Server-side filter refetch: fires whenever a filter pill changes so the
+    // store can re-query the whole catalog, not just the fetched window.
+    let onFiltersChanged: (FeedFilters) -> Void
 
     @State private var workingProfile: CandidateProfileDraft
     @State private var isEditingProfile = false
@@ -47,7 +50,7 @@ struct JobSeekerHomeView: View {
     @State private var showingDeleteAccountAlert = false
     @State private var selectedAvatarItem: PhotosPickerItem?
     @State private var resumePreviewURL: URL?
-    @State private var selectedLocation = "all"
+    @State private var selectedLocationFilter: LocationFilter = .all
     @State private var selectedJobFunctionRawValue = "all"
     @State private var selectedPayFilter: JobPayFilter = .all
     @State private var selectedExperienceFilter: ExperienceFilter = .all
@@ -76,7 +79,8 @@ struct JobSeekerHomeView: View {
         onRefresh: @escaping () -> Void,
         onShowNotifications: @escaping () -> Void,
         onSignOut: @escaping () -> Void,
-        onDeleteAccount: @escaping () -> Void
+        onDeleteAccount: @escaping () -> Void,
+        onFiltersChanged: @escaping (FeedFilters) -> Void = { _ in }
     ) {
         self.profile = profile
         self.jobs = jobs
@@ -97,6 +101,7 @@ struct JobSeekerHomeView: View {
         self.onShowNotifications = onShowNotifications
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
+        self.onFiltersChanged = onFiltersChanged
         _workingProfile = State(initialValue: profile)
     }
 
@@ -115,22 +120,21 @@ struct JobSeekerHomeView: View {
         return JobFunctionOption(rawValue: selectedJobFunctionRawValue)
     }
 
-    private var locationOptions: [String] {
-        let values = Set(
-            jobs.compactMap { job in
-                let trimmed = job.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return trimmed.isEmpty ? nil : trimmed
-            }
+    /// Snapshot of the server-backed filters. Role type and founder-reachable
+    /// stay client-only (jobFunction is classified client-side; stage lives on
+    /// the embedded company row).
+    private var currentFilters: FeedFilters {
+        FeedFilters(
+            location: selectedLocationFilter,
+            experience: selectedExperienceFilter,
+            workMode: selectedWorkModeFilter,
+            pay: selectedPayFilter
         )
-        return values.sorted()
     }
 
     private var filteredJobs: [JobPostingRecord] {
         jobs.filter { job in
-            let locationMatches: Bool = {
-                guard selectedLocation != "all" else { return true }
-                return (job.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") == selectedLocation
-            }()
+            let locationMatches = selectedLocationFilter.matches(job)
 
             let functionMatches: Bool = {
                 guard let selectedJobFunction else { return true }
@@ -179,6 +183,9 @@ struct JobSeekerHomeView: View {
             candidateTabBar
         }
         .tint(PassportTheme.accent)
+        .onChange(of: currentFilters) { _, filters in
+            onFiltersChanged(filters)
+        }
         .sheet(isPresented: $isEditingProfile) {
             CandidateProfileEditor(
                 profile: $workingProfile,
@@ -598,16 +605,13 @@ struct JobSeekerHomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Menu {
-                        Button("All locations") {
-                            selectedLocation = "all"
-                        }
-                        ForEach(locationOptions, id: \.self) { location in
-                            Button(location) {
-                                selectedLocation = location
+                        ForEach(LocationFilter.allCases) { option in
+                            Button(option.menuTitle) {
+                                selectedLocationFilter = option
                             }
                         }
                     } label: {
-                        filterPill(title: selectedLocation == "all" ? "Location" : selectedLocation)
+                        filterPill(title: selectedLocationFilter.title)
                     }
 
                     Menu {
@@ -2835,7 +2839,9 @@ private struct SafariSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }
 
-private enum JobPayFilter: String, CaseIterable, Identifiable {
+// Internal (not private): FeedFilters carries it into SupabaseService for
+// the server-side arm of filtering.
+enum JobPayFilter: String, CaseIterable, Identifiable {
     case all
     case under100k
     case between100kAnd150k
@@ -3044,5 +3050,129 @@ enum WorkModeFilter: String, CaseIterable, Identifiable {
 
     func matches(_ job: JobPostingRecord) -> Bool {
         self == .all || job.workMode == rawValue
+    }
+}
+
+// Location presets over free-text `jobs.location` (87–100% populated, but
+// unnormalized — "New York, NY" / "NYC" / "Brooklyn"). Metro presets match
+// substrings; Remote also accepts work_mode. A per-value exact-match menu
+// (the previous design) was useless against free text.
+enum LocationFilter: String, CaseIterable, Identifiable {
+    case all
+    case remote
+    case bayArea
+    case nyc
+    case losAngeles
+    case seattle
+    case austin
+    case boston
+    case chicago
+
+    var id: String { rawValue }
+
+    /// Pill label when selected.
+    var title: String {
+        switch self {
+        case .all: return "Location"
+        case .remote: return "Remote"
+        case .bayArea: return "SF Bay Area"
+        case .nyc: return "New York"
+        case .losAngeles: return "Los Angeles"
+        case .seattle: return "Seattle"
+        case .austin: return "Austin"
+        case .boston: return "Boston"
+        case .chicago: return "Chicago"
+        }
+    }
+
+    var menuTitle: String {
+        self == .all ? "All locations" : title
+    }
+
+    /// Lowercased substrings that identify the metro in free-text locations.
+    var patterns: [String] {
+        switch self {
+        case .all, .remote: return []
+        case .bayArea:
+            return ["san francisco", "bay area", "palo alto", "mountain view", "menlo park",
+                    "oakland", "berkeley", "san jose", "sunnyvale", "redwood city", "cupertino"]
+        case .nyc: return ["new york", "nyc", "brooklyn"]
+        case .losAngeles: return ["los angeles", "santa monica", "culver city"]
+        case .seattle: return ["seattle", "bellevue", "redmond"]
+        case .austin: return ["austin"]
+        case .boston: return ["boston", "cambridge, ma"]
+        case .chicago: return ["chicago"]
+        }
+    }
+
+    func matches(_ job: JobPostingRecord) -> Bool {
+        switch self {
+        case .all:
+            return true
+        case .remote:
+            if job.workMode == "remote" { return true }
+            return job.location?.lowercased().contains("remote") ?? false
+        default:
+            guard let location = job.location?.lowercased() else { return false }
+            return patterns.contains { location.contains($0) }
+        }
+    }
+}
+
+// The server-backed filter set. The feed fetch window is capped (200+200
+// rows of a 33k catalog), so filtering client-side alone silently missed
+// almost everything; these translate into PostgREST params so the narrowing
+// happens over the whole catalog. Server conditions may be a SUPERSET of
+// the exact semantics (pay banding with null bounds is awkward in
+// PostgREST); `filteredJobs` re-applies the exact `matches()` pass on the
+// result, so what renders is always correct.
+struct FeedFilters: Equatable {
+    var location: LocationFilter = .all
+    var experience: ExperienceFilter = .all
+    var workMode: WorkModeFilter = .all
+    var pay: JobPayFilter = .all
+
+    /// PostgREST conditions, ANDed with the feed query. Multiple `or=`
+    /// params are separate top-level conditions (PostgREST ANDs them).
+    var postgrestParams: [(String, String)] {
+        var params: [(String, String)] = []
+
+        switch experience {
+        case .all: break
+        case .earlyCareer: params.append(("experience_level", "in.(intern,entry)"))
+        case .mid: params.append(("experience_level", "eq.mid"))
+        case .senior: params.append(("experience_level", "in.(senior,staff)"))
+        case .leadership: params.append(("experience_level", "eq.exec"))
+        }
+
+        if workMode != .all {
+            params.append(("work_mode", "eq.\(workMode.rawValue)"))
+        }
+
+        switch pay {
+        case .all: break
+        case .undisclosed:
+            params.append(("compensation_min_annual", "is.null"))
+            params.append(("compensation_max_annual", "is.null"))
+        case .under100k:
+            params.append(("or", "(compensation_min_annual.lt.100000,compensation_max_annual.lt.100000)"))
+        case .between100kAnd150k:
+            // Superset: any listed salary; exact banding client-side.
+            params.append(("or", "(compensation_min_annual.not.is.null,compensation_max_annual.not.is.null)"))
+        case .over150k:
+            params.append(("or", "(compensation_min_annual.gte.150000,compensation_max_annual.gte.150000)"))
+        }
+
+        switch location {
+        case .all:
+            break
+        case .remote:
+            params.append(("or", "(work_mode.eq.remote,location.ilike.*remote*)"))
+        default:
+            let clauses = location.patterns.map { "location.ilike.*\($0)*" }.joined(separator: ",")
+            params.append(("or", "(\(clauses))"))
+        }
+
+        return params
     }
 }

@@ -193,7 +193,12 @@ struct NativeRootView: View {
         switch store.role {
         case .jobSeeker:
             jobSeekerHome()
+        // PRE-LAUNCH (2026-07-20): the employer and admin surfaces are hidden
+        // — every role gets the candidate experience. The original routing is
+        // kept commented out below; restore by swapping the branches back in.
         case .employer:
+            jobSeekerHome()
+            /*
             EmployerHomeView(
                 profile: store.employerDraft,
                 accountEmail: store.currentEmail ?? "",
@@ -231,7 +236,10 @@ struct NativeRootView: View {
                 onSignOut: { Task { await store.signOut() } },
                 onDeleteAccount: { Task { await store.deleteAccount() } }
             )
+            */
         case .admin:
+            jobSeekerHome()
+            /*
             AdminHomeView(
                 jobs: store.adminJobs,
                 employers: store.employerDirectoryItems,
@@ -248,6 +256,7 @@ struct NativeRootView: View {
                 onShowNotifications: { showingNotifications = true },
                 onSignOut: { Task { await store.signOut() } }
             )
+            */
         case .none:
             // Role not yet chosen — default to the candidate experience.
             jobSeekerHome()
@@ -274,7 +283,8 @@ struct NativeRootView: View {
             onRefresh: { Task { await store.refreshCurrentRoleData() } },
             onShowNotifications: { showingNotifications = true },
             onSignOut: { Task { await store.signOut() } },
-            onDeleteAccount: { Task { await store.deleteAccount() } }
+            onDeleteAccount: { Task { await store.deleteAccount() } },
+            onFiltersChanged: { filters in Task { await store.applyFeedFilters(filters) } }
         )
     }
 

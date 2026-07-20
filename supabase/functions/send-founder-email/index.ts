@@ -18,6 +18,12 @@ import { escapeHtml, sendEmail } from "../_shared/email.ts";
 
 const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
   "scout22 <intro@tryscout22.com>";
+// FIRST-100-USERS: pre-launch, all founder replies route to one monitored
+// human mailbox (wendyshi@berkeley.edu) instead of each candidate's own
+// address — tryscout22.com is send-only (no MX), and this keeps every reply
+// somewhere Wendy actually reads. Unset the secret to restore per-candidate
+// reply-to at scale.
+const FOUNDER_REPLY_TO_OVERRIDE = Deno.env.get("FOUNDER_REPLY_TO_EMAIL") ?? "";
 const DEFAULT_WEEKLY_LIMIT = 5;
 const MAX_NOTE_CHARS = 400;
 
@@ -196,7 +202,7 @@ Deno.serve(async (request) => {
     const delivery = await sendEmail({
       from: FOUNDER_FROM_EMAIL,
       to: contact.email,
-      replyTo: profile.email ?? user.email ?? undefined,
+      replyTo: FOUNDER_REPLY_TO_OVERRIDE || (profile.email ?? user.email ?? undefined),
       subject,
       text,
       html,
