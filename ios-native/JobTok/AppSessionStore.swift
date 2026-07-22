@@ -498,17 +498,44 @@ final class AppSessionStore: ObservableObject {
     }
 
     func toggleSavedJob(jobID: String) async {
-        await runBusyTask { [self] in
+        // Optimistic: flip local state immediately so the bookmark responds
+        // on tap (the old path blocked on the write PLUS a full feed
+        // refresh, so the button felt dead for seconds). The server write
+        // follows; on failure the flip is reverted and the error surfaced.
+        // Both writes are idempotent (upsert merge-duplicates / delete), so
+        // rapid double-taps settle correctly.
+        let removed = savedJobRecords.first { $0.jobID == jobID }
+        if let removed {
+            savedJobRecords.removeAll { $0.jobID == removed.jobID }
+        } else {
+            // Local placeholder row; the real server row (own id/timestamps)
+            // replaces it on the next full refresh.
+            savedJobRecords.insert(
+                SavedJobRecord(
+                    id: UUID().uuidString,
+                    profileID: session?.user.id ?? "",
+                    jobID: jobID,
+                    createdAt: Date()
+                ),
+                at: 0
+            )
+        }
+
+        do {
             let session = try await requireSession()
             let userID = try requireUserID()
-
-            if savedJobIDs.contains(jobID) {
+            if removed != nil {
                 try await candidate.unsaveJob(userID: userID, jobID: jobID, session: session)
             } else {
                 try await candidate.saveJob(userID: userID, jobID: jobID, session: session)
             }
-
-            try await refreshJobSeekerData()
+        } catch {
+            if let removed {
+                savedJobRecords.insert(removed, at: 0)
+            } else {
+                savedJobRecords.removeAll { $0.jobID == jobID }
+            }
+            errorMessage = "Couldn't update saved jobs. Please try again."
         }
     }
 

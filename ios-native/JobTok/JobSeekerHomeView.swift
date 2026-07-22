@@ -1058,31 +1058,38 @@ struct JobSeekerHomeView: View {
         .buttonStyle(.plain)
     }
 
+    // IG-saved-tab style: a grid of tiles, applied state flagged on the
+    // tile, and tapping the bookmark unsaves in place (optimistic — the
+    // tile disappears immediately).
     private var savedJobsTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Group {
             if savedJobs.isEmpty {
                 InfoCard(
                     title: "No saved jobs yet",
                     details: "Save roles from the feed and they’ll show up here."
                 )
             } else {
-                ForEach(savedJobs) { job in
-                    SavedJobCard(
-                        job: job,
-                        isApplied: appliedJobIDs.contains(job.id),
-                        isSaved: savedJobIDs.contains(job.id),
-                        onApply: {
-                            if workingProfile.resumeStoragePath != nil {
-                                easyApplyConfirmation = job
-                            } else {
-                                applicationDraft = makeApplicationDraft(for: job)
-                                applyingJob = job
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                    spacing: 10
+                ) {
+                    ForEach(savedJobs) { job in
+                        SavedJobTile(
+                            job: job,
+                            isApplied: appliedJobIDs.contains(job.id),
+                            onOpen: {
+                                if workingProfile.resumeStoragePath != nil {
+                                    easyApplyConfirmation = job
+                                } else {
+                                    applicationDraft = makeApplicationDraft(for: job)
+                                    applyingJob = job
+                                }
+                            },
+                            onUnsave: {
+                                onToggleSavedJob(job.id)
                             }
-                        },
-                        onToggleSaved: {
-                            onToggleSavedJob(job.id)
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -2663,101 +2670,85 @@ private struct MinimalApplicationRow: View {
     }
 }
 
-private struct SavedJobCard: View {
+// One tile in the IG-style saved grid: 4:5, the job's archetype accent
+// as its color identity, an APPLIED flag when relevant, and a bookmark
+// that unsaves in place. Tapping the tile opens the apply flow.
+private struct SavedJobTile: View {
     let job: JobPostingRecord
     let isApplied: Bool
-    let isSaved: Bool
-    let onApply: () -> Void
-    let onToggleSaved: () -> Void
+    let onOpen: () -> Void
+    let onUnsave: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(job.title)
-                        .font(.headline)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                    Text(job.companyName)
-                        .font(.subheadline)
-                        .foregroundStyle(PassportTheme.textSecondary)
-                }
-
-                Spacer()
-
-                Button(action: onToggleSaved) {
-                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(isSaved ? .black : PassportTheme.textPrimary)
-                        .frame(width: 38, height: 38)
-                        .background(isSaved ? PassportTheme.accent : PassportTheme.card)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let location = job.location, !location.isEmpty {
-                Text(location)
-                    .font(.subheadline)
-                    .foregroundStyle(PassportTheme.textSecondary)
-            }
-
-            HStack(spacing: 8) {
-                if let compensationText {
-                    Text(compensationText)
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(PassportTheme.card)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .clipShape(Capsule())
-                }
-
-                if let employmentType = job.employmentType {
-                    Text(employmentType.title)
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(PassportTheme.card)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .clipShape(Capsule())
-                }
-            }
-
-            Text(job.description)
-                .font(.subheadline)
-                .foregroundStyle(PassportTheme.textPrimary)
-                .lineLimit(3)
-
-            HStack(spacing: 10) {
-                Text(isApplied ? "Applied" : "Not applied yet")
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(PassportTheme.card)
-                    .foregroundStyle(PassportTheme.textPrimary)
-                    .clipShape(Capsule())
-
-                Spacer()
-
-                if !isApplied {
-                    Button("Apply") {
-                        onApply()
-                    }
-                    .font(.subheadline.weight(.bold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(PassportTheme.accent)
-                    .foregroundStyle(.black)
-                    .clipShape(Capsule())
-                }
-            }
-        }
-        .padding(18)
-        .jobTokCard(cornerRadius: 24)
+    private var style: CarouselStyle {
+        CarouselStyle.resolve(jobID: job.id, themeID: job.carousel?.themeId ?? "slate-gradient")
     }
 
-    private var compensationText: String? { job.compensationSummary }
+    var body: some View {
+        Button(action: onOpen) {
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
+                VStack(alignment: .leading, spacing: 6) {
+                    Spacer()
+                    CompanyMonogram(
+                        name: job.displayCompanyName,
+                        background: style.theme.accent,
+                        foreground: style.theme.onAccent,
+                        size: 34
+                    )
+                    Text(job.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(job.displayCompanyName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                    if let comp = job.compensationSummary {
+                        Text(comp)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(style.theme.accent)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+
+                HStack(alignment: .top) {
+                    if isApplied {
+                        Text("APPLIED")
+                            .font(.system(size: 9, weight: .heavy))
+                            .tracking(1)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color(red: 0.45, green: 0.85, blue: 0.55)))
+                    }
+                    Spacer()
+                    Button(action: onUnsave) {
+                        Image(systemName: "bookmark.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.black)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(Color(red: 0.96, green: 0.88, blue: 0.60)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(8)
+            }
+            .aspectRatio(0.8, contentMode: .fit)
+            // Fixed dark ground (not the adaptive card color): the tile's
+            // white text and accent identity must hold in light mode too.
+            .background(Color(red: 0.10, green: 0.10, blue: 0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct PreviewURL: Identifiable {
