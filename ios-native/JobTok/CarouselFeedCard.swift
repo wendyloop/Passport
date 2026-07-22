@@ -207,8 +207,8 @@ private struct SlideView: View {
         }
     }
 
-    // Covers are fully custom per archetype (CarouselCovers.swift); the
-    // poster case keeps the original CoverSlideView untouched.
+    // Covers are fully custom per archetype (CarouselCovers.swift). Card
+    // templates never reach here; the default satisfies exhaustiveness.
     @ViewBuilder
     private func cover(_ s: CoverSlide) -> some View {
         switch style.archetype {
@@ -218,7 +218,7 @@ private struct SlideView: View {
         case .chromeStar:   ChromeStarCoverView(slide: s, style: style, job: job)
         case .cyberGrid:    CyberGridCoverView(slide: s, style: style, job: job)
         case .liquidChrome: LiquidChromeCoverView(slide: s, style: style, job: job)
-        default:            CoverSlideView(slide: s, theme: style.theme, job: job)
+        default:            EmptyView()
         }
     }
 }
@@ -349,104 +349,6 @@ private struct SlideHeader: View {
 }
 
 // MARK: - Individual slide layouts
-
-// Poster cover (the original archetype). Fact-first: job title is the
-// headline; company, location, and pay are scannable chips. No tagline —
-// candidates decide from facts in under a second, TikTok-speed. Two
-// alignments alternate deterministically per job.
-private struct CoverSlideView: View {
-    let slide: CoverSlide
-    let theme: CarouselTheme
-    let job: JobPostingRecord
-
-    private var centeredLayout: Bool {
-        // Stable per job — the same job always gets the same layout.
-        job.id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 2 == 1
-    }
-
-    private var title: String {
-        slide.role ?? job.title
-    }
-
-    private var companyName: String? {
-        slide.company ?? job.displayCompanyName.nonEmpty
-    }
-
-    var body: some View {
-        VStack(alignment: centeredLayout ? .center : .leading, spacing: 20) {
-            Spacer(minLength: 60)
-
-            if let logo = job.displayCompanyLogoURL {
-                AsyncImage(url: logo) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFit()
-                    default:
-                        EmptyView()
-                    }
-                }
-                .frame(width: centeredLayout ? 84 : 72, height: centeredLayout ? 84 : 72)
-                .background(theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-
-            if let company = companyName {
-                Text(company.uppercased())
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
-                    .tracking(2)
-                    .foregroundStyle(theme.textSecondary)
-            }
-
-            Text(title)
-                .font(theme.titleFont)
-                .foregroundStyle(theme.textPrimary)
-                .multilineTextAlignment(centeredLayout ? .center : .leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            factChips
-                .padding(.top, 2)
-
-            Spacer()
-
-            SwipeHint(theme: theme)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(.horizontal, 28)
-        .padding(.bottom, FeedLayout.slideContentClearance)
-        .frame(maxWidth: .infinity, alignment: centeredLayout ? .center : .leading)
-    }
-
-    private var factChips: some View {
-        // Fact order = decision weight; see CoverFacts (CarouselStyles.swift),
-        // shared with every archetype cover.
-        FlowChips(alignment: centeredLayout ? .center : .leading) {
-            ForEach(CoverFacts.build(slide: slide, job: job)) { fact in
-                coverChip(icon: fact.icon, text: fact.text)
-            }
-        }
-    }
-
-    // Sticker-style chips (F1): solid fill, white edge, soft shadow, and a
-    // tiny deterministic wobble per chip so the row feels hand-placed.
-    private func coverChip(icon: String, text: String) -> some View {
-        let wobble = Double((text.unicodeScalars.first?.value ?? 0) % 5) - 2.0
-        return HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
-            Text(text)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(theme.surface)
-        .foregroundStyle(theme.accent)
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(theme.accent.opacity(0.35), lineWidth: 1))
-        .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
-        .rotationEffect(.degrees(wobble * 0.9))
-    }
-}
 
 // Wrapping chip row — chips flow onto the next line when they don't fit,
 // so a long location plus a salary range never overflows the slide.
@@ -601,7 +503,7 @@ private struct BulletSlideView: View {
     }
 
     // Bullet treatment in the archetype's voice: neon chevrons, notification
-    // dots, sticker cards — poster keeps the original SF-symbol glyph rows.
+    // dots — the default keeps the SF-symbol glyph rows.
     @ViewBuilder
     private func bulletRow(index: Int, text: String) -> some View {
         switch style.archetype {

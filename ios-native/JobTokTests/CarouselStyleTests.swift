@@ -33,14 +33,6 @@ final class CarouselStyleTests: XCTestCase {
         XCTAssertEqual(seen, Set(CarouselArchetype.active))
     }
 
-    // Poster is the legacy look: it must keep resolving the backend theme
-    // id directly, not an archetype palette.
-    func testPosterUsesBackendTheme() throws {
-        let jobID = try XCTUnwrap(firstJobID(resolvingTo: .poster, themeID: "sunset-paper"))
-        let style = CarouselStyle.resolve(jobID: jobID, themeID: "sunset-paper")
-        XCTAssertEqual(style.theme, CarouselTheme.resolve("sunset-paper"))
-    }
-
     // Dropping an archetype = removing it from the pool; it must never be
     // selected again and the remainder must absorb its jobs.
     func testDroppedArchetypeIsNeverSelected() {
@@ -51,11 +43,10 @@ final class CarouselStyleTests: XCTestCase {
         }
     }
 
-    // An empty pool (bad edit) must fail safe to the legacy poster look.
-    func testEmptyPoolFallsBackToPoster() {
+    // An empty pool (bad edit) must fail safe to a real archetype.
+    func testEmptyPoolFallsBackToNeonCard() {
         let style = CarouselStyle.resolve(jobID: "job-1", themeID: "slate-gradient", pool: [])
-        XCTAssertEqual(style.archetype, .poster)
-        XCTAssertEqual(style.theme, CarouselTheme.resolve("slate-gradient"))
+        XCTAssertEqual(style.archetype, .neonCard)
     }
 
     // Palette family mirrors the backend's industry-biased theme groups, and
@@ -77,9 +68,9 @@ final class CarouselStyleTests: XCTestCase {
         XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: "theme-from-the-future"), .cool)
     }
 
-    // Every non-poster archetype must define a palette for every family —
-    // a gap here would surface as a crash the first time a job hashes into
-    // the missing combination.
+    // Every archetype must define a palette for every family — a gap here
+    // would surface as a crash the first time a job hashes into the
+    // missing combination.
     func testEveryArchetypeHasAPaletteForEveryFamily() {
         for archetype in CarouselArchetype.allCases {
             for family in CarouselPaletteFamily.allCases {
@@ -116,14 +107,6 @@ final class CarouselStyleTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    /// First synthetic job id whose default-pool resolution lands on the
-    /// given archetype. Deterministic; also used by the render smoke tests.
-    private func firstJobID(resolvingTo archetype: CarouselArchetype, themeID: String) -> String? {
-        (0..<200)
-            .map { "job-\($0)" }
-            .first { CarouselStyle.resolve(jobID: $0, themeID: themeID).archetype == archetype }
-    }
 
     /// Bare job record with no location/type/comp; `extra` splices extra
     /// top-level JSON fields into the fixture.

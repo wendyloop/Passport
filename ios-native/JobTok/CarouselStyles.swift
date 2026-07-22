@@ -17,8 +17,6 @@ import SwiftUI
 enum CarouselArchetype: String, CaseIterable {
     // ---- Full-bleed archetypes (phone-height slides) ----
 
-    /// The original full-bleed layout (pre-archetype look).
-    case poster
     /// Dark card with a glowing neon border and monogram byline.
     case neonCard
     /// Push-notification illustration on a pastel gradient wallpaper.
@@ -55,13 +53,14 @@ enum CarouselArchetype: String, CaseIterable {
 
     // Cut by product decision (restore from git history if wanted):
     // `editorial` newspaper (2026-07-18); `scrapbook` and `giantType`
-    // (2026-07-22, superseded by stickerScrapbook / motionEditorial).
+    // (2026-07-22, superseded by stickerScrapbook / motionEditorial);
+    // `poster` — the original pre-archetype layout (2026-07-22).
 
     /// The selection pool. Selection is hash(job.id) mod count, so editing
     /// this list reshuffles which job gets which look — safe, since the
     /// choice is never persisted anywhere.
     static let active: [CarouselArchetype] = [
-        .poster, .neonCard, .notification,
+        .neonCard, .notification,
         .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome,
         .boldDrop, .sundayEdit, .motionEditorial, .stickerScrapbook,
         .daydreamY2K, .handPainted, .quietLuxury,
@@ -117,15 +116,15 @@ struct CarouselStyle: Equatable {
     ) -> CarouselStyle {
         let family = CarouselPaletteFamily.family(forThemeID: themeID)
         guard !pool.isEmpty else {
-            return CarouselStyle(archetype: .poster, family: family, theme: CarouselTheme.resolve(themeID))
+            // Fail-safe for a bad pool edit: neonCard, the oldest surviving
+            // archetype.
+            return CarouselStyle(archetype: .neonCard, family: family, theme: CarouselArchetype.neonCard.palette(for: family, themeID: themeID))
         }
         let archetype = pool[Int(hash32(jobID) % UInt32(pool.count))]
         return CarouselStyle(archetype: archetype, family: family, theme: archetype.palette(for: family, themeID: themeID))
     }
 
-    // FNV-1a 32-bit over UTF-8. Uniform enough for mod-N bucketing; keep
-    // independent from the poster cover's scalar-sum layout toggle so the
-    // two choices don't correlate.
+    // FNV-1a 32-bit over UTF-8. Uniform enough for mod-N bucketing.
     static func hash32(_ input: String) -> UInt32 {
         var hash: UInt32 = 0x811c9dc5
         for byte in input.utf8 {
@@ -144,7 +143,6 @@ extension CarouselStyle {
     /// CarouselCardTemplates); the default only satisfies exhaustiveness.
     var headerFont: Font {
         switch archetype {
-        case .poster:       return theme.titleFont
         case .neonCard:     return .system(size: 24, weight: .heavy, design: .rounded)
         case .notification: return .system(size: 22, weight: .bold)
         case .glitchWindow: return .system(size: 21, weight: .heavy, design: .monospaced)
@@ -190,11 +188,9 @@ extension CarouselStyle {
 // MARK: - Per-archetype palettes
 
 extension CarouselArchetype {
-    /// Palette bundle for this archetype in the given family. Poster keeps
-    /// resolving the backend theme id directly — it *is* the legacy look.
+    /// Palette bundle for this archetype in the given family.
     func palette(for family: CarouselPaletteFamily, themeID: String) -> CarouselTheme {
         switch self {
-        case .poster:       return CarouselTheme.resolve(themeID)
         case .neonCard:     return CarouselArchetype.neonCardPalettes[family]!
         case .notification: return CarouselArchetype.notificationPalettes[family]!
         case .glitchWindow: return CarouselArchetype.glitchWindowPalettes[family]!
