@@ -24,6 +24,8 @@ struct CardTemplateSlideView: View {
         // Instagram framing: the art runs the full device width with square
         // corners, vertically centered in the space above the apply
         // controls — the dark ground is just letterboxing, not a border.
+        // The top padding biases the card ~1cm (60pt) below true center,
+        // per product review.
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             CardCanvas {
@@ -31,6 +33,7 @@ struct CardTemplateSlideView: View {
             }
             Spacer(minLength: 0)
         }
+        .padding(.top, 120)
         .padding(.bottom, 230)
         .frame(maxWidth: .infinity)
     }
