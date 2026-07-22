@@ -21,15 +21,17 @@ struct CardTemplateSlideView: View {
     let onEmailFounder: (() -> Void)?
 
     var body: some View {
+        // Instagram framing: the art runs the full device width with square
+        // corners, vertically centered in the space above the apply
+        // controls — the dark ground is just letterboxing, not a border.
         VStack(spacing: 0) {
-            Spacer(minLength: 12)
+            Spacer(minLength: 0)
             CardCanvas {
                 content
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, FeedLayout.slideContentClearance)
+        .padding(.bottom, 230)
         .frame(maxWidth: .infinity)
     }
 
@@ -163,11 +165,8 @@ struct CardCanvas<Content: View>: View {
                 .scaleEffect(scale, anchor: .topLeading)
         }
         .aspectRatio(designW / designH, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        // Flatten before shadowing — without this, .shadow cascades onto
-        // every child view (text halos, sticker smears) instead of the card.
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
+        // Hard crop, square corners — an IG post, not a floating card.
+        .clipped()
     }
 }
 
@@ -344,14 +343,13 @@ enum BoldDropCard {
 
     @ViewBuilder
     private static func bottomLine(_ c: CardInterior) -> some View {
+        // Founder slide gets a live CTA; other slides get no footer — the
+        // real apply controls sit right below the card.
         if let pill = c.pill, let action = c.pillAction {
             Button(action: action) {
                 Text("⟶  \(pill.uppercased())")
                     .font(CarouselFonts.archivoBold(11)).tracking(2).foregroundStyle(red)
             }
-        } else {
-            Text("⟶  APPLY IN APP")
-                .font(CarouselFonts.archivoBold(11)).tracking(2).foregroundStyle(red)
         }
     }
 }
@@ -688,13 +686,16 @@ enum StickerScrapbookCard {
 
     @ViewBuilder
     private static func ctaPill(_ c: CardInterior) -> some View {
-        let text = c.pillAction != nil ? (c.pill ?? "one-tap apply on scout22") : "one-tap apply on scout22"
-        let label = Text(text)
-            .font(CarouselFonts.balooExtraBold(14)).foregroundStyle(brown)
-            .padding(.horizontal, 18).padding(.vertical, 2)
-            .background(Capsule().fill(blue))
-            .rotationEffect(.degrees(-3))
-        if let action = c.pillAction { Button(action: action) { label } } else { label }
+        // Only the founder slide carries a footer pill (a live pitch CTA).
+        if let action = c.pillAction, let pill = c.pill {
+            Button(action: action) {
+                Text(pill)
+                    .font(CarouselFonts.balooExtraBold(14)).foregroundStyle(brown)
+                    .padding(.horizontal, 18).padding(.vertical, 2)
+                    .background(Capsule().fill(blue))
+                    .rotationEffect(.degrees(-3))
+            }
+        }
     }
 }
 
@@ -934,8 +935,12 @@ enum HandPaintedCard {
             .at(30, 74)
             cherries.scaleEffect(0.86).at(112, 336)
             spark(22, palette[1], 15).at(222, 344)
-            painted(c.pillAction != nil ? "pitch the founder" : "more on scout22", size: 18, offset: 3)
+            if let action = c.pillAction {
+                Button(action: action) {
+                    painted("pitch the founder", size: 18, offset: 3)
+                }
                 .frame(width: designW).at(0, 428)
+            }
         }
     }
 }
@@ -1047,8 +1052,9 @@ enum QuietLuxuryCard {
                 }
             }
             .frame(width: 334, alignment: .leading).at(28, 88)
-            capsule((c.pill ?? "apply on scout22").uppercased(), color: darkInk, action: c.pillAction)
-                .at(65, 408)
+            if let pill = c.pill {
+                capsule(pill.uppercased(), color: darkInk, action: c.pillAction).at(65, 408)
+            }
         }
     }
 }
