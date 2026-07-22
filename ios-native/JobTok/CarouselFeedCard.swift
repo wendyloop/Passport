@@ -5,8 +5,8 @@ import SwiftUI
 // generate-carousel edge function (cover, about_company, role, requirements,
 // details). Visuals are resolved client-side: `carousel.theme_id` gives the
 // palette family, and CarouselStyle picks a per-job layout archetype
-// (poster / neon card / notification / scrapbook) so the feed reads like a
-// mixed Instagram timeline instead of one recolored template.
+// (full-bleed archetypes plus 4:5 card templates) so the feed reads like
+// a mixed Instagram timeline instead of one recolored template.
 // Covers live in CarouselCovers.swift; interior slides share the
 // parameterized layouts below.
 
@@ -181,6 +181,18 @@ private struct SlideView: View {
     let onEmailFounder: (() -> Void)?
 
     var body: some View {
+        // 4:5 card templates render every slide type through their own
+        // renderer (CarouselCardTemplates.swift) — card on a dark ground,
+        // the way the reference IG posts sit in the feed.
+        if style.archetype.isCardTemplate {
+            CardTemplateSlideView(slide: slide, style: style, job: job, onEmailFounder: onEmailFounder)
+        } else {
+            fullBleed
+        }
+    }
+
+    @ViewBuilder
+    private var fullBleed: some View {
         switch slide {
         case .cover(let s):         cover(s)
         case .aboutCompany(let s):  AboutCompanySlideView(slide: s, style: style)
@@ -200,15 +212,13 @@ private struct SlideView: View {
     @ViewBuilder
     private func cover(_ s: CoverSlide) -> some View {
         switch style.archetype {
-        case .poster:       CoverSlideView(slide: s, theme: style.theme, job: job)
         case .neonCard:     NeonCardCoverView(slide: s, style: style, job: job)
         case .notification: NotificationCoverView(slide: s, style: style, job: job)
-        case .scrapbook:    ScrapbookCoverView(slide: s, style: style, job: job)
         case .glitchWindow: GlitchWindowCoverView(slide: s, style: style, job: job)
         case .chromeStar:   ChromeStarCoverView(slide: s, style: style, job: job)
         case .cyberGrid:    CyberGridCoverView(slide: s, style: style, job: job)
         case .liquidChrome: LiquidChromeCoverView(slide: s, style: style, job: job)
-        case .giantType:    GiantTypeCoverView(slide: s, style: style, job: job)
+        default:            CoverSlideView(slide: s, theme: style.theme, job: job)
         }
     }
 }
@@ -538,11 +548,10 @@ private struct AboutCompanySlideView: View {
 
     private var kickerFont: Font {
         switch style.archetype {
-        case .scrapbook:                 return .system(size: 13, weight: .semibold, design: .serif).italic()
         case .notification:              return .system(size: 13, weight: .semibold)
         case .glitchWindow:              return .system(size: 12, weight: .bold, design: .monospaced)
         case .chromeStar, .liquidChrome: return .system(size: 13, weight: .semibold, design: .serif)
-        case .cyberGrid, .giantType:     return .system(size: 12, weight: .heavy)
+        case .cyberGrid:                 return .system(size: 12, weight: .heavy)
         default:                         return .system(size: 14, weight: .heavy, design: .rounded)
         }
     }
@@ -573,7 +582,7 @@ private struct BulletSlideView: View {
         SlideScaffold(style: style) {
             SlideHeader(title: title, style: style)
 
-            VStack(alignment: .leading, spacing: style.archetype == .scrapbook ? 12 : 16) {
+            VStack(alignment: .leading, spacing: 16) {
                 ForEach(Array(bullets.enumerated()), id: \.offset) { index, bullet in
                     bulletRow(index: index, text: bullet)
                         // F1: bullets cascade in as the slide appears.
@@ -607,17 +616,6 @@ private struct BulletSlideView: View {
                     .foregroundStyle(theme.textPrimary.opacity(0.92))
                     .fixedSize(horizontal: false, vertical: true)
             }
-        case .scrapbook:
-            Text(text)
-                .font(theme.bodyFont)
-                .foregroundStyle(theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .shadow(color: .black.opacity(0.08), radius: 3, y: 2)
-                .rotationEffect(.degrees((Double(index % 3) - 1.0) * 0.8))
         default:
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: theme.bulletGlyph)

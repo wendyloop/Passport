@@ -15,6 +15,8 @@ import SwiftUI
 // `active` — jobs hashed to it redistribute across the remaining pool.
 
 enum CarouselArchetype: String, CaseIterable {
+    // ---- Full-bleed archetypes (phone-height slides) ----
+
     /// The original full-bleed layout (pre-archetype look).
     case poster
     /// Dark card with a glowing neon border and monogram byline.
@@ -23,8 +25,6 @@ enum CarouselArchetype: String, CaseIterable {
     /// Deliberately stylized (rotation, oversized corners, no clock) so it
     /// reads as an illustration, not a fake system notification.
     case notification
-    /// Cream paper, italic serif, sticker chips, playful glyph accents.
-    case scrapbook
     /// Retro terminal window: title bar, chromatic-aberration type,
     /// snake_case prompt lines, decorative progress bar.
     case glitchWindow
@@ -34,19 +34,50 @@ enum CarouselArchetype: String, CaseIterable {
     case cyberGrid
     /// Dark metallic card with a soft liquid sheen; quiet serif type.
     case liquidChrome
-    /// Brutalist full-bleed type poster; each word's tail dipped in accent.
-    case giantType
 
-    // An `editorial` newspaper archetype existed briefly and was cut by
-    // product decision (2026-07-18) — restore from git history if wanted.
+    // ---- Card templates (true 4:5 IG-post cards on a dark ground;
+    //      bundled display fonts; CarouselCardTemplates.swift) ----
+
+    /// Cream type poster: teal part pill, navy/red stacked condensed caps.
+    case boldDrop
+    /// Cream collage zine: photo-slot blocks, italic stack, pay badge.
+    case sundayEdit
+    /// Bone fashion editorial: blurred figure, huge black type, script no.
+    case motionEditorial
+    /// Paper card on a warm blurred ground: bubble letters, sticker stars.
+    case stickerScrapbook
+    /// Cloud gradient, white heavy caps, scattered fact pills, pixel type.
+    case daydreamY2K
+    /// Butter yellow, per-letter multicolor headline, doodle stickers.
+    case handPainted
+    /// Greige serif elegance: blurred silhouette, caps + italic, capsules.
+    case quietLuxury
+
+    // Cut by product decision (restore from git history if wanted):
+    // `editorial` newspaper (2026-07-18); `scrapbook` and `giantType`
+    // (2026-07-22, superseded by stickerScrapbook / motionEditorial).
 
     /// The selection pool. Selection is hash(job.id) mod count, so editing
     /// this list reshuffles which job gets which look — safe, since the
     /// choice is never persisted anywhere.
     static let active: [CarouselArchetype] = [
-        .poster, .neonCard, .notification, .scrapbook,
-        .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome, .giantType,
+        .poster, .neonCard, .notification,
+        .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome,
+        .boldDrop, .sundayEdit, .motionEditorial, .stickerScrapbook,
+        .daydreamY2K, .handPainted, .quietLuxury,
     ]
+
+    /// Card templates render as a 4:5 card on a dark ground instead of a
+    /// full-bleed slide; CarouselFeedCard routes them separately.
+    var isCardTemplate: Bool {
+        switch self {
+        case .boldDrop, .sundayEdit, .motionEditorial, .stickerScrapbook,
+             .daydreamY2K, .handPainted, .quietLuxury:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 // Palette family, derived from the backend theme_id so the industry bias
@@ -109,43 +140,43 @@ struct CarouselStyle: Equatable {
 
 extension CarouselStyle {
     /// Section-header font for interior slides ("the backstory", "the deets").
+    /// Card templates never reach this path (they render via
+    /// CarouselCardTemplates); the default only satisfies exhaustiveness.
     var headerFont: Font {
         switch archetype {
         case .poster:       return theme.titleFont
         case .neonCard:     return .system(size: 24, weight: .heavy, design: .rounded)
         case .notification: return .system(size: 22, weight: .bold)
-        case .scrapbook:    return .system(size: 26, weight: .bold, design: .serif).italic()
         case .glitchWindow: return .system(size: 21, weight: .heavy, design: .monospaced)
         case .chromeStar:   return .system(size: 24, weight: .bold, design: .serif)
         case .cyberGrid:    return .system(size: 23, weight: .heavy)
         case .liquidChrome: return .system(size: 24, weight: .semibold, design: .serif)
-        case .giantType:    return .system(size: 28, weight: .black)
+        default:            return theme.titleFont
         }
     }
 
-    var headerColor: Color {
-        archetype == .scrapbook ? theme.accent : theme.textPrimary
-    }
+    var headerColor: Color { theme.textPrimary }
 
     /// Header copy transform: notification reads like a notification title,
-    /// glitch speaks snake_case, the poster-brutalists shout, everyone else
-    /// keeps the lowercase feed voice.
+    /// glitch speaks snake_case, cyberGrid shouts, everyone else keeps the
+    /// lowercase feed voice.
     func headerText(_ raw: String) -> String {
         switch archetype {
-        case .notification:          return raw.prefix(1).uppercased() + raw.dropFirst()
-        case .glitchWindow:          return raw.replacingOccurrences(of: " ", with: "_")
-        case .cyberGrid, .giantType: return raw.uppercased()
-        default:                     return raw
+        case .notification: return raw.prefix(1).uppercased() + raw.dropFirst()
+        case .glitchWindow: return raw.replacingOccurrences(of: " ", with: "_")
+        case .cyberGrid:    return raw.uppercased()
+        default:            return raw
         }
     }
 
     /// Interior slides of carded archetypes wrap their content in chrome;
     /// the rest render full-bleed. Drives SlideScaffold and its insets.
+    /// (Card templates bypass SlideScaffold entirely.)
     var usesInteriorCard: Bool {
         switch archetype {
         case .neonCard, .notification, .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome:
             return true
-        case .poster, .scrapbook, .giantType:
+        default:
             return false
         }
     }
@@ -154,17 +185,6 @@ extension CarouselStyle {
     /// caption highlights). Every palette — legacy themes included — defines
     /// a readable ink for its accent.
     var onAccent: Color { theme.onAccent }
-
-    /// Decorative glyph for the scrapbook archetype, seeded by family so it
-    /// matches the palette (cherries on cream, leaves on sage, …).
-    var scrapbookDecor: String {
-        switch family {
-        case .cool:    return "⭐️"
-        case .warm:    return "🍒"
-        case .earthy:  return "🌿"
-        case .playful: return "🌸"
-        }
-    }
 }
 
 // MARK: - Per-archetype palettes
@@ -177,13 +197,38 @@ extension CarouselArchetype {
         case .poster:       return CarouselTheme.resolve(themeID)
         case .neonCard:     return CarouselArchetype.neonCardPalettes[family]!
         case .notification: return CarouselArchetype.notificationPalettes[family]!
-        case .scrapbook:    return CarouselArchetype.scrapbookPalettes[family]!
         case .glitchWindow: return CarouselArchetype.glitchWindowPalettes[family]!
         case .chromeStar:   return CarouselArchetype.chromeStarPalettes[family]!
         case .cyberGrid:    return CarouselArchetype.cyberGridPalettes[family]!
         case .liquidChrome: return CarouselArchetype.liquidChromePalettes[family]!
-        case .giantType:    return CarouselArchetype.giantTypePalettes[family]!
+        // Card templates keep one fixed palette (the approved preview look);
+        // the theme mostly styles the dark ground + shared feed chrome.
+        case .boldDrop:         return CarouselArchetype.cardGround("card-bold-drop", accent: Color(red: 0.91, green: 0.25, blue: 0.11))
+        case .sundayEdit:       return CarouselArchetype.cardGround("card-sunday-edit", accent: Color(red: 0.86, green: 0.89, blue: 0.42))
+        case .motionEditorial:  return CarouselArchetype.cardGround("card-motion-editorial", accent: Color(red: 0.92, green: 0.91, blue: 0.89))
+        case .stickerScrapbook: return CarouselArchetype.cardGround("card-sticker-scrapbook", accent: Color(red: 0.68, green: 0.80, blue: 0.92))
+        case .daydreamY2K:      return CarouselArchetype.cardGround("card-daydream-y2k", accent: Color(red: 0.89, green: 0.34, blue: 0.55))
+        case .handPainted:      return CarouselArchetype.cardGround("card-hand-painted", accent: Color(red: 0.91, green: 0.70, blue: 0.24))
+        case .quietLuxury:      return CarouselArchetype.cardGround("card-quiet-luxury", accent: Color(red: 0.89, green: 0.85, blue: 0.80))
         }
+    }
+
+    /// Shared dark ground behind every 4:5 card template — the IG-feed
+    /// framing from the approved preview.
+    static func cardGround(_ id: String, accent: Color) -> CarouselTheme {
+        CarouselTheme(
+            id: id,
+            backgroundTop:    Color(red: 0.07, green: 0.07, blue: 0.09),
+            backgroundBottom: Color(red: 0.05, green: 0.05, blue: 0.07),
+            surface:          Color.white.opacity(0.06),
+            accent:           accent,
+            textPrimary:      .white,
+            textSecondary:    Color.white.opacity(0.6),
+            onAccent:         Color(red: 0.07, green: 0.07, blue: 0.09),
+            bulletGlyph:      "circle.fill",
+            titleFont:        .system(size: 28, weight: .heavy),
+            bodyFont:         .system(size: 16, weight: .medium)
+        )
     }
 
 
@@ -296,61 +341,6 @@ extension CarouselArchetype {
         ),
     ]
 
-    // Cream paper + one fruity accent; surface is the sticker fill.
-    private static let scrapbookPalettes: [CarouselPaletteFamily: CarouselTheme] = [
-        .cool: CarouselTheme(
-            id: "scrapbook-cool",
-            backgroundTop:    Color(red: 0.97, green: 0.96, blue: 0.92),
-            backgroundBottom: Color(red: 0.94, green: 0.94, blue: 0.90),
-            surface:          Color.white,
-            accent:           Color(red: 0.27, green: 0.32, blue: 0.66),
-            textPrimary:      Color(red: 0.16, green: 0.15, blue: 0.18),
-            textSecondary:    Color(red: 0.40, green: 0.39, blue: 0.44),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "star.fill",
-            titleFont:        .system(size: 30, weight: .bold, design: .serif).italic(),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-        .warm: CarouselTheme(
-            id: "scrapbook-warm",
-            backgroundTop:    Color(red: 0.99, green: 0.95, blue: 0.89),
-            backgroundBottom: Color(red: 0.98, green: 0.92, blue: 0.86),
-            surface:          Color.white,
-            accent:           Color(red: 0.75, green: 0.13, blue: 0.21),
-            textPrimary:      Color(red: 0.21, green: 0.12, blue: 0.10),
-            textSecondary:    Color(red: 0.46, green: 0.33, blue: 0.29),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "heart.fill",
-            titleFont:        .system(size: 30, weight: .bold, design: .serif).italic(),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-        .earthy: CarouselTheme(
-            id: "scrapbook-earthy",
-            backgroundTop:    Color(red: 0.96, green: 0.96, blue: 0.89),
-            backgroundBottom: Color(red: 0.92, green: 0.93, blue: 0.85),
-            surface:          Color.white,
-            accent:           Color(red: 0.33, green: 0.42, blue: 0.17),
-            textPrimary:      Color(red: 0.14, green: 0.16, blue: 0.10),
-            textSecondary:    Color(red: 0.36, green: 0.40, blue: 0.30),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "leaf.fill",
-            titleFont:        .system(size: 30, weight: .bold, design: .serif).italic(),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-        .playful: CarouselTheme(
-            id: "scrapbook-playful",
-            backgroundTop:    Color(red: 1.00, green: 0.95, blue: 0.96),
-            backgroundBottom: Color(red: 0.98, green: 0.91, blue: 0.94),
-            surface:          Color.white,
-            accent:           Color(red: 0.84, green: 0.25, blue: 0.55),
-            textPrimary:      Color(red: 0.20, green: 0.12, blue: 0.16),
-            textSecondary:    Color(red: 0.45, green: 0.33, blue: 0.39),
-            onAccent:         Color(red: 0.99, green: 0.97, blue: 0.93),
-            bulletGlyph:      "sparkles",
-            titleFont:        .system(size: 30, weight: .bold, design: .serif).italic(),
-            bodyFont:         .system(size: 16, weight: .medium, design: .serif)
-        ),
-    ]
 
     // Vaporwave terminal: near-black blue ground, one phosphor accent.
     // The magenta/cyan glitch fringes are universal (see GlitchText) —
@@ -468,30 +458,6 @@ extension CarouselArchetype {
         .playful: liquidChromePalette("playful", accent: Color(red: 0.84, green: 0.79, blue: 0.89)),
     ]
 
-    // Brutalist type poster: warm near-black, cream ink, one loud accent
-    // for the letter dips.
-    private static func giantTypePalette(_ suffix: String, accent: Color) -> CarouselTheme {
-        CarouselTheme(
-            id: "giant-type-\(suffix)",
-            backgroundTop:    Color(red: 0.07, green: 0.07, blue: 0.06),
-            backgroundBottom: Color(red: 0.09, green: 0.09, blue: 0.08),
-            surface:          Color.white.opacity(0.07),
-            accent:           accent,
-            textPrimary:      Color(red: 0.94, green: 0.92, blue: 0.87),
-            textSecondary:    Color(red: 0.56, green: 0.53, blue: 0.48),
-            onAccent:         Color(red: 0.07, green: 0.07, blue: 0.06),
-            bulletGlyph:      "arrow.right",
-            titleFont:        .system(size: 30, weight: .black),
-            bodyFont:         .system(size: 16, weight: .semibold)
-        )
-    }
-
-    private static let giantTypePalettes: [CarouselPaletteFamily: CarouselTheme] = [
-        .cool:    giantTypePalette("cool",    accent: Color(red: 0.44, green: 0.83, blue: 1.00)),
-        .warm:    giantTypePalette("warm",    accent: Color(red: 1.00, green: 0.69, blue: 0.23)),
-        .earthy:  giantTypePalette("earthy",  accent: Color(red: 0.65, green: 0.96, blue: 0.28)),
-        .playful: giantTypePalette("playful", accent: Color(red: 1.00, green: 0.44, blue: 0.72)),
-    ]
 }
 
 // MARK: - Cover fact extraction

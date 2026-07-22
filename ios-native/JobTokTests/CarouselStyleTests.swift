@@ -1,5 +1,18 @@
 import XCTest
+import UIKit
 @testable import JobTok
+
+// The card templates draw with bundled faces; a missing or renamed font
+// file silently falls back to the system font, so assert every PostScript
+// name actually resolves after registration.
+final class FontRegistrationTests: XCTestCase {
+    func testAllBundledFontsRegister() {
+        CarouselFonts.registerAll()
+        for name in CarouselFonts.postScriptNames {
+            XCTAssertNotNil(UIFont(name: name, size: 12), "font not registered: \(name)")
+        }
+    }
+}
 
 final class CarouselStyleTests: XCTestCase {
     // Same job + theme must always land on the same look — carousels
