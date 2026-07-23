@@ -56,7 +56,7 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
-| X1 | Replace founder-fatigue feed demotion + once-per-founder-ever send rule with real ranking/caps | `FIRST-100-USERS` markers | S–M | >100 users / real volume |
+| X1 | Replace founder-fatigue feed demotion with real ranking (the once-per-founder-ever send rule was already replaced 2026-07-23 by a 7-day per-contact cooldown — migration `20260723120000`) | `FIRST-100-USERS` markers | S | >100 users / real volume |
 
 ---
 

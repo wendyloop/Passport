@@ -26,6 +26,10 @@ const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
 const FOUNDER_REPLY_TO_OVERRIDE = Deno.env.get("FOUNDER_REPLY_TO_EMAIL") ?? "";
 const DEFAULT_WEEKLY_LIMIT = 5;
 const MAX_NOTE_CHARS = 400;
+// Follow-ups to the same founder are allowed after this window (was a hard
+// once-ever rule; relaxed by product decision 2026-07-23). The reserve RPC
+// enforces the same window race-safely.
+const CONTACT_COOLDOWN_DAYS = 7;
 
 // TODO(deferred): T9 remainder — email verification: validate guessed
 // addresses with a vendor (Hunter/NeverBounce) BEFORE sending, instead of
@@ -124,8 +128,8 @@ Deno.serve(async (request) => {
     const remaining = Math.max(0, limit - (usedCount ?? 0));
 
     // Contact resolution: verified posting emails first, then best guess by
-    // confidence; never bounced/suppressed; never one this candidate already
-    // emailed (once-per-founder is a hard rule).
+    // confidence; never bounced/suppressed; never one this candidate emailed
+    // within the follow-up cooldown.
     const contact = await resolveContact(admin, {
       companyId: job.company_id,
       candidateId: user.id,
@@ -190,8 +194,8 @@ Deno.serve(async (request) => {
       if (reserveError.message.includes("WEEKLY_LIMIT_REACHED")) {
         return jsonError("Weekly founder email limit reached", 429);
       }
-      if (reserveError.message.includes("founder_outreach_once_per_contact_idx")) {
-        return jsonError("You already emailed this founder", 409);
+      if (reserveError.message.includes("CONTACT_COOLDOWN")) {
+        return jsonError("You emailed this founder in the last week — give them a moment to reply", 429);
       }
       return jsonError(reserveError.message);
     }
@@ -278,12 +282,19 @@ async function resolveContact(
   admin: ReturnType<typeof createAdminClient>,
   params: { companyId: string; candidateId: string; contactId: string | null },
 ): Promise<ContactRow | null> {
-  const { data: alreadyEmailed } = await admin
+  // Exclude only contacts inside the follow-up cooldown (non-failed sends
+  // in the last CONTACT_COOLDOWN_DAYS). Older sends don't exclude — the
+  // candidate may follow up; the reserve RPC enforces the same window
+  // atomically.
+  const cutoff = new Date(Date.now() - CONTACT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { data: recentlyEmailed } = await admin
     .from("founder_outreach_messages")
     .select("contact_id")
     .eq("candidate_profile_id", params.candidateId)
+    .neq("delivery_status", "failed")
+    .gt("created_at", cutoff)
     .not("contact_id", "is", null);
-  const excluded = new Set((alreadyEmailed ?? []).map((r) => r.contact_id as string));
+  const excluded = new Set((recentlyEmailed ?? []).map((r) => r.contact_id as string));
 
   let query = admin
     .from("company_contacts")
