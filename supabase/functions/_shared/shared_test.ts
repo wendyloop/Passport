@@ -4,7 +4,7 @@
 
 import { assertEquals } from "jsr:@std/assert@1";
 import { jsonError, jsonResponse } from "./http.ts";
-import { escapeHtml, forceGmailFrom } from "./email.ts";
+import { escapeHtml } from "./email.ts";
 import { firstNameOf, guessFounderEmail, normalizeDomain } from "./contacts.ts";
 import { buildPipelineRunRow } from "./pipeline_runs.ts";
 import { buildApplicationEmailContent } from "./application_email.ts";
@@ -151,6 +151,8 @@ Deno.test("buildApplicationEmailContent handles missing optionals", () => {
   assertEquals(content.text.includes("Pitch video: Not provided"), true);
 });
 
+// Parked with the shelved Gmail transport in email.ts.
+/*
 Deno.test("forceGmailFrom keeps the display name, swaps the address", () => {
   assertEquals(
     forceGmailFrom("Wendy from scout22 <intro@tryscout22.com>", "wendy.scout22@gmail.com"),
@@ -162,3 +164,4 @@ Deno.test("forceGmailFrom handles bare addresses", () => {
   assertEquals(forceGmailFrom("intro@tryscout22.com", "w@gmail.com"), "w@gmail.com");
   assertEquals(forceGmailFrom("", "w@gmail.com"), "w@gmail.com");
 });
+*/

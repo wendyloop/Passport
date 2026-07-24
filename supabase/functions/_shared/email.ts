@@ -1,23 +1,14 @@
-// Shared email sending with two transports:
+// Shared Resend email sending. Returns the Resend email id on success so
+// callers can correlate bounce/complaint webhooks back to their own records.
 //
-//   1. Gmail SMTP (preferred when configured): set GMAIL_SMTP_USER +
-//      GMAIL_SMTP_APP_PASSWORD and every send goes out as the real Gmail
-//      account over smtp.gmail.com:465 (the only SMTP port Supabase edge
-//      functions can reach). Best deliverability for pre-launch founder
-//      outreach — no new-domain reputation problem. Limits: ~500 sends/day
-//      (consumer Gmail), the From address is forced to the account (Gmail
-//      refuses spoofed Froms; only the display name survives), and bounces
-//      arrive as Mail Delivery Subsystem messages in the Gmail inbox
-//      instead of the Resend webhook.
-//   2. Resend (default): requires a verified domain; returns an email id so
-//      bounce/complaint webhooks can correlate. The scale path.
-//
-// Unset the Gmail secrets to fall back to Resend — no deploy needed.
+// A Gmail-SMTP transport was built 2026-07-23 and shelved unused the same
+// day (hypothetical explored, not wanted) — kept commented out below; see
+// the sendViaGmail block for how to revive it.
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const DEFAULT_FROM = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "JobTok <applications@jobtok.app>";
-const GMAIL_SMTP_USER = Deno.env.get("GMAIL_SMTP_USER") ?? "";
-const GMAIL_SMTP_APP_PASSWORD = Deno.env.get("GMAIL_SMTP_APP_PASSWORD") ?? "";
+// const GMAIL_SMTP_USER = Deno.env.get("GMAIL_SMTP_USER") ?? "";
+// const GMAIL_SMTP_APP_PASSWORD = Deno.env.get("GMAIL_SMTP_APP_PASSWORD") ?? "";
 
 export function escapeHtml(value: string): string {
   return value
@@ -43,6 +34,11 @@ export type SendEmailResult = {
   resendId: string | null;
 };
 
+// Shelved Gmail transport (see header). To revive: uncomment this block,
+// the two GMAIL consts above, the branch at the top of sendEmail, and the
+// forceGmailFrom tests in shared_test.ts; set GMAIL_SMTP_USER +
+// GMAIL_SMTP_APP_PASSWORD; redeploy the four email-sending functions.
+/*
 // Gmail forces From to be the authenticated account; keep the caller's
 // display name so "Wendy from scout22 <intro@tryscout22.com>" becomes
 // "Wendy from scout22 <account@gmail.com>". Exported for tests.
@@ -84,11 +80,12 @@ async function sendViaGmail(params: SendEmailParams): Promise<SendEmailResult> {
     return { status: "failed", error: `Gmail SMTP: ${String(error)}`, resendId: null };
   }
 }
+*/
 
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  if (GMAIL_SMTP_USER && GMAIL_SMTP_APP_PASSWORD) {
-    return await sendViaGmail(params);
-  }
+  // if (GMAIL_SMTP_USER && GMAIL_SMTP_APP_PASSWORD) {
+  // return await sendViaGmail(params);
+  // }
 
   if (!RESEND_API_KEY) {
     return {
