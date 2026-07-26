@@ -9,6 +9,7 @@ import { firstNameOf, guessFounderEmail, normalizeDomain } from "./contacts.ts";
 import { buildPipelineRunRow } from "./pipeline_runs.ts";
 import { buildApplicationEmailContent } from "./application_email.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
+import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -178,4 +179,53 @@ Deno.test("founderProfileGateReason gate order and resume kill-switch", () => {
   assertEquals(gate(true, false, false), null);
   // Fully equipped candidate passes.
   assertEquals(gate(true, true, true), null);
+});
+
+Deno.test("buildJobEmbeddingText tags quality by description presence", () => {
+  const full = buildJobEmbeddingText({
+    title: "Founding Engineer",
+    job_function: "engineering",
+    company_name: "Acme",
+    company_stage: "seed",
+    compensation_min_annual: 150000,
+    compensation_max_annual: 200000,
+    description: "Build the first product.",
+  });
+  assertEquals(full.quality, "full");
+  assertEquals(full.text.includes("Founding Engineer"), true);
+  assertEquals(full.text.includes("Build the first product."), true);
+
+  const sparse = buildJobEmbeddingText({
+    title: "Ops Lead",
+    job_function: null,
+    company_name: null,
+    description: "   ",
+  });
+  assertEquals(sparse.quality, "title_only");
+  assertEquals(sparse.text, "Ops Lead");
+});
+
+Deno.test("buildResumeEmbeddingText composes sections and skips empties", () => {
+  const text = buildResumeEmbeddingText({
+    current_title: "SWE Intern",
+    current_company: "Stripe",
+    years_experience: "1",
+    employers: [{ company: "Stripe", title: "SWE Intern" }, { company: "", title: "" }],
+    education: [{ school: "UC Berkeley", degree: "BS", field_of_study: "CS" }],
+    skills: ["Swift", " ", "Go"],
+  });
+  assertEquals(text.includes("current: SWE Intern at Stripe"), true);
+  assertEquals(text.includes("experience: SWE Intern at Stripe"), true);
+  assertEquals(text.includes("education: BS CS UC Berkeley"), true);
+  assertEquals(text.includes("skills: Swift, Go"), true);
+  assertEquals(buildResumeEmbeddingText({}), "");
+});
+
+Deno.test("mapSimilarityToScore clamps and maps through floor/ceiling", () => {
+  assertEquals(mapSimilarityToScore(0.2, 0.2, 0.75), 0);
+  assertEquals(mapSimilarityToScore(0.75, 0.2, 0.75), 100);
+  assertEquals(mapSimilarityToScore(0.475, 0.2, 0.75), 50);
+  assertEquals(mapSimilarityToScore(0.1, 0.2, 0.75), 0);
+  assertEquals(mapSimilarityToScore(0.9, 0.2, 0.75), 100);
+  assertEquals(mapSimilarityToScore(0.5, 0.75, 0.2), 0);
 });

@@ -51,6 +51,46 @@ export async function embedText(text: string): Promise<number[]> {
   }
 }
 
+// Batch variant for pipeline work (embed-jobs): one API call per chunk of
+// 100 inputs instead of one per text. Order-preserving via the returned
+// index field.
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
+  const results: number[][] = new Array(texts.length);
+  for (let offset = 0; offset < texts.length; offset += 100) {
+    const chunk = texts.slice(offset, offset + 100).map((t) => t.trim().slice(0, 8000) || " ");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: EMBEDDING_MODEL, input: chunk }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`OpenAI embeddings HTTP ${response.status}: ${body.slice(0, 200)}`);
+      }
+      const payload = await response.json();
+      for (const item of payload?.data ?? []) {
+        const vec = item?.embedding;
+        if (!Array.isArray(vec) || vec.length !== EMBEDDING_DIMS || typeof item.index !== "number") {
+          throw new Error("unexpected batch embedding shape");
+        }
+        results[offset + item.index] = vec as number[];
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (results.some((r) => !Array.isArray(r))) throw new Error("embedding batch returned gaps");
+  return results;
+}
+
 // pgvector accepts a bracketed string literal — '[0.1, 0.2, ...]'.
 export function toPgVector(values: number[]): string {
   return `[${values.join(",")}]`;

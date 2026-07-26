@@ -422,3 +422,7 @@ verify_jwt = false
 # Public share landing page (F10c) — reads via service role, renders OG tags.
 [functions.job-share]
 verify_jwt = false
+
+# Cron-invoked (x-pitch-cron-secret); pg_net calls carry no JWT.
+[functions.embed-jobs]
+verify_jwt = false

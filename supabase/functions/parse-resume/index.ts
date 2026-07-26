@@ -161,6 +161,31 @@ Deno.serve(async (request) => {
 
     if (resumeError) throw resumeError;
 
+    // M-E: refresh the candidate's resume embedding for fit ranking + the
+    // founder-email match gate. Fail-open — the parse result is the product;
+    // the next successful parse (or re-upload) retries.
+    try {
+      const { buildResumeEmbeddingText } = await import("../_shared/matching.ts");
+      const { embedText, toPgVector } = await import("../_shared/openai_embeddings.ts");
+      const resumeText = buildResumeEmbeddingText(parsed);
+      if (resumeText) {
+        const vector = await embedText(resumeText);
+        const { error: embedError } = await adminClient
+          .from("candidate_resume_embeddings")
+          .upsert({
+            profile_id: user.id,
+            embedding: toPgVector(vector),
+            embedded_at: new Date().toISOString(),
+          }, { onConflict: "profile_id" });
+        if (embedError) throw embedError;
+      }
+    } catch (embedFailure) {
+      console.error(JSON.stringify({
+        event: "resume_embedding_failed",
+        error: (embedFailure as Error).message,
+      }));
+    }
+
     // Push canonical fields into the autofill table. Empty strings are
     // intentionally filtered — we never want to overwrite a good value with
     // a missing one.
