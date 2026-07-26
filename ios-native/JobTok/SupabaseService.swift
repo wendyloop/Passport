@@ -185,7 +185,7 @@ final class SupabaseService {
             async let videos: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url,stage),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels(theme_id,slide_count,content,status)"),
                     ("is_published", "eq.true"),
                     ("is_active", "eq.true"),
                     ("source_kind", "in.(reel,employer_post)"),
@@ -197,7 +197,7 @@ final class SupabaseService {
             async let carousels: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url,stage),carousel:carousels!inner(theme_id,slide_count,content,status)"),
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels!inner(theme_id,slide_count,content,status)"),
                     ("is_published", "eq.true"),
                     ("is_active", "eq.true"),
                     ("source_kind", "in.(ats,board)"),
@@ -230,13 +230,35 @@ final class SupabaseService {
         }
 
         var query: [(String, String)] = [
-            ("select", "*,company:companies(id,name,domain,logo_url,stage),carousel:carousels(theme_id,slide_count,content,status)"),
+            ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels(theme_id,slide_count,content,status)"),
             ("order", "created_at.desc")
         ]
         if let employerID {
             query.append(("employer_profile_id", "eq.\(employerID)"))
         }
         return try await transport.selectArray(path: "jobs", query: query, session: session)
+    }
+
+    /// Resolves specific jobs by id — used by the Saved tab so bookmarks that
+    /// fell out of the 200+200 feed window still render. Chunked to keep the
+    /// `id=in.(…)` query string within sane URL length.
+    func fetchJobs(ids: [String], session: AuthSession) async throws -> [JobPostingRecord] {
+        var results: [JobPostingRecord] = []
+        var remaining = ids[...]
+        while !remaining.isEmpty {
+            let chunk = remaining.prefix(50)
+            remaining = remaining.dropFirst(50)
+            let rows: [JobPostingRecord] = try await transport.selectArray(
+                path: "jobs",
+                query: [
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("id", "in.(\(chunk.joined(separator: ",")))")
+                ],
+                session: session
+            )
+            results.append(contentsOf: rows)
+        }
+        return results
     }
 
     func fetchJobApplications(candidateID: String? = nil, employerID: String? = nil, session: AuthSession) async throws -> [JobApplicationRecord] {

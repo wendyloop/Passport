@@ -50,24 +50,91 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertEqual(age("2026-06-20T08:00:00Z"), "2w ago")
     }
 
-    func testBigCompanyGating() throws {
+    func testFounderPitchGating() throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        func job(stage: String?) throws -> JobPostingRecord {
+        func job(stage: String?, contactable: Bool?) throws -> JobPostingRecord {
             let stageJSON = stage.map { "\"\($0)\"" } ?? "null"
+            let contactableJSON = contactable.map { "\($0)" } ?? "null"
             let json = """
             {"id": "j", "title": "t", "is_published": true,
              "created_at": "2026-07-01T12:00:00Z", "company_id": "co-1",
-             "company": {"id": "co-1", "name": "Acme", "stage": \(stageJSON)}}
+             "company": {"id": "co-1", "name": "Acme", "stage": \(stageJSON),
+                         "founder_contactable": \(contactableJSON)}}
             """.data(using: .utf8)!
             return try decoder.decode(JobPostingRecord.self, from: json)
         }
-        XCTAssertTrue(try job(stage: "seed").founderPitchAllowed)
-        XCTAssertTrue(try job(stage: nil).founderPitchAllowed)      // unknown = startup
-        XCTAssertFalse(try job(stage: "1000+ employees").founderPitchAllowed)
-        XCTAssertFalse(try job(stage: "acquisition").founderPitchAllowed)
-        XCTAssertFalse(try job(stage: "ipo").founderPitchAllowed)
-        XCTAssertTrue(try job(stage: "series_b").founderPitchAllowed)
+        // Startup stages with a contact on file → pitchable.
+        XCTAssertTrue(try job(stage: "seed", contactable: true).founderPitchAllowed)
+        XCTAssertTrue(try job(stage: nil, contactable: true).founderPitchAllowed)
+        XCTAssertTrue(try job(stage: "series_b", contactable: true).founderPitchAllowed)
+        // No usable contact (false or column absent) → never pitchable.
+        XCTAssertFalse(try job(stage: "seed", contactable: false).founderPitchAllowed)
+        XCTAssertFalse(try job(stage: "seed", contactable: nil).founderPitchAllowed)
+        // Big-company stages stay apply-only even with a contact.
+        XCTAssertFalse(try job(stage: "1000+ employees", contactable: true).founderPitchAllowed)
+        XCTAssertFalse(try job(stage: "acquisition", contactable: true).founderPitchAllowed)
+        XCTAssertFalse(try job(stage: "ipo", contactable: true).founderPitchAllowed)
+
+        // No company embed at all → not pitchable.
+        let bare = try decoder.decode(
+            JobPostingRecord.self,
+            from: """
+            {"id": "j", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z"}
+            """.data(using: .utf8)!
+        )
+        XCTAssertFalse(bare.founderPitchAllowed)
+    }
+
+    func testSavedJobsOrdering() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func job(_ id: String) throws -> JobPostingRecord {
+            try decoder.decode(JobPostingRecord.self, from: """
+            {"id": "\(id)", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z"}
+            """.data(using: .utf8)!)
+        }
+        func saved(_ jobID: String, at iso: String) -> SavedJobRecord {
+            SavedJobRecord(
+                id: "s-\(jobID)", profileID: "me", jobID: jobID,
+                createdAt: ISO8601DateFormatter().date(from: iso)!
+            )
+        }
+        func application(_ jobID: String, at iso: String) throws -> JobApplicationRecord {
+            try decoder.decode(JobApplicationRecord.self, from: """
+            {"id": "a-\(jobID)", "job_id": "\(jobID)", "employer_profile_id": "e",
+             "candidate_profile_id": "me", "status": "submitted", "job_title": "t",
+             "company_name": "c", "application_email": "x@y.z", "candidate_name": "n",
+             "candidate_previous_employers": [], "email_delivery_status": "sent",
+             "applied_at": "\(iso)"}
+            """.data(using: .utf8)!)
+        }
+
+        // Saved order (newest first): j3, j2, j1, j4. Applied: j3 (older
+        // application) and j1 (newer application). Expect: unapplied j2, j4
+        // by save recency, then applied j1, j3 by application recency.
+        let jobs = Dictionary(uniqueKeysWithValues: try ["j1", "j2", "j3", "j4"].map { ($0, try job($0)) })
+        let records = [
+            saved("j3", at: "2026-07-20T10:00:00Z"),
+            saved("j2", at: "2026-07-18T10:00:00Z"),
+            saved("j1", at: "2026-07-15T10:00:00Z"),
+            saved("j4", at: "2026-07-10T10:00:00Z"),
+        ]
+        let applications = [
+            try application("j3", at: "2026-07-21T09:00:00Z"),
+            try application("j1", at: "2026-07-22T09:00:00Z"),
+        ]
+        let ordered = SavedJobsOrdering.ordered(records: records, applications: applications, jobs: jobs)
+        XCTAssertEqual(ordered.map(\.id), ["j2", "j4", "j1", "j3"])
+
+        // A saved job missing from the lookup is dropped, not crashed on.
+        let partial = SavedJobsOrdering.ordered(
+            records: records, applications: [],
+            jobs: jobs.filter { $0.key != "j2" }
+        )
+        XCTAssertEqual(partial.map(\.id), ["j3", "j1", "j4"])
     }
 
     func testFounderFatigueBuckets() throws {

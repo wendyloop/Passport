@@ -144,7 +144,7 @@ struct JobSeekerHomeView: View {
             let payMatches = selectedPayFilter.matches(job)
             let experienceMatches = selectedExperienceFilter.matches(job)
             let workModeMatches = selectedWorkModeFilter.matches(job)
-            let stageMatches = !founderReachableOnly || job.isEarlyStageStartup
+            let stageMatches = !founderReachableOnly || job.founderPitchAllowed
             // Carousel-backed rows (ATS + board) need at least one slide this
             // build can draw. No carousel yet (generate-carousel hasn't run) or
             // a carousel made entirely of unknown slide types → nothing to
@@ -657,8 +657,8 @@ struct JobSeekerHomeView: View {
                         filterPill(title: selectedWorkModeFilter.title)
                     }
 
-                    // F4: founder-reachable — early-stage startups only,
-                    // where a pitch lands with an actual founder.
+                    // F4: founder-reachable — jobs where the pitch button is
+                    // actually available (startup stage + contact on file).
                     Button {
                         founderReachableOnly.toggle()
                     } label: {

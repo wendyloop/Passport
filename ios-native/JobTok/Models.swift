@@ -281,6 +281,9 @@ struct CompanyRef: Codable, Equatable {
     // Funding/size stage ("seed" … "1000+ employees") — drives big-co feed
     // demotion and founder-pitch gating (F8).
     let stage: String?
+    // True when a usable founder contact exists server-side (M-A gating).
+    // Optional so older cached payloads without the column still decode.
+    let founderContactable: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -288,6 +291,7 @@ struct CompanyRef: Codable, Equatable {
         case domain
         case logoUrl = "logo_url"
         case stage
+        case founderContactable = "founder_contactable"
     }
 }
 

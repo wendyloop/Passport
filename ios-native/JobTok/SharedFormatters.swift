@@ -26,11 +26,12 @@ extension JobPostingRecord {
         return Self.bigCompanyStages.contains(stage)
     }
 
-    /// The founder-pitch path only makes sense where an email plausibly
-    /// reaches a founder. Backend contact data is untouched — this only
-    /// gates the button.
+    /// The founder-pitch path only makes sense where an email actually
+    /// reaches a founder: startup stage AND a usable contact on file
+    /// (companies.founder_contactable, maintained server-side — M-A).
+    /// Contact details themselves never reach the client.
     var founderPitchAllowed: Bool {
-        companyID != nil && !isBigCompany
+        companyID != nil && !isBigCompany && (company?.founderContactable ?? false)
     }
 
     /// F4: true early-stage startups (pre-seed → series B + tiny headcount
@@ -66,6 +67,31 @@ extension JobPostingRecord {
             return SharedFormatters.compensation(min: compensationMinHourly, max: compensationMaxHourly, suffix: "/hr")
         }
         return nil
+    }
+}
+
+/// Saved-tab ordering: most-recently-saved jobs the candidate has NOT
+/// applied to first, then applied ones by application recency. Pure so the
+/// XCTest suite can table-test it.
+enum SavedJobsOrdering {
+    static func ordered(
+        records: [SavedJobRecord],
+        applications: [JobApplicationRecord],
+        jobs: [String: JobPostingRecord]
+    ) -> [JobPostingRecord] {
+        let appliedAt = Dictionary(
+            applications.map { ($0.jobID, $0.appliedAt) },
+            uniquingKeysWith: max
+        )
+        let resolved = records
+            .sorted { $0.createdAt > $1.createdAt }
+            .compactMap { record in jobs[record.jobID].map { (record: record, job: $0) } }
+        let unapplied = resolved.filter { appliedAt[$0.record.jobID] == nil }.map(\.job)
+        let applied = resolved
+            .filter { appliedAt[$0.record.jobID] != nil }
+            .sorted { (appliedAt[$0.record.jobID] ?? .distantPast) > (appliedAt[$1.record.jobID] ?? .distantPast) }
+            .map(\.job)
+        return unapplied + applied
     }
 }
 

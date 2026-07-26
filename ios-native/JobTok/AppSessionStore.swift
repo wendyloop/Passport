@@ -146,9 +146,19 @@ final class AppSessionStore: ObservableObject {
         Set(savedJobRecords.map(\.jobID))
     }
 
+    /// Saved jobs that fell out of the 200+200 feed window, resolved by ID in
+    /// refreshJobSeekerData so bookmarks never silently vanish from the
+    /// Saved tab.
+    @Published var savedJobsOutsideFeed: [String: JobPostingRecord] = [:]
+
     var savedJobs: [JobPostingRecord] {
-        let jobLookup = Dictionary(uniqueKeysWithValues: jobFeed.map { ($0.id, $0) })
-        return savedJobRecords.compactMap { jobLookup[$0.jobID] }
+        var jobLookup = Dictionary(uniqueKeysWithValues: jobFeed.map { ($0.id, $0) })
+        jobLookup.merge(savedJobsOutsideFeed) { feedRow, _ in feedRow }
+        return SavedJobsOrdering.ordered(
+            records: savedJobRecords,
+            applications: candidateApplications,
+            jobs: jobLookup
+        )
     }
 
     func bootstrap() async {
@@ -833,6 +843,17 @@ final class AppSessionStore: ObservableObject {
         jobFeed = try await service.fetchJobs(publishedOnly: true, filters: feedFilters, session: session)
         savedJobRecords = try await candidate.fetchSavedJobs(userID: userID, session: session)
         candidateApplications = try await service.fetchJobApplications(candidateID: userID, session: session)
+
+        // Resolve saved jobs the feed window didn't return, so the Saved tab
+        // shows every bookmark (older saves used to silently disappear).
+        let feedIDs = Set(jobFeed.map(\.id))
+        let missingSavedIDs = savedJobRecords.map(\.jobID).filter { !feedIDs.contains($0) }
+        if missingSavedIDs.isEmpty {
+            savedJobsOutsideFeed = [:]
+        } else {
+            let resolved = try await service.fetchJobs(ids: missingSavedIDs, session: session)
+            savedJobsOutsideFeed = Dictionary(uniqueKeysWithValues: resolved.map { ($0.id, $0) })
+        }
 
         // F6 For-You v0: re-rank with the user's function affinity (from
         // saves + applications) now that both are loaded. feedRank keeps the

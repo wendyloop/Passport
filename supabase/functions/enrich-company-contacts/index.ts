@@ -31,7 +31,7 @@ import {
 
 const RUN_BUDGET_MS = 50_000;
 // Each company costs 1-3 page fetches (10s timeout each) + one LLM call.
-const MAX_COMPANIES_PER_RUN = 15;
+const MAX_COMPANIES_PER_RUN = 50;
 const PAGE_FETCH_TIMEOUT_MS = 10_000;
 const MAX_TEAM_PAGES = 2;
 const MAX_PROMPT_CHARS = 15_000;
