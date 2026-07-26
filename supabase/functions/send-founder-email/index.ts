@@ -1,8 +1,9 @@
 // Candidate → founder direct email, the secondary apply path.
 //
 // One function, two modes:
-//   preview — resolves eligibility (video gate, contact availability, weekly
-//             quota) and returns a masked recipient for the compose sheet.
+//   preview — resolves eligibility (video gate, resume gate, contact
+//             availability, weekly quota) and returns a masked recipient for
+//             the compose sheet.
 //   send    — re-validates everything, reserves quota atomically via the
 //             reserve_founder_email_send RPC (advisory lock — never
 //             check-then-insert here), sends via Resend with reply-to set to
@@ -15,6 +16,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { escapeHtml, sendEmail } from "../_shared/email.ts";
+import { founderProfileGateReason } from "../_shared/founder_eligibility.ts";
 
 const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
   "scout22 <intro@tryscout22.com>";
@@ -81,25 +83,42 @@ Deno.serve(async (request) => {
       { data: profile, error: profileError },
       { data: seekerProfile, error: seekerError },
       { data: job, error: jobError },
+      { count: resumeCount, error: resumeError },
+      requireResume,
     ] = await Promise.all([
       admin.from("profiles").select("id, role, full_name, email").eq("id", user.id).single(),
       admin.from("job_seeker_profiles").select("profile_id, intro_video_url").eq("profile_id", user.id).maybeSingle(),
       admin.from("jobs").select("id, company_id, title, company_name, is_active").eq("id", jobId).single(),
+      admin.from("resume_uploads").select("id", { count: "exact", head: true })
+        .eq("profile_id", user.id).neq("parse_status", "failed"),
+      configFlag(admin, "founder_email_require_resume", true),
     ]);
 
     if (profileError || !profile) return jsonError("Profile not found", 404);
     if (seekerError) return jsonError(seekerError.message);
     if (jobError || !job) return jsonError("Job not found", 404);
+    if (resumeError) return jsonError(resumeError.message);
     if (profile.role !== "job_seeker") return jsonError("Only job seekers can email founders", 403);
     if (!job.company_id) return jsonError("This job has no linked company", 422);
 
-    // Video gate — the whole point is candidates on video.
+    // Profile gates — video first (the whole point is candidates on video),
+    // then resume (M-B; config kill-switch founder_email_require_resume).
     const pitchVideoURL = seekerProfile?.intro_video_url?.trim() || null;
-    if (!pitchVideoURL) {
+    const gateReason = founderProfileGateReason({
+      hasPitchVideo: Boolean(pitchVideoURL),
+      hasResume: (resumeCount ?? 0) > 0,
+      requireResume,
+    });
+    if (gateReason) {
       if (mode === "preview") {
-        return jsonResponse(ineligible("pitch_video_required"));
+        return jsonResponse(ineligible(gateReason));
       }
-      return jsonError("A pitch video is required before emailing founders", 422);
+      return jsonError(
+        gateReason === "pitch_video_required"
+          ? "A pitch video is required before emailing founders"
+          : "An uploaded resume is required before emailing founders",
+        422,
+      );
     }
 
     // T9: per-company weekly cap — checked before per-candidate quota so the
@@ -266,6 +285,20 @@ Deno.serve(async (request) => {
 
 function ineligible(reason: string) {
   return { eligible: false, reason, contact: null, remaining: 0, limit: 0, subjectPreview: null };
+}
+
+async function configFlag(
+  admin: ReturnType<typeof createAdminClient>,
+  key: string,
+  fallback: boolean,
+): Promise<boolean> {
+  const { data } = await admin
+    .from("app_config")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+  if (data?.value == null) return fallback;
+  return String(data.value).toLowerCase() !== "false";
 }
 
 async function weeklyLimit(admin: ReturnType<typeof createAdminClient>): Promise<number> {

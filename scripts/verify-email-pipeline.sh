@@ -184,6 +184,37 @@ require() { # label expected actual
   if [ "$2" = "$3" ]; then note "PASS: $1"; else note "FAIL: $1 (expected [$2], got [$3])"; FAILED=1; fi
 }
 
+echo "--- founder email: resume gate (M-B) ---"
+R=$(fn send-founder-email "{\"jobId\":\"$JOB_ID\",\"mode\":\"preview\"}")
+case "$(body_of "$R")" in
+  *'"reason":"resume_required"'*) note "PASS: preview blocks on missing resume (M-B gate)";;
+  *) note "FAIL: expected resume_required without a resume, got: $(body_of "$R" | head -c 200)"; FAILED=1;;
+esac
+
+echo "--- resume fixture (also unblocks the founder gate) ---"
+printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\nxref\n0 4\ntrailer<</Size 4/Root 1 0 R>>\n%%%%EOF\n' > /tmp/zztest-resume.$$.pdf
+RES_PATH="$CAND_ID/zztest-resume.pdf"
+UP=$(curl -s -w '\n%{http_code}' -X POST "$SUPA_URL/storage/v1/object/resumes/$RES_PATH" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/pdf" --data-binary @/tmp/zztest-resume.$$.pdf)
+rm -f /tmp/zztest-resume.$$.pdf
+require "resume storage upload 200" "200" "$(code_of "$UP")"
+RU=$(curl -s -w '\n%{http_code}' -X POST "$SUPA_URL/rest/v1/resume_uploads" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" -H "Prefer: return=representation" \
+  -d "{\"profile_id\":\"$CAND_ID\",\"file_path\":\"$RES_PATH\"}")
+require "resume_uploads insert 201" "201" "$(code_of "$RU")"
+RESUME_ID=$(body_of "$RU" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)[0]["id"])
+except Exception: print("")')
+if [ -n "$RESUME_ID" ]; then
+  PR=$(fn parse-resume "{\"resumeId\":\"$RESUME_ID\",\"rawText\":\"Scout Test Candidate. UC Berkeley BS CS 2026. SWE intern at Stripe summer 2025 working on payments infrastructure in Go. Skills: Swift, Go, Python, SQL.\"}")
+  echo "parse-resume HTTP $(code_of "$PR"): $(body_of "$PR" | head -c 300)"
+  require "parse-resume HTTP 200" "200" "$(code_of "$PR")"
+else
+  note "FAIL: no resume id returned"; FAILED=1
+fi
+
 echo "--- founder email: preview ---"
 R=$(fn send-founder-email "{\"jobId\":\"$JOB_ID\",\"mode\":\"preview\"}")
 require "preview HTTP 200" "200" "$(code_of "$R")"
@@ -209,30 +240,6 @@ case "$FOUNDER_ROW" in
   *'"delivery_status": "sent"'*) note "PASS: founder email SENT via Resend (tryscout22 path works)";;
   *) note "FAIL: founder email not sent — see delivery_error above"; FAILED=1;;
 esac
-
-echo "--- application email: resume fixture ---"
-printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\nxref\n0 4\ntrailer<</Size 4/Root 1 0 R>>\n%%%%EOF\n' > /tmp/zztest-resume.$$.pdf
-RES_PATH="$CAND_ID/zztest-resume.pdf"
-UP=$(curl -s -w '\n%{http_code}' -X POST "$SUPA_URL/storage/v1/object/resumes/$RES_PATH" \
-  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/pdf" --data-binary @/tmp/zztest-resume.$$.pdf)
-rm -f /tmp/zztest-resume.$$.pdf
-require "resume storage upload 200" "200" "$(code_of "$UP")"
-RU=$(curl -s -w '\n%{http_code}' -X POST "$SUPA_URL/rest/v1/resume_uploads" \
-  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d "{\"profile_id\":\"$CAND_ID\",\"file_path\":\"$RES_PATH\"}")
-require "resume_uploads insert 201" "201" "$(code_of "$RU")"
-RESUME_ID=$(body_of "$RU" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)[0]["id"])
-except Exception: print("")')
-if [ -n "$RESUME_ID" ]; then
-  PR=$(fn parse-resume "{\"resumeId\":\"$RESUME_ID\",\"rawText\":\"Scout Test Candidate. UC Berkeley BS CS 2026. SWE intern at Stripe summer 2025 working on payments infrastructure in Go. Skills: Swift, Go, Python, SQL.\"}")
-  echo "parse-resume HTTP $(code_of "$PR"): $(body_of "$PR" | head -c 300)"
-  require "parse-resume HTTP 200" "200" "$(code_of "$PR")"
-else
-  note "FAIL: no resume id returned"; FAILED=1
-fi
 
 echo "--- application email: publish + apply (real email to $RECIPIENT) ---"
 run_sql >/dev/null <<SQL

@@ -9,6 +9,8 @@ struct FounderEmailSheet: View {
     let session: AuthSession
     /// Dismiss and route into the pitch-video studio.
     let onRecordPitch: () -> Void
+    /// Dismiss and route into the resume file importer (M-B resume gate).
+    let onAddResume: () -> Void
     /// Dismiss and fall back to the normal apply path.
     let onFallbackApply: () -> Void
 
@@ -21,6 +23,7 @@ struct FounderEmailSheet: View {
     enum Phase: Equatable {
         case loading
         case videoGate
+        case resumeGate
         case noContact
         case companyCapped
         case compose(FounderEmailPreview)
@@ -55,6 +58,9 @@ struct FounderEmailSheet: View {
 
         case .videoGate:
             gateView
+
+        case .resumeGate:
+            resumeGateView
 
         case .noContact:
             noContactView
@@ -94,6 +100,33 @@ struct FounderEmailSheet: View {
                 onRecordPitch()
             } label: {
                 Label("Record your pitch", systemImage: "video.badge.plus")
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .background(PassportTheme.accent)
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .padding(20)
+        .jobTokCard(cornerRadius: 28)
+        .padding(20)
+    }
+
+    private var resumeGateView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Founders check the resume too")
+                .font(.title2.weight(.black))
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Text("Your pitch email promises a resume alongside your video. Add yours once and it rides along with every founder intro you send.")
+                .foregroundStyle(PassportTheme.textSecondary)
+
+            Button {
+                dismiss()
+                onAddResume()
+            } label: {
+                Label("Add your resume", systemImage: "doc.badge.plus")
                     .font(.subheadline.weight(.bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -335,6 +368,8 @@ struct FounderEmailSheet: View {
             switch preview.reason {
             case "pitch_video_required":
                 phase = .videoGate
+            case "resume_required":
+                phase = .resumeGate
             case "no_contact":
                 phase = .noContact
             case "company_capped":

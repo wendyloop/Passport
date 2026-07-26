@@ -8,6 +8,7 @@ import { escapeHtml } from "./email.ts";
 import { firstNameOf, guessFounderEmail, normalizeDomain } from "./contacts.ts";
 import { buildPipelineRunRow } from "./pipeline_runs.ts";
 import { buildApplicationEmailContent } from "./application_email.ts";
+import { founderProfileGateReason } from "./founder_eligibility.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -165,3 +166,16 @@ Deno.test("forceGmailFrom handles bare addresses", () => {
   assertEquals(forceGmailFrom("", "w@gmail.com"), "w@gmail.com");
 });
 */
+
+Deno.test("founderProfileGateReason gate order and resume kill-switch", () => {
+  const gate = (hasPitchVideo: boolean, hasResume: boolean, requireResume: boolean) =>
+    founderProfileGateReason({ hasPitchVideo, hasResume, requireResume });
+  // Video gate always comes first.
+  assertEquals(gate(false, false, true), "pitch_video_required");
+  assertEquals(gate(false, true, true), "pitch_video_required");
+  // Resume gate only when the config flag requires it.
+  assertEquals(gate(true, false, true), "resume_required");
+  assertEquals(gate(true, false, false), null);
+  // Fully equipped candidate passes.
+  assertEquals(gate(true, true, true), null);
+});

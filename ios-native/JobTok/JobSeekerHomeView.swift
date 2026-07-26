@@ -245,6 +245,7 @@ struct JobSeekerHomeView: View {
                     job: job,
                     session: session,
                     onRecordPitch: { showingVideoStudio = true },
+                    onAddResume: { showingResumeImporter = true },
                     onFallbackApply: { handleApplyTap(for: job) }
                 )
                 .presentationDetents([.large])
