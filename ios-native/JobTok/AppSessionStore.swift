@@ -592,6 +592,16 @@ final class AppSessionStore: ObservableObject {
         }
     }
 
+    func markOnboardingComplete() async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            let userID = try requireUserID()
+            try await service.setOnboardingComplete(userID: userID, session: session)
+            profile?.onboardingComplete = true
+            phase = .signedIn
+        }
+    }
+
     func setPrimaryCandidateVideo(videoID: String) async {
         await runBusyTask { [self] in
             let session = try await requireSession()
@@ -869,7 +879,10 @@ final class AppSessionStore: ObservableObject {
                 try await refreshJobSeekerData()
                 // try await refreshAdminData()
             }
-            phase = .signedIn
+            // M-D: first-run onboarding for accounts that haven't finished
+            // it (pre-existing users were grandfathered complete by
+            // migration 20260726150000).
+            phase = profile?.onboardingComplete == false ? .onboarding : .signedIn
         } else if profile != nil {
             try await refreshJobSeekerData()
             phase = .signedIn

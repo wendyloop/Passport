@@ -49,6 +49,16 @@ final class SupabaseService {
         )
     }
 
+    func setOnboardingComplete(userID: String, session: AuthSession) async throws {
+        let body: [String: AnyEncodable] = ["onboarding_complete": AnyEncodable(true)]
+        _ = try await transport.patchSingle(
+            path: "profiles",
+            query: [("id", "eq.\(userID)")],
+            body: body,
+            session: session
+        ) as EmptyPayload
+    }
+
     func upsertProfile(
         userID: String,
         email: String?,

@@ -97,7 +97,7 @@ struct NativeRootView: View {
         case .signedOut:
             authView
         case .onboarding:
-            signedInView
+            OnboardingFlowView(store: store)
         case .signedIn:
             signedInView
         }
