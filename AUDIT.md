@@ -333,6 +333,16 @@ employers, resume, notifications one at a time before role data even starts.
 and P0-3 — both verified live/at build. Fix session 2026-07-13 resolved P0-1
 and P1-9. **All P0s are closed.**)
 
+## Addendum — 2026-07-26 session finds (found + fixed same day)
+
+- **Saved tab silently dropped bookmarks** outside the 200+200 feed window
+  (`AppSessionStore.savedJobs` resolved against `jobFeed` only). Fixed:
+  chunked `id=in.()` fetch for missing saved jobs + `SavedJobsOrdering`
+  (unapplied by save recency, then applied by application recency).
+- **Founder button dead-ended on ~82% of jobs** (no contact-existence
+  signal client-side). Fixed via `companies.founder_contactable` — see
+  DB_AUDIT addendum and migration `20260726120000`.
+
 ## Recommended order
 
 1. ~~**P0-3**~~ RESOLVED · ~~**P0-2**~~ RESOLVED

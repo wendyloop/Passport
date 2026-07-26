@@ -976,6 +976,28 @@ select status, count(*) from net._http_response group by status;
 | P1       | 2    | 7        |
 | P2       | 10   | 0        |
 
+## Live-ops addendum — 2026-07-26
+
+Email-pipeline live verification (`scripts/verify-email-pipeline.sh`, new)
+proved every mechanical piece works — founder preview/gates/quota
+reservation/outreach recording, resume upload + parse, apply flow + row
+recording — and isolated two credential problems no static audit could see:
+
+- **RESEND_API_KEY is invalid** (Resend 401 "API key is invalid" on both
+  send paths; recorded verbatim in `delivery_error`/`email_delivery_error`).
+  Explains why email "never worked": 0 sends had ever been attempted, and
+  the first attempts fail at auth. Needs a fresh key from the Resend
+  dashboard.
+- **RESEND_WEBHOOK_SECRET was never set** — resend-webhook fails closed, so
+  delivery/bounce/complaint tracking and guessed→verified promotion are dead
+  until the webhook endpoint is created and its signing secret set.
+
+Same session: 109 stale `reel` rows + the "Trial" employer post (and its two
+`job-videos` objects) deleted after in-transaction dependent checks;
+`JOBTOK_FROM_EMAIL` re-pointed at `applications@tryscout22.com` (jobtok.app
+retired); `companies.founder_contactable` added (trigger-maintained,
+REST-relevant — see migration `20260726120000`).
+
 ## Recommended order
 
 1. ~~**DB-P0-1**~~ done 2026-07-12 — one revoke statement; anon-key feed injection is live now.

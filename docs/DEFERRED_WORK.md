@@ -101,6 +101,25 @@ shouldn't be rushed at the tail of a long one):
 
 ---
 
+## 2026-07-26 roadmap (email trust + profile + matching)
+
+Full plan (findings, schema sketches, test playbook):
+`~/.claude/plans/just-plan-and-organize-resilient-beacon.md`. Sequenced
+M-A → M-B → P → M-C → M-D → M-E → M-F.
+
+| ID | Item | Status |
+|---|---|---|
+| M-A | Founder button gates on `companies.founder_contactable` (trigger-maintained); Saved tab fetches bookmarks by id + orders unapplied-by-saved-recency then applied-by-applied-recency; contact scrape 15→50/day | ✅ shipped 2026-07-26 |
+| M-B | Resume gate on founder email (`founder_email_require_resume` app_config kill-switch) | ✅ shipped 2026-07-26 |
+| — | Resend credentials: **RESEND_API_KEY invalid, RESEND_WEBHOOK_SECRET missing** — needs new key + webhook from the Resend dashboard, then `scripts/verify-email-pipeline.sh` re-run | ⛔ blocked on dashboard |
+| P | Profile redesign: TikTok shape (video grid) + LinkedIn substance auto-filled from `resume_uploads.parsed_json`; HTML mock delivered 2026-07-26 | awaiting mock feedback |
+| M-C | Multi-video + captions (`candidate_videos.caption`/`is_primary`, set/delete RPCs, video picker in apply + founder sheets) | planned |
+| M-D | Onboarding: wire dormant `.onboarding` phase + `completeOnboarding`; role → basics → resume (skippable) → video (skippable); grandfather migration first | planned |
+| M-E | Matching foundations: `job_embeddings` + `candidate_resume_embeddings` (separate service-role-only tables — vectors must NOT go on client-fetched tables), `embed-jobs` cron (needs config.toml verify_jwt entry) | planned |
+| M-F | ≥50% match gate (`founder_email_require_match`, calibrate floor/ceiling first, fail open on missing embeddings) + fit-bucket tier in `feedRank` | planned, after M-E drains |
+
+---
+
 ## ⚠ Open questions (only F10's remain)
 
 | Item | Question |
