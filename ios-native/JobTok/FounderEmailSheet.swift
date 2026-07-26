@@ -27,6 +27,7 @@ struct FounderEmailSheet: View {
         case loading
         case videoGate
         case resumeGate
+        case lowMatch(Int?)
         case noContact
         case companyCapped
         case compose(FounderEmailPreview)
@@ -64,6 +65,9 @@ struct FounderEmailSheet: View {
 
         case .resumeGate:
             resumeGateView
+
+        case .lowMatch(let score):
+            lowMatchView(score: score)
 
         case .noContact:
             noContactView
@@ -143,6 +147,34 @@ struct FounderEmailSheet: View {
                 onAddResume()
             } label: {
                 Label("Add your resume", systemImage: "doc.badge.plus")
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .background(PassportTheme.accent)
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .padding(20)
+        .jobTokCard(cornerRadius: 28)
+        .padding(20)
+    }
+
+    private func lowMatchView(score: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Not a match yet")
+                .font(.title2.weight(.black))
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Text(score.map { "Your resume matches this role at \($0)% — founder pitches unlock at 50%. Apply normally, or strengthen your resume with more relevant experience and skills." }
+                ?? "Your resume isn't a strong match for this role yet. Apply normally, or strengthen your resume first.")
+                .foregroundStyle(PassportTheme.textSecondary)
+
+            Button {
+                dismiss()
+                onFallbackApply()
+            } label: {
+                Text("Apply instead")
                     .font(.subheadline.weight(.bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -408,6 +440,8 @@ struct FounderEmailSheet: View {
                 phase = .videoGate
             case "resume_required":
                 phase = .resumeGate
+            case "low_match":
+                phase = .lowMatch(preview.matchScore)
             case "no_contact":
                 phase = .noContact
             case "company_capped":

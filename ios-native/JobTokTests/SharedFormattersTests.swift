@@ -111,6 +111,37 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertEqual(ProfileStrength.score(for: draft), 78)
     }
 
+    func testMatchFitBuckets() {
+        XCTAssertEqual(MatchFit.bucket(for: nil), 2)
+        XCTAssertEqual(MatchFit.bucket(for: 100), 0)
+        XCTAssertEqual(MatchFit.bucket(for: 70), 0)
+        XCTAssertEqual(MatchFit.bucket(for: 69), 1)
+        XCTAssertEqual(MatchFit.bucket(for: 50), 1)
+        XCTAssertEqual(MatchFit.bucket(for: 49), 2)
+        XCTAssertEqual(MatchFit.bucket(for: 0), 2)
+    }
+
+    func testFeedRankFitBucketOrdersAheadOfAffinityAndComp() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func job(_ id: String, comp: Bool) throws -> JobPostingRecord {
+            let compJSON = comp ? "120000" : "null"
+            return try decoder.decode(JobPostingRecord.self, from: """
+            {"id": "\(id)", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z",
+             "compensation_min_annual": \(compJSON)}
+            """.data(using: .utf8)!)
+        }
+        let now = Date()
+        // Great fit without comp beats neutral fit with comp.
+        let greatFitNoComp = try job("a", comp: false).feedRank(now: now, affinity: [], fitBucket: 0)
+        let neutralFitComp = try job("b", comp: true).feedRank(now: now, affinity: [], fitBucket: 2)
+        XCTAssertTrue(greatFitNoComp < neutralFitComp)
+        // Default fitBucket is neutral — ranking identical to the old tuple.
+        let defaulted = try job("c", comp: true).feedRank(now: now, affinity: [])
+        XCTAssertEqual(defaulted.2, 2)
+    }
+
     func testSavedJobsOrdering() throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

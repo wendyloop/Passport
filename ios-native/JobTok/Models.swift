@@ -1130,11 +1130,38 @@ struct FounderContactPreview: Codable, Equatable {
 
 struct FounderEmailPreview: Codable, Equatable {
     let eligible: Bool
-    let reason: String?          // "pitch_video_required" | "no_contact" | "weekly_limit_reached"
+    let reason: String?          // "pitch_video_required" | "resume_required" | "no_contact" | "weekly_limit_reached" | "low_match" | "company_capped"
     let contact: FounderContactPreview?
     let remaining: Int
     let limit: Int
     let subjectPreview: String?
+    // M-F: resume↔job fit (0-100) when the match gate is on and embeddings
+    // exist; nil otherwise.
+    let matchScore: Int?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        eligible = try c.decode(Bool.self, forKey: .eligible)
+        reason = try c.decodeIfPresent(String.self, forKey: .reason)
+        contact = try c.decodeIfPresent(FounderContactPreview.self, forKey: .contact)
+        remaining = try c.decodeIfPresent(Int.self, forKey: .remaining) ?? 0
+        limit = try c.decodeIfPresent(Int.self, forKey: .limit) ?? 0
+        subjectPreview = try c.decodeIfPresent(String.self, forKey: .subjectPreview)
+        matchScore = try c.decodeIfPresent(Int.self, forKey: .matchScore)
+    }
+}
+
+// Row shape of the job_match_scores RPC (M-F).
+struct JobMatchScoreRecord: Codable, Equatable {
+    let jobID: String
+    let score: Int
+    let quality: String
+
+    enum CodingKeys: String, CodingKey {
+        case jobID = "job_id"
+        case score
+        case quality
+    }
 }
 
 struct FounderOutreachRecord: Codable, Equatable {

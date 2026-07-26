@@ -326,6 +326,17 @@ final class CandidateService {
         return envelope.match
     }
 
+    // MARK: - Matching (M-F)
+
+    func fetchJobMatchScores(jobIDs: [String], session: AuthSession) async throws -> [JobMatchScoreRecord] {
+        guard !jobIDs.isEmpty else { return [] }
+        return try await transport.rpc(
+            function: "job_match_scores",
+            parameters: ["p_job_ids": AnyEncodable(Array(jobIDs.prefix(500)))],
+            session: session
+        )
+    }
+
     // MARK: - Founder email
 
     func previewFounderEmail(jobID: String, session: AuthSession) async throws -> FounderEmailPreview {

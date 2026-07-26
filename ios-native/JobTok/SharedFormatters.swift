@@ -47,12 +47,14 @@ extension JobPostingRecord {
 
     /// The one place feed ranking lives. Tiers, most important first:
     /// founder-fatigue (FIRST-100-USERS) → big-co demotion (F8) →
-    /// function-affinity from saves/applies (F6, empty set = neutral) →
-    /// salary-listed-first (F3). Ascending sort; freshness breaks ties.
-    func feedRank(now: Date, affinity: Set<JobFunctionOption>) -> (Int, Int, Int, Int) {
+    /// resume-fit bucket (M-F, 2 = neutral/no resume) → function-affinity
+    /// from saves/applies (F6, empty set = neutral) → salary-listed-first
+    /// (F3). Ascending sort; freshness breaks ties.
+    func feedRank(now: Date, affinity: Set<JobFunctionOption>, fitBucket: Int = 2) -> (Int, Int, Int, Int, Int) {
         (
             founderFatigueBucket(now: now),
             isBigCompany ? 1 : 0,
+            fitBucket,
             affinity.isEmpty || (jobFunction.map { affinity.contains($0) } ?? false) ? 0 : 1,
             compensationSummary == nil ? 1 : 0
         )
@@ -102,6 +104,18 @@ enum ProfileStrength {
 
     static func missing(for draft: CandidateProfileDraft) -> [Component] {
         components(for: draft).filter { !$0.isComplete }
+    }
+}
+
+/// M-F: resume-fit tier for feedRank. Scores come from the
+/// job_match_scores RPC; no score (no resume, embedding pending) is
+/// neutral, so the feed is unchanged until a resume exists.
+enum MatchFit {
+    static func bucket(for score: Int?) -> Int {
+        guard let score else { return 2 }
+        if score >= 70 { return 0 }
+        if score >= 50 { return 1 }
+        return 2
     }
 }
 

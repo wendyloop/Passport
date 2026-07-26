@@ -27,6 +27,7 @@ final class AppSessionStore: ObservableObject {
     @Published private(set) var jobSeekerEmployers: [JobSeekerEmployerRecord] = []
     @Published private(set) var latestResume: ResumeUploadRecord?
     @Published private(set) var candidateVideos: [CandidateVideoRecord] = []
+    @Published private(set) var jobMatchScores: [String: Int] = [:]
     @Published private(set) var notifications: [NotificationRecord] = []
     @Published private(set) var jobFeed: [JobPostingRecord] = []
     // Current server-side feed filters; refreshJobSeekerData re-applies them
@@ -909,19 +910,28 @@ final class AppSessionStore: ObservableObject {
             savedJobsOutsideFeed = Dictionary(uniqueKeysWithValues: resolved.map { ($0.id, $0) })
         }
 
-        // F6 For-You v0: re-rank with the user's function affinity (from
-        // saves + applications) now that both are loaded. feedRank keeps the
-        // other tiers stable; affinity slots between big-co and comp.
+        // M-F: resume-fit scores for the visible feed (fail-open — a scoring
+        // hiccup must never break the feed; no resume = no scores = neutral).
+        var matchScores: [String: Int] = [:]
+        if latestResume != nil, !jobFeed.isEmpty {
+            let scores = (try? await candidate.fetchJobMatchScores(jobIDs: jobFeed.map(\.id), session: session)) ?? []
+            matchScores = Dictionary(uniqueKeysWithValues: scores.map { ($0.jobID, $0.score) })
+        }
+        jobMatchScores = matchScores
+
+        // F6 For-You v0 + M-F: re-rank with the user's function affinity
+        // (from saves + applications) and resume-fit buckets now that all
+        // three are loaded. feedRank keeps the other tiers stable.
         let savedIDs = savedJobIDs
         var affinity = Set(jobFeed.filter { savedIDs.contains($0.id) }.compactMap(\.jobFunction))
         affinity.formUnion(candidateApplications.compactMap { application in
             jobFeed.first { $0.id == application.jobID }?.jobFunction
         })
-        if !affinity.isEmpty {
+        if !affinity.isEmpty || !matchScores.isEmpty {
             let now = Date()
             jobFeed = jobFeed.sorted { a, b in
-                let ra = a.feedRank(now: now, affinity: affinity)
-                let rb = b.feedRank(now: now, affinity: affinity)
+                let ra = a.feedRank(now: now, affinity: affinity, fitBucket: MatchFit.bucket(for: matchScores[a.id]))
+                let rb = b.feedRank(now: now, affinity: affinity, fitBucket: MatchFit.bucket(for: matchScores[b.id]))
                 if ra != rb { return ra < rb }
                 return a.createdAt > b.createdAt
             }

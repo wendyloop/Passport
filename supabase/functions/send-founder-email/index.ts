@@ -140,6 +140,31 @@ Deno.serve(async (request) => {
       );
     }
 
+    // M-F: resume↔job match gate, behind founder_email_require_match
+    // (default off until floor/ceiling are calibrated). Fail open on missing
+    // embeddings (backfill gap) and on title-only job embeddings — a coarse
+    // vector must never block a pitch.
+    let matchScore: number | null = null;
+    const requireMatch = await configFlag(admin, "founder_email_require_match", false);
+    if (requireMatch) {
+      const { data: matchRows, error: matchError } = await admin.rpc("founder_match_score", {
+        p_candidate: user.id,
+        p_job: job.id,
+      });
+      if (matchError) return jsonError(matchError.message);
+      const match = (matchRows as Array<{ score: number; quality: string }> | null)?.[0] ?? null;
+      if (match && match.quality === "full") {
+        matchScore = match.score;
+        const minMatch = await configNumber(admin, "founder_email_min_match", 50);
+        if (match.score < minMatch) {
+          if (mode === "preview") {
+            return jsonResponse({ ...ineligible("low_match"), matchScore: match.score });
+          }
+          return jsonError("This role isn't a strong match for your resume yet", 422);
+        }
+      }
+    }
+
     // T9: per-company weekly cap — checked before per-candidate quota so the
     // preview can surface the right reason.
     const { count: companySends, error: companyCapError } = await admin
@@ -185,6 +210,7 @@ Deno.serve(async (request) => {
       return jsonResponse({
         eligible: remaining > 0,
         reason: remaining > 0 ? null : "weekly_limit_reached",
+        matchScore,
         contact: {
           id: contact.id,
           fullName: contact.full_name,
@@ -304,6 +330,20 @@ Deno.serve(async (request) => {
 
 function ineligible(reason: string) {
   return { eligible: false, reason, contact: null, remaining: 0, limit: 0, subjectPreview: null };
+}
+
+async function configNumber(
+  admin: ReturnType<typeof createAdminClient>,
+  key: string,
+  fallback: number,
+): Promise<number> {
+  const { data } = await admin
+    .from("app_config")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+  const parsed = Number(data?.value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 async function configFlag(
