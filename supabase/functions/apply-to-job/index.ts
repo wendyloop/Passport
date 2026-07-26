@@ -202,6 +202,23 @@ Deno.serve(async (request) => {
     const resolvedLinkedInURL = candidateProfile?.linkedin_url ?? socialPayload.linkedInURL;
     const resolvedInstagramUsername = candidateProfile?.instagram_username ?? socialPayload.instagramUsername;
     const resolvedTiktokUsername = candidateProfile?.tiktok_username ?? socialPayload.tiktokUsername;
+    // M-C: candidates can pick which of their videos rides along — but only
+    // one they actually own (the client sends a bare URL).
+    if (selectedVideoURL && selectedVideoURL !== candidateProfile?.intro_video_url) {
+      const { count: ownedCount, error: ownedError } = await admin
+        .from("candidate_videos")
+        .select("id", { count: "exact", head: true })
+        .eq("profile_id", user.id)
+        .eq("video_url", selectedVideoURL);
+      if (ownedError) throw ownedError;
+      if ((ownedCount ?? 0) === 0) {
+        return new Response(JSON.stringify({ error: "Selected video does not belong to this account" }), {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const resolvedVideoURL = selectedVideoURL ?? candidateProfile?.intro_video_url ?? null;
 
     if (socialPayload.linkedInURL || socialPayload.instagramUsername || socialPayload.tiktokUsername) {

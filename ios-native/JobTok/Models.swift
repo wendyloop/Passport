@@ -255,6 +255,30 @@ struct ResumeUploadRecord: Codable, Identifiable {
     }
 }
 
+// One pitch video (M-C: candidates keep several, one primary; the primary
+// mirrors into job_seeker_profiles.intro_video_url server-side).
+struct CandidateVideoRecord: Codable, Identifiable, Equatable {
+    let id: String
+    let profileID: String
+    let videoURL: String
+    let posterURL: String?
+    let caption: String?
+    let isPrimary: Bool
+    let durationSeconds: Int?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case profileID = "profile_id"
+        case videoURL = "video_url"
+        case posterURL = "poster_url"
+        case caption
+        case isPrimary = "is_primary"
+        case durationSeconds = "duration_seconds"
+        case createdAt = "created_at"
+    }
+}
+
 // Structured slice of resume_uploads.parsed_json the profile UI renders.
 // Every field is optional-tolerant: the LLM returns "" for unknowns and the
 // blob's shape may evolve.

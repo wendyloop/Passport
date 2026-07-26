@@ -152,14 +152,54 @@ final class CandidateService {
 
     // MARK: - Video
 
-    func insertCandidateVideo(userID: String, publicURL: String, durationSeconds: Int?, session: AuthSession) async throws {
+    func insertCandidateVideo(userID: String, publicURL: String, durationSeconds: Int?, caption: String?, isPrimary: Bool, session: AuthSession) async throws {
         let body: [[String: AnyEncodable]] = [[
             "profile_id": AnyEncodable(userID),
             "video_url": AnyEncodable(publicURL),
-            "duration_seconds": AnyEncodable(durationSeconds)
+            "duration_seconds": AnyEncodable(durationSeconds),
+            "caption": AnyEncodable(caption),
+            "is_primary": AnyEncodable(isPrimary)
         ]]
 
         _ = try await transport.postgrestWrite(path: "candidate_videos", method: "POST", body: body, session: session) as EmptyPayload
+    }
+
+    func fetchCandidateVideos(userID: String, session: AuthSession) async throws -> [CandidateVideoRecord] {
+        try await transport.selectArray(
+            path: "candidate_videos",
+            query: [
+                ("profile_id", "eq.\(userID)"),
+                ("select", "*"),
+                ("order", "created_at.desc")
+            ],
+            session: session
+        )
+    }
+
+    func setPrimaryCandidateVideo(videoID: String, session: AuthSession) async throws {
+        _ = try await transport.rpc(
+            function: "set_primary_candidate_video",
+            parameters: ["p_video_id": AnyEncodable(videoID)],
+            session: session
+        ) as EmptyPayload
+    }
+
+    func deleteCandidateVideo(videoID: String, session: AuthSession) async throws {
+        _ = try await transport.rpc(
+            function: "delete_candidate_video",
+            parameters: ["p_video_id": AnyEncodable(videoID)],
+            session: session
+        ) as EmptyPayload
+    }
+
+    func updateCandidateVideoCaption(videoID: String, caption: String?, session: AuthSession) async throws {
+        let body: [String: AnyEncodable] = ["caption": AnyEncodable(caption)]
+        _ = try await transport.patchSingle(
+            path: "candidate_videos",
+            query: [("id", "eq.\(videoID)")],
+            body: body,
+            session: session
+        ) as EmptyPayload
     }
 
     // MARK: - Saved jobs
@@ -300,7 +340,7 @@ final class CandidateService {
         return try await transport.execute(request, decode: FounderEmailPreview.self)
     }
 
-    func sendFounderEmail(jobID: String, contactID: String?, note: String?, session: AuthSession) async throws -> FounderEmailSendResult {
+    func sendFounderEmail(jobID: String, contactID: String?, note: String?, videoURL: String? = nil, session: AuthSession) async throws -> FounderEmailSendResult {
         let request = try transport.makeFunctionRequest(
             name: "send-founder-email",
             accessToken: session.accessToken,
@@ -309,6 +349,7 @@ final class CandidateService {
                 "mode": AnyEncodable("send"),
                 "contactId": AnyEncodable(contactID),
                 "note": AnyEncodable(note?.isEmpty == true ? nil : note),
+                "videoUrl": AnyEncodable(videoURL),
             ]
         )
         return try await transport.execute(request, decode: FounderEmailSendResult.self)

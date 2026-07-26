@@ -11,6 +11,10 @@ struct JobSeekerHomeView: View {
     let savedJobs: [JobPostingRecord]
     let savedJobIDs: Set<String>
     let applications: [JobApplicationRecord]
+    let candidateVideos: [CandidateVideoRecord]
+    let onSetPrimaryVideo: (String) -> Void
+    let onDeleteVideo: (String) -> Void
+    let onUpdateVideoCaption: (String, String?) -> Void
     let session: AuthSession?
     // F10: job id arriving from a share deep link; the feed scrolls to it.
     let sharedJobID: String?
@@ -59,6 +63,9 @@ struct JobSeekerHomeView: View {
     @State private var selectedProfileTab: CandidateProfileTab = .video
     @State private var showingStrengthDetail = false
     @State private var showingProfileVideoPlayer = false
+    @State private var playerVideoURL: String?
+    @State private var captionEditingVideo: CandidateVideoRecord?
+    @State private var captionDraft = ""
     @State private var profileEditorTarget: CandidateProfileEditTarget?
     @State private var pendingVisibilityChange: CandidateVisibility?
 
@@ -68,6 +75,10 @@ struct JobSeekerHomeView: View {
         savedJobs: [JobPostingRecord],
         savedJobIDs: Set<String>,
         applications: [JobApplicationRecord],
+        candidateVideos: [CandidateVideoRecord] = [],
+        onSetPrimaryVideo: @escaping (String) -> Void = { _ in },
+        onDeleteVideo: @escaping (String) -> Void = { _ in },
+        onUpdateVideoCaption: @escaping (String, String?) -> Void = { _, _ in },
         session: AuthSession? = nil,
         sharedJobID: String? = nil,
         onConsumeSharedJob: @escaping () -> Void = {},
@@ -89,6 +100,10 @@ struct JobSeekerHomeView: View {
         self.savedJobs = savedJobs
         self.savedJobIDs = savedJobIDs
         self.applications = applications
+        self.candidateVideos = candidateVideos
+        self.onSetPrimaryVideo = onSetPrimaryVideo
+        self.onDeleteVideo = onDeleteVideo
+        self.onUpdateVideoCaption = onUpdateVideoCaption
         self.session = session
         self.sharedJobID = sharedJobID
         self.onConsumeSharedJob = onConsumeSharedJob
@@ -205,6 +220,7 @@ struct JobSeekerHomeView: View {
             ApplySheet(
                 job: job,
                 draft: $applicationDraft,
+                videos: candidateVideos,
                 onApply: {
                     onApply(applicationDraft)
                     applicationDraft = JobApplicationDraft()
@@ -246,6 +262,7 @@ struct JobSeekerHomeView: View {
                 FounderEmailSheet(
                     job: job,
                     session: session,
+                    videos: candidateVideos,
                     onRecordPitch: { showingVideoStudio = true },
                     onAddResume: { showingResumeImporter = true },
                     onFallbackApply: { handleApplyTap(for: job) }
@@ -539,7 +556,7 @@ struct JobSeekerHomeView: View {
                     Text(strengthDetailMessage)
                 }
                 .sheet(isPresented: $showingProfileVideoPlayer) {
-                    if let videoURL = workingProfile.introVideoURL {
+                    if let videoURL = playerVideoURL ?? workingProfile.introVideoURL {
                         RemoteVideoSurface(
                             urlString: videoURL,
                             isActive: true,
@@ -551,6 +568,22 @@ struct JobSeekerHomeView: View {
                         .background(Color.black)
                         .presentationDetents([.large])
                     }
+                }
+                .alert("Caption", isPresented: Binding(
+                    get: { captionEditingVideo != nil },
+                    set: { if !$0 { captionEditingVideo = nil } }
+                )) {
+                    TextField("Say what this video shows", text: $captionDraft)
+                    Button("Save") {
+                        if let video = captionEditingVideo {
+                            let trimmed = captionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            onUpdateVideoCaption(video.id, trimmed.isEmpty ? nil : String(trimmed.prefix(150)))
+                        }
+                        captionEditingVideo = nil
+                    }
+                    Button("Cancel", role: .cancel) { captionEditingVideo = nil }
+                } message: {
+                    Text("Shown on the video tile, like a TikTok caption.")
                 }
 
                 if showingSettingsDrawer {
@@ -878,12 +911,13 @@ struct JobSeekerHomeView: View {
         }
     }
 
-    // P redesign: full-bleed TikTok-style grid — 3 columns, 1pt seams,
-    // escaping the screen's 20pt content padding. One tile per video (a
-    // single video until multi-video ships) + a persistent "New video" tile.
+    // P redesign + M-C: full-bleed TikTok-style grid — 3 columns, 1pt
+    // seams, escaping the screen's 20pt content padding. One tile per video
+    // (long-press for primary/caption/delete) + a persistent "New video"
+    // tile. Falls back to the intro mirror if the list hasn't loaded.
     private var profileVideoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if workingProfile.introVideoURL == nil {
+            if candidateVideos.isEmpty && workingProfile.introVideoURL == nil {
                 Text("Your pitch video is the first thing employers see — it also unlocks direct founder intros. 1:00 max.")
                     .font(.footnote)
                     .foregroundStyle(PassportTheme.textSecondary)
@@ -891,32 +925,22 @@ struct JobSeekerHomeView: View {
             }
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 3), spacing: 1) {
-                if let videoURL = workingProfile.introVideoURL {
-                    Button {
-                        showingProfileVideoPlayer = true
-                    } label: {
-                        RemoteVideoSurface(
-                            urlString: videoURL,
-                            isActive: true,
-                            videoGravity: .resizeAspectFill,
-                            autoPlay: false,
-                            allowsTapToTogglePlayback: false,
-                            showsPlayOverlayWhenPaused: true
-                        )
-                        .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                        .clipped()
-                        .overlay(alignment: .topLeading) {
-                            Text("Primary")
-                                .font(.system(size: 10, weight: .bold))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(PassportTheme.accent)
-                                .foregroundStyle(.black)
-                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                .padding(6)
-                        }
+                if candidateVideos.isEmpty, let introURL = workingProfile.introVideoURL {
+                    videoTile(urlString: introURL, caption: nil, isPrimary: true)
+                } else {
+                    ForEach(candidateVideos) { video in
+                        videoTile(urlString: video.videoURL, caption: video.caption, isPrimary: video.isPrimary)
+                            .contextMenu {
+                                if !video.isPrimary {
+                                    Button("Set as primary") { onSetPrimaryVideo(video.id) }
+                                }
+                                Button("Edit caption") {
+                                    captionDraft = video.caption ?? ""
+                                    captionEditingVideo = video
+                                }
+                                Button("Delete video", role: .destructive) { onDeleteVideo(video.id) }
+                            }
                     }
-                    .buttonStyle(.plain)
                 }
 
                 Button {
@@ -938,6 +962,49 @@ struct JobSeekerHomeView: View {
             .background(PassportTheme.border.opacity(0.5))
             .padding(.horizontal, -20)
         }
+    }
+
+    private func videoTile(urlString: String, caption: String?, isPrimary: Bool) -> some View {
+        Button {
+            playerVideoURL = urlString
+            showingProfileVideoPlayer = true
+        } label: {
+            RemoteVideoSurface(
+                urlString: urlString,
+                isActive: true,
+                videoGravity: .resizeAspectFill,
+                autoPlay: false,
+                allowsTapToTogglePlayback: false,
+                showsPlayOverlayWhenPaused: true
+            )
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .clipped()
+            .overlay(alignment: .topLeading) {
+                if isPrimary {
+                    Text("Primary")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(PassportTheme.accent)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .padding(6)
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                if let caption, !caption.isEmpty {
+                    Text(caption)
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(PassportTheme.surface.opacity(0.94))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // P redesign About tab: the profile builds itself from the parsed
@@ -1888,8 +1955,22 @@ private struct JobFeedCard: View {
 private struct ApplySheet: View {
     let job: JobPostingRecord
     @Binding var draft: JobApplicationDraft
+    var videos: [CandidateVideoRecord] = []
     let onApply: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private func videoMenuTitle(_ video: CandidateVideoRecord) -> String {
+        let caption = video.caption?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = (caption?.isEmpty == false ? caption! : "Untitled video")
+        return video.isPrimary ? "\(base) · Primary" : base
+    }
+
+    private var selectedVideoTitle: String {
+        guard let selected = videos.first(where: { $0.videoURL == draft.pitchVideoURL }) else {
+            return "Primary video"
+        }
+        return videoMenuTitle(selected)
+    }
 
     private var canApply: Bool {
         draft.resumeFilePath != nil
@@ -1944,6 +2025,32 @@ private struct ApplySheet: View {
                         ))
                         .labelsHidden()
                         .disabled(draft.pitchVideoURL == nil)
+                    }
+
+                    // M-C: pick which video rides along when there's a choice.
+                    if draft.includePitchVideo, draft.pitchVideoURL != nil, videos.count > 1 {
+                        Menu {
+                            ForEach(videos) { video in
+                                Button(videoMenuTitle(video)) {
+                                    draft.pitchVideoURL = video.videoURL
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "video.fill")
+                                    .font(.caption)
+                                Text(selectedVideoTitle)
+                                    .font(.footnote.weight(.semibold))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(PassportTheme.surface)
+                            .clipShape(Capsule())
+                        }
                     }
                 }
                 .padding(16)

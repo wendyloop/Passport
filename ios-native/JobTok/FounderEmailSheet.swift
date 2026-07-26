@@ -7,6 +7,8 @@ import SwiftUI
 struct FounderEmailSheet: View {
     let job: JobPostingRecord
     let session: AuthSession
+    /// M-C: the candidate's videos, for picking which one to feature.
+    var videos: [CandidateVideoRecord] = []
     /// Dismiss and route into the pitch-video studio.
     let onRecordPitch: () -> Void
     /// Dismiss and route into the resume file importer (M-B resume gate).
@@ -17,6 +19,7 @@ struct FounderEmailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .loading
     @State private var note = ""
+    @State private var selectedVideoURL: String?
 
     private static let maxNoteChars = 400
 
@@ -82,6 +85,19 @@ struct FounderEmailSheet: View {
     private var isSending: Bool {
         if case .sending = phase { return true }
         return false
+    }
+
+    private func videoMenuTitle(_ video: CandidateVideoRecord) -> String {
+        let caption = video.caption?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = (caption?.isEmpty == false ? caption! : "Untitled video")
+        return video.isPrimary ? "\(base) · Primary" : base
+    }
+
+    private var selectedVideoTitle: String {
+        guard let selected = videos.first(where: { $0.videoURL == selectedVideoURL }) else {
+            return "Primary video"
+        }
+        return videoMenuTitle(selected)
     }
 
     // MARK: - States
@@ -206,6 +222,28 @@ struct FounderEmailSheet: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(PassportTheme.textPrimary)
                     Label("Your pitch video, front and center", systemImage: "video.fill")
+                    if videos.count > 1 {
+                        Menu {
+                            ForEach(videos) { video in
+                                Button(videoMenuTitle(video)) {
+                                    selectedVideoURL = video.videoURL
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(selectedVideoTitle)
+                                    .font(.footnote.weight(.semibold))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(PassportTheme.textPrimary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(PassportTheme.card)
+                            .clipShape(Capsule())
+                        }
+                    }
                     Label("Your latest resume", systemImage: "doc.fill")
                     if let subject = preview.subjectPreview {
                         Label(subject, systemImage: "envelope")
@@ -389,6 +427,7 @@ struct FounderEmailSheet: View {
                 jobID: job.id,
                 contactID: preview.contact?.id,
                 note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+                videoURL: selectedVideoURL,
                 session: session
             )
             phase = .sent(remaining: result.remaining, limit: result.limit)

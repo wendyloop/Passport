@@ -49,6 +49,9 @@ type RequestBody = {
   mode?: "preview" | "send";
   note?: string;
   contactId?: string;
+  // M-C: optional specific video to feature; must belong to the candidate.
+  // Defaults to the primary video (intro_video_url mirror).
+  videoUrl?: string;
 };
 
 type ContactRow = {
@@ -103,7 +106,23 @@ Deno.serve(async (request) => {
 
     // Profile gates — video first (the whole point is candidates on video),
     // then resume (M-B; config kill-switch founder_email_require_resume).
-    const pitchVideoURL = seekerProfile?.intro_video_url?.trim() || null;
+    let pitchVideoURL = seekerProfile?.intro_video_url?.trim() || null;
+
+    // M-C: a specific chosen video overrides the primary — after ownership
+    // validation, since the client sends a bare URL.
+    const requestedVideoURL = body.videoUrl?.trim() || null;
+    if (requestedVideoURL && requestedVideoURL !== pitchVideoURL) {
+      const { count: ownedCount, error: ownedError } = await admin
+        .from("candidate_videos")
+        .select("id", { count: "exact", head: true })
+        .eq("profile_id", user.id)
+        .eq("video_url", requestedVideoURL);
+      if (ownedError) return jsonError(ownedError.message);
+      if ((ownedCount ?? 0) === 0) {
+        return jsonError("Selected video does not belong to this account", 422);
+      }
+      pitchVideoURL = requestedVideoURL;
+    }
     const gateReason = founderProfileGateReason({
       hasPitchVideo: Boolean(pitchVideoURL),
       hasResume: (resumeCount ?? 0) > 0,

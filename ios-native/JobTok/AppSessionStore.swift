@@ -26,6 +26,7 @@ final class AppSessionStore: ObservableObject {
     @Published private(set) var employerProfile: EmployerProfileRecord?
     @Published private(set) var jobSeekerEmployers: [JobSeekerEmployerRecord] = []
     @Published private(set) var latestResume: ResumeUploadRecord?
+    @Published private(set) var candidateVideos: [CandidateVideoRecord] = []
     @Published private(set) var notifications: [NotificationRecord] = []
     @Published private(set) var jobFeed: [JobPostingRecord] = []
     // Current server-side feed filters; refreshJobSeekerData re-applies them
@@ -340,6 +341,8 @@ final class AppSessionStore: ObservableObject {
                         userID: userID,
                         publicURL: result.publicURL,
                         durationSeconds: introVideoDuration.map { Int($0.rounded()) },
+                        caption: nil,
+                        isPrimary: true,
                         session: session
                     )
                 }
@@ -448,7 +451,7 @@ final class AppSessionStore: ObservableObject {
         }
     }
 
-    func uploadCandidateVideo(fileURL: URL, duration: Double) async {
+    func uploadCandidateVideo(fileURL: URL, duration: Double, caption: String? = nil) async {
         await runBusyTask { [self] in
             let session = try await requireSession()
             let userID = try requireUserID()
@@ -463,12 +466,22 @@ final class AppSessionStore: ObservableObject {
                 contentType: mimeType(for: uploadURL) ?? "video/mp4",
                 session: session
             )
+            // M-C: the first video becomes primary (and mirrors into
+            // intro_video_url below); later uploads never steal primary —
+            // that's an explicit action from the grid.
+            let isFirstVideo = candidateVideos.isEmpty && candidateDraft.introVideoURL == nil
             try await candidate.insertCandidateVideo(
                 userID: userID,
                 publicURL: upload.publicURL,
                 durationSeconds: Int(duration.rounded()),
+                caption: caption,
+                isPrimary: isFirstVideo,
                 session: session
             )
+            guard isFirstVideo else {
+                try await loadCurrentUserState()
+                return
+            }
             let draft = candidateDraft
             try await candidate.upsertJobSeekerProfile(
                 userID: userID,
@@ -576,6 +589,31 @@ final class AppSessionStore: ObservableObject {
             )
 
             try await loadCurrentUserState()
+        }
+    }
+
+    func setPrimaryCandidateVideo(videoID: String) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            try await candidate.setPrimaryCandidateVideo(videoID: videoID, session: session)
+            try await loadCurrentUserState()
+        }
+    }
+
+    func deleteCandidateVideo(videoID: String) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            try await candidate.deleteCandidateVideo(videoID: videoID, session: session)
+            try await loadCurrentUserState()
+        }
+    }
+
+    func updateCandidateVideoCaption(videoID: String, caption: String?) async {
+        await runBusyTask { [self] in
+            let session = try await requireSession()
+            let userID = try requireUserID()
+            try await candidate.updateCandidateVideoCaption(videoID: videoID, caption: caption, session: session)
+            candidateVideos = try await candidate.fetchCandidateVideos(userID: userID, session: session)
         }
     }
 
@@ -811,6 +849,7 @@ final class AppSessionStore: ObservableObject {
         employerProfile = try await service.fetchEmployerProfile(userID: userID, session: validSession)
         jobSeekerEmployers = try await candidate.fetchJobSeekerEmployers(userID: userID, session: validSession)
         latestResume = try await candidate.fetchLatestResume(userID: userID, session: validSession)
+        candidateVideos = try await candidate.fetchCandidateVideos(userID: userID, session: validSession)
 
         try await loadNotifications()
 
