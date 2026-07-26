@@ -113,10 +113,10 @@ M-A → M-B → P → M-C → M-D → M-E → M-F.
 | M-B | Resume gate on founder email (`founder_email_require_resume` app_config kill-switch) | ✅ shipped 2026-07-26 |
 | — | Resend credentials: **RESEND_API_KEY invalid, RESEND_WEBHOOK_SECRET missing** — needs new key + webhook from the Resend dashboard, then `scripts/verify-email-pipeline.sh` re-run | ⛔ blocked on dashboard |
 | P | Profile redesign: TikTok shape + LinkedIn substance from `resume_uploads.parsed_json`. Mock v2 locked: full-bleed 3-col grid (1px seams, on-tile captions), no stats row, Videos+About tabs only, weighted profile-strength ring (resume 30/video 30/photo+headline 15/social 15/basics 10), About ends with Links rows + per-role relevance hints ("marketing → IG/TikTok, eng → GitHub, design → portfolio" as fine print, repeated in onboarding socials step). Palette (v4): white with butter yellow as SPARSE accent only — butter appears in exactly four places (tab underline #E8C95C, Primary badge + Parsed pill #F7E39B/#6B5A14, strength-ring border); everything else white #FFFFFF + warm neutrals (tiles/avatar #F1EFE9, hairlines #E6E3DC, borders #DDD9D0, text #201F1B/#6E6A5E/#9B968A). No schema change | ✅ shipped 2026-07-26 (commit d4fe547) |
-| M-C | Multi-video + captions (`candidate_videos.caption`/`is_primary`, set/delete RPCs, video picker in apply + founder sheets) | planned |
-| M-D | Onboarding: wire dormant `.onboarding` phase + `completeOnboarding`; role → basics → resume (skippable) → video (skippable); grandfather migration first | planned |
-| M-E | Matching foundations: `job_embeddings` + `candidate_resume_embeddings` (separate service-role-only tables — vectors must NOT go on client-fetched tables), `embed-jobs` cron (needs config.toml verify_jwt entry) | planned |
-| M-F | ≥50% match gate (`founder_email_require_match`, calibrate floor/ceiling first, fail open on missing embeddings) + fit-bucket tier in `feedRank` | planned, after M-E drains |
+| M-C | Multi-video + captions (`candidate_videos.caption`/`is_primary`, set/delete RPCs, video picker in apply + founder sheets) | ✅ shipped 2026-07-26 (f7997c7) |
+| M-D | Onboarding: basics → resume (skippable) → video (skippable); grandfathered existing accounts | ✅ shipped 2026-07-26 (897f96b) |
+| M-E | Matching foundations: `job_embeddings` + `candidate_resume_embeddings` service-role-only tables, `embed-jobs` cron every 10 min (backfill draining ~300/run; **relax to hourly after it drains** — F9-style) | ✅ shipped 2026-07-26 (13a7678) |
+| M-F | ≥50% match gate + fit-ranked feed. **Gate flag `founder_email_require_match` is OFF** — calibrate `match_score_floor`/`ceiling` on ~50 real resume/job pairs once real resumes exist, then flip via app_config (no redeploy) | ✅ shipped 2026-07-26 (480ed04), calibration pending |
 
 ---
 
