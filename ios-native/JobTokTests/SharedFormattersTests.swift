@@ -87,6 +87,30 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertFalse(bare.founderPitchAllowed)
     }
 
+    func testProfileStrengthWeights() {
+        var draft = CandidateProfileDraft()
+        XCTAssertEqual(ProfileStrength.score(for: draft), 0)
+        XCTAssertEqual(ProfileStrength.missing(for: draft).count, 6)
+
+        draft.resumeStoragePath = "me/resume.pdf"
+        XCTAssertEqual(ProfileStrength.score(for: draft), 30)
+        draft.introVideoURL = "https://cdn/videos/me.mp4"
+        XCTAssertEqual(ProfileStrength.score(for: draft), 60)
+        draft.avatarURL = "https://cdn/avatars/me.jpg"
+        draft.headline = "CS @ Berkeley"
+        XCTAssertEqual(ProfileStrength.score(for: draft), 75)
+        draft.githubURL = "github.com/me"
+        XCTAssertEqual(ProfileStrength.score(for: draft), 90)
+        draft.school = "UC Berkeley"
+        XCTAssertEqual(ProfileStrength.score(for: draft), 100)
+        XCTAssertTrue(ProfileStrength.missing(for: draft).isEmpty)
+
+        // Whitespace-only values don't count.
+        draft.githubURL = "   "
+        draft.headline = " "
+        XCTAssertEqual(ProfileStrength.score(for: draft), 78)
+    }
+
     func testSavedJobsOrdering() throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

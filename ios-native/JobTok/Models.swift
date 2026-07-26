@@ -226,6 +226,10 @@ struct ResumeUploadRecord: Codable, Identifiable {
     let parsedSchoolName: String?
     let parsedEmployers: [String]
     let createdAt: Date
+    // Full structured extraction from parse-resume (parsed_json). Optional +
+    // failable decode: rows written before the LLM parser (or with malformed
+    // blobs) must not break the fetch.
+    let parsedDetails: ParsedResumeDetails?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -235,6 +239,81 @@ struct ResumeUploadRecord: Codable, Identifiable {
         case parsedSchoolName = "parsed_school_name"
         case parsedEmployers = "parsed_employers"
         case createdAt = "created_at"
+        case parsedDetails = "parsed_json"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        profileID = try c.decode(String.self, forKey: .profileID)
+        filePath = try c.decode(String.self, forKey: .filePath)
+        parseStatus = try c.decode(String.self, forKey: .parseStatus)
+        parsedSchoolName = try c.decodeIfPresent(String.self, forKey: .parsedSchoolName)
+        parsedEmployers = try c.decodeIfPresent([String].self, forKey: .parsedEmployers) ?? []
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        parsedDetails = try? c.decodeIfPresent(ParsedResumeDetails.self, forKey: .parsedDetails)
+    }
+}
+
+// Structured slice of resume_uploads.parsed_json the profile UI renders.
+// Every field is optional-tolerant: the LLM returns "" for unknowns and the
+// blob's shape may evolve.
+struct ParsedResumeDetails: Codable, Equatable {
+    struct Employer: Codable, Equatable {
+        let company: String?
+        let title: String?
+        let startDate: String?
+        let endDate: String?
+        let isCurrent: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case company
+            case title
+            case startDate = "start_date"
+            case endDate = "end_date"
+            case isCurrent = "is_current"
+        }
+    }
+
+    struct Education: Codable, Equatable {
+        let school: String?
+        let degree: String?
+        let fieldOfStudy: String?
+        let graduationYear: String?
+
+        enum CodingKeys: String, CodingKey {
+            case school
+            case degree
+            case fieldOfStudy = "field_of_study"
+            case graduationYear = "graduation_year"
+        }
+    }
+
+    let currentTitle: String?
+    let employers: [Employer]
+    let education: [Education]
+    let skills: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case currentTitle = "current_title"
+        case employers
+        case education
+        case skills
+    }
+
+    init(currentTitle: String? = nil, employers: [Employer] = [], education: [Education] = [], skills: [String] = []) {
+        self.currentTitle = currentTitle
+        self.employers = employers
+        self.education = education
+        self.skills = skills
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        currentTitle = try c.decodeIfPresent(String.self, forKey: .currentTitle)
+        employers = (try? c.decodeIfPresent([Employer].self, forKey: .employers)) ?? []
+        education = (try? c.decodeIfPresent([Education].self, forKey: .education)) ?? []
+        skills = (try? c.decodeIfPresent([String].self, forKey: .skills)) ?? []
     }
 }
 
@@ -791,6 +870,8 @@ struct CandidateProfileDraft: Equatable {
     var resumeFileName: String?
     var resumeStoragePath: String?
     var resumeImportedAt: Date?
+    var resumeParseStatus: String?
+    var parsedResume: ParsedResumeDetails?
     var introVideoFileName: String?
     var introVideoDuration: Double?
     var introVideoURL: String?

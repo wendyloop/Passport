@@ -70,6 +70,41 @@ extension JobPostingRecord {
     }
 }
 
+/// Weighted profile-completeness score (P redesign): replaces the flat x/5
+/// checklist. Weights mirror what actually unlocks product value — resume
+/// and video gate founder emails and drive fit-ranking; socials matter to
+/// reviewers; basics round it out. Pure so it's table-testable.
+enum ProfileStrength {
+    struct Component: Equatable {
+        let label: String
+        let points: Int
+        let isComplete: Bool
+    }
+
+    static func components(for draft: CandidateProfileDraft) -> [Component] {
+        let hasSocial = ![draft.linkedInURL, draft.instagramUsername, draft.tiktokUsername, draft.githubURL, draft.portfolioURL]
+            .allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let hasBasics = !draft.school.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !draft.dreamRole.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return [
+            Component(label: "Resume", points: 30, isComplete: draft.resumeStoragePath != nil),
+            Component(label: "Pitch video", points: 30, isComplete: draft.introVideoURL != nil),
+            Component(label: "Profile photo", points: 8, isComplete: draft.avatarURL != nil),
+            Component(label: "Headline", points: 7, isComplete: !draft.headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
+            Component(label: "A social or portfolio link", points: 15, isComplete: hasSocial),
+            Component(label: "School or dream role", points: 10, isComplete: hasBasics),
+        ]
+    }
+
+    static func score(for draft: CandidateProfileDraft) -> Int {
+        components(for: draft).filter(\.isComplete).map(\.points).reduce(0, +)
+    }
+
+    static func missing(for draft: CandidateProfileDraft) -> [Component] {
+        components(for: draft).filter { !$0.isComplete }
+    }
+}
+
 /// Saved-tab ordering: most-recently-saved jobs the candidate has NOT
 /// applied to first, then applied ones by application recency. Pure so the
 /// XCTest suite can table-test it.

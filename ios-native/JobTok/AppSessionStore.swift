@@ -117,6 +117,8 @@ final class AppSessionStore: ObservableObject {
             resumeFileName: latestResume?.filePath.split(separator: "/").last.map(String.init),
             resumeStoragePath: latestResume?.filePath,
             resumeImportedAt: latestResume?.createdAt,
+            resumeParseStatus: latestResume?.parseStatus,
+            parsedResume: latestResume?.parsedDetails,
             introVideoFileName: jobSeekerProfile?.introVideoURL?.split(separator: "/").last.map(String.init),
             introVideoDuration: nil,
             introVideoURL: jobSeekerProfile?.introVideoURL
