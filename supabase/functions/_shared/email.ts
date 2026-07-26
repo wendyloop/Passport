@@ -6,7 +6,7 @@
 // the sendViaGmail block for how to revive it.
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const DEFAULT_FROM = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "JobTok <applications@jobtok.app>";
+const DEFAULT_FROM = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "scout22 <applications@tryscout22.com>";
 // const GMAIL_SMTP_USER = Deno.env.get("GMAIL_SMTP_USER") ?? "";
 // const GMAIL_SMTP_APP_PASSWORD = Deno.env.get("GMAIL_SMTP_APP_PASSWORD") ?? "";
 
