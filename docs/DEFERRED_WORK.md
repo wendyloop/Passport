@@ -117,6 +117,7 @@ M-A → M-B → P → M-C → M-D → M-E → M-F.
 | M-D | Onboarding: basics → resume (skippable) → video (skippable); grandfathered existing accounts | ✅ shipped 2026-07-26 (897f96b) |
 | M-E | Matching foundations: `job_embeddings` + `candidate_resume_embeddings` service-role-only tables, `embed-jobs` cron every 10 min (backfill draining ~300/run; **relax to hourly after it drains** — F9-style) | ✅ shipped 2026-07-26 (13a7678) |
 | M-F | ≥50% match gate + fit-ranked feed. **Gate flag `founder_email_require_match` is OFF** — calibrate `match_score_floor`/`ceiling` on ~50 real resume/job pairs once real resumes exist, then flip via app_config (no redeploy) | ✅ shipped 2026-07-26 (480ed04), calibration pending |
+| — | **Unified pitch email** (2026-07-28): Easy Apply = founder pitch — video required both paths, same founder-useful email (`_shared/pitch_email.ts`), resume+video ATTACHED (5/14MB caps, link fallback), reply-to → candidate, subject hooks. 3,580 regex-junk ats application_emails nulled; sender display name now just "Wendy". Live-verified ALL CHECKS PASSED | ✅ shipped 2026-07-28 (b01efd3) |
 
 ---
 
