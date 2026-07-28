@@ -237,7 +237,7 @@ SQL
 )
 echo "founder_outreach_messages: $FOUNDER_ROW"
 case "$FOUNDER_ROW" in
-  *'"delivery_status": "sent"'*) note "PASS: founder email SENT via Resend (tryscout22 path works)";;
+  *'"delivery_status": "sent"'* | *'"delivery_status":"sent"'*) note "PASS: founder email SENT via Resend (tryscout22 path works)";;
   *) note "FAIL: founder email not sent — see delivery_error above"; FAILED=1;;
 esac
 
@@ -259,7 +259,7 @@ SQL
 )
 echo "job_applications: $APP_ROW"
 case "$APP_ROW" in
-  *'"email_delivery_status": "sent"'*) note "PASS: application email SENT via Resend (applications@ path works)";;
+  *'"email_delivery_status": "sent"'* | *'"email_delivery_status":"sent"'*) note "PASS: application email SENT via Resend (applications@ path works)";;
   *) note "FAIL: application email not sent — see email_error above"; FAILED=1;;
 esac
 

@@ -987,7 +987,9 @@ recording — and isolated two credential problems no static audit could see:
   send paths; recorded verbatim in `delivery_error`/`email_delivery_error`).
   Explains why email "never worked": 0 sends had ever been attempted, and
   the first attempts fail at auth. Needs a fresh key from the Resend
-  dashboard.
+  dashboard. **RESOLVED 2026-07-27**: key rotated + webhook created by
+  Wendy; harness re-run shows both paths delivery_status='sent' with real
+  Resend ids — outbound email is live.
 - **RESEND_WEBHOOK_SECRET was never set** — resend-webhook fails closed, so
   delivery/bounce/complaint tracking and guessed→verified promotion are dead
   until the webhook endpoint is created and its signing secret set.
