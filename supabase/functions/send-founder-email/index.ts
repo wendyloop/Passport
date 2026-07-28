@@ -280,6 +280,7 @@ Deno.serve(async (request) => {
       jobTitle: job.title ?? "your open role",
       companyName: job.company_name ?? "your company",
       note,
+      limitedPitches: true,
       facts: latestResume?.parsed_json ?? null,
       schoolName: seekerProfile?.school_name ?? null,
       compensationRange: seekerProfile?.desired_compensation_range ?? null,

@@ -48,6 +48,9 @@ export type PitchEmailParams = {
   portfolioURL?: string | null;
   instagramUsername?: string | null;
   tiktokUsername?: string | null;
+  // Founder path: pitches are quota-capped (5/week), which is the honest
+  // scarcity line; Easy Apply isn't capped, so it gets the intent line.
+  limitedPitches?: boolean;
   videoAttached: boolean;
   resumeAttached: boolean;
   // Link fallbacks for whatever couldn't be attached.
@@ -117,9 +120,11 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
 } {
   const greeting = clean(params.recipientFirstName) ? `Hi ${clean(params.recipientFirstName)},` : "Hi,";
   const intro = `${params.candidateName} wants your ${params.jobTitle} role at ${params.companyName} — here's their 60-second video pitch.`;
-  // The founder's pain point is screening time; the video is the answer.
-  const whyWatch =
-    "Why watch: a minute of video tells you what resumes can't — how they think, how they communicate, and how much they actually want this. Worst case costs you 60 seconds; best case skips a screening call.";
+  // Three jobs in one paragraph: what this email is, why this candidate
+  // means it, and why video-first beats the ATS pile.
+  const whyWatch = params.limitedPitches
+    ? `I'm Wendy from scout22 — candidates here pitch startups on video instead of cover letters, and they only get five pitches a week. ${params.candidateName} chose to spend one on ${params.companyName}: that's genuine intent, not an ATS blast. Sixty seconds of them talking tells you more than any resume screen.`
+    : `I'm Wendy from scout22 — candidates here apply with a 60-second video instead of a cover letter. ${params.candidateName} picked ${params.companyName} out and recorded this for you: that's genuine interest, not an ATS blast. Sixty seconds of them talking tells you more than any resume screen.`;
   const note = clean(params.note);
   const headline = clean(params.headline);
 
@@ -181,7 +186,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
       <p>${escapeHtml(greeting)}</p>
       <p><strong>${escapeHtml(params.candidateName)}</strong> wants your <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)} — here's their 60-second video pitch.</p>
       ${note ? `<blockquote style="margin: 10px 0; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">&ldquo;${escapeHtml(note)}&rdquo;</blockquote>` : ""}
-      <p style="color: #374151;"><strong>Why watch:</strong> a minute of video tells you what resumes can't — how they think, how they communicate, and how much they actually want this. Worst case costs you 60 seconds; best case skips a screening call.</p>
+      <p style="color: #374151;">${escapeHtml(whyWatch)}</p>
       <p style="margin-bottom: 2px;"><strong>${escapeHtml(params.candidateName)} in ${factBullets.length === 1 ? "one line" : `${factBullets.length} lines`}:</strong></p>
       <ul style="margin-top: 2px;">
         ${factBullets.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
