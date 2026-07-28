@@ -15,8 +15,16 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
-import { escapeHtml, sendEmail } from "../_shared/email.ts";
+import { sendEmail } from "../_shared/email.ts";
 import { founderProfileGateReason } from "../_shared/founder_eligibility.ts";
+import { buildPitchEmailContent, pitchSubject } from "../_shared/pitch_email.ts";
+import {
+  attachmentFilename,
+  fetchUrlAttachment,
+  RESUME_ATTACHMENT_MAX_BYTES,
+  storageAttachment,
+  VIDEO_ATTACHMENT_MAX_BYTES,
+} from "../_shared/email_attachments.ts";
 
 const FOUNDER_FROM_EMAIL = Deno.env.get("FOUNDER_FROM_EMAIL") ??
   "scout22 <intro@tryscout22.com>";
@@ -86,14 +94,17 @@ Deno.serve(async (request) => {
       { data: profile, error: profileError },
       { data: seekerProfile, error: seekerError },
       { data: job, error: jobError },
-      { count: resumeCount, error: resumeError },
+      { data: latestResume, error: resumeError },
       requireResume,
     ] = await Promise.all([
-      admin.from("profiles").select("id, role, full_name, email").eq("id", user.id).single(),
-      admin.from("job_seeker_profiles").select("profile_id, intro_video_url").eq("profile_id", user.id).maybeSingle(),
+      admin.from("profiles").select("id, role, full_name, email, headline").eq("id", user.id).single(),
+      admin.from("job_seeker_profiles")
+        .select("profile_id, intro_video_url, school_name, desired_compensation_range, linkedin_url, github_url, portfolio_url, instagram_username, tiktok_username")
+        .eq("profile_id", user.id).maybeSingle(),
       admin.from("jobs").select("id, company_id, title, company_name, is_active").eq("id", jobId).single(),
-      admin.from("resume_uploads").select("id", { count: "exact", head: true })
-        .eq("profile_id", user.id).neq("parse_status", "failed"),
+      admin.from("resume_uploads").select("id, file_path, parsed_json")
+        .eq("profile_id", user.id).neq("parse_status", "failed")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
       configFlag(admin, "founder_email_require_resume", true),
     ]);
 
@@ -125,7 +136,7 @@ Deno.serve(async (request) => {
     }
     const gateReason = founderProfileGateReason({
       hasPitchVideo: Boolean(pitchVideoURL),
-      hasResume: (resumeCount ?? 0) > 0,
+      hasResume: Boolean(latestResume),
       requireResume,
     });
     if (gateReason) {
@@ -204,7 +215,14 @@ Deno.serve(async (request) => {
       return jsonError("No founder contact available for this company", 422);
     }
 
-    const subject = `Intro from ${profile.full_name ?? "a scout22 candidate"} — ${job.title ?? "your open role"}`;
+    const candidateName = profile.full_name ?? "A scout22 candidate";
+    const subject = pitchSubject({
+      candidateName,
+      jobTitle: job.title ?? "your open role",
+      headline: profile.headline,
+      facts: latestResume?.parsed_json ?? null,
+      schoolName: seekerProfile?.school_name ?? null,
+    });
 
     if (mode === "preview") {
       return jsonResponse({
@@ -228,19 +246,56 @@ Deno.serve(async (request) => {
     // ── send ──
     const note = sanitizeNote(body.note);
 
-    // Signed resume URL is optional — founder emails lead with the video.
-    const resumeURL = await latestResumeSignedURL(admin, user.id);
+    // Attach the actual files (unified pitch, 2026-07-28); oversized or
+    // broken files fall back to links.
+    const resumeAttachment = latestResume?.file_path
+      ? await storageAttachment(
+        admin,
+        "resumes",
+        latestResume.file_path,
+        attachmentFilename(candidateName, "Resume", latestResume.file_path, "pdf"),
+        RESUME_ATTACHMENT_MAX_BYTES,
+      )
+      : null;
+    const videoAttachment = await fetchUrlAttachment(
+      pitchVideoURL,
+      attachmentFilename(candidateName, "Pitch", pitchVideoURL, "mp4"),
+      VIDEO_ATTACHMENT_MAX_BYTES,
+    );
 
-    const { text, html } = composeEmail({
-      candidateName: profile.full_name ?? "A scout22 candidate",
-      candidateEmail: profile.email ?? user.email ?? "",
-      founderFirstName: contact.first_name,
+    let resumeURL: string | null = null;
+    if (latestResume?.file_path && !resumeAttachment) {
+      const { data: signed } = await admin.storage
+        .from("resumes")
+        .createSignedUrl(latestResume.file_path, 60 * 60 * 24 * 7);
+      resumeURL = signed?.signedUrl ?? null;
+    }
+
+    const { text, html } = buildPitchEmailContent({
+      to: contact.email,
+      recipientFirstName: contact.first_name,
+      candidateName,
+      candidateEmail: profile.email ?? user.email ?? null,
+      headline: profile.headline,
       jobTitle: job.title ?? "your open role",
       companyName: job.company_name ?? "your company",
-      pitchVideoURL,
-      resumeURL,
       note,
+      facts: latestResume?.parsed_json ?? null,
+      schoolName: seekerProfile?.school_name ?? null,
+      compensationRange: seekerProfile?.desired_compensation_range ?? null,
+      linkedInURL: seekerProfile?.linkedin_url ?? null,
+      githubURL: seekerProfile?.github_url ?? null,
+      portfolioURL: seekerProfile?.portfolio_url ?? null,
+      instagramUsername: seekerProfile?.instagram_username ?? null,
+      tiktokUsername: seekerProfile?.tiktok_username ?? null,
+      videoAttached: !!videoAttachment,
+      resumeAttached: !!resumeAttachment,
+      pitchVideoURL,
+      resumeSignedURL: resumeURL,
     });
+    const pitchAttachments = [resumeAttachment, videoAttachment].filter(
+      (a): a is NonNullable<typeof a> => !!a,
+    );
 
     const { data: reserved, error: reserveError } = await admin.rpc("reserve_founder_email_send", {
       p_candidate: user.id,
@@ -274,6 +329,7 @@ Deno.serve(async (request) => {
       subject,
       text,
       html,
+      attachments: pitchAttachments,
     });
 
     const deliveryStatus = delivery.status === "sent" ? "sent" : "failed";
@@ -432,65 +488,4 @@ function sanitizeNote(raw: string | undefined): string | null {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_NOTE_CHARS) || null;
-}
-
-function composeEmail(params: {
-  candidateName: string;
-  candidateEmail: string;
-  founderFirstName: string | null;
-  jobTitle: string;
-  companyName: string;
-  pitchVideoURL: string;
-  resumeURL: string | null;
-  note: string | null;
-}): { text: string; html: string } {
-  const greeting = params.founderFirstName ? `Hi ${params.founderFirstName},` : "Hi,";
-  const intro =
-    `${params.candidateName} saw your ${params.jobTitle} role at ${params.companyName} on scout22 and wanted to reach out directly.`;
-
-  const text = [
-    greeting,
-    "",
-    intro,
-    "",
-    `Pitch video: ${params.pitchVideoURL}`,
-    params.resumeURL ? `Resume: ${params.resumeURL}` : null,
-    params.note ? `\nIn their words: "${params.note}"` : null,
-    "",
-    `Reply to this email to reach ${params.candidateName} directly (${params.candidateEmail}).`,
-    "— sent via scout22 at the candidate's request",
-  ].filter((line) => line !== null).join("\n");
-
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.5; color: #111827;">
-      <p>${escapeHtml(greeting)}</p>
-      <p>${escapeHtml(intro)}</p>
-      <p><a href="${escapeHtml(params.pitchVideoURL)}">▶ Watch their pitch video</a></p>
-      ${params.resumeURL ? `<p><a href="${escapeHtml(params.resumeURL)}">Open their resume</a></p>` : ""}
-      ${params.note ? `<blockquote style="margin: 8px 0; padding-left: 12px; border-left: 3px solid #d1d5db;">${escapeHtml(params.note)}</blockquote>` : ""}
-      <p>Reply to this email to reach ${escapeHtml(params.candidateName)} directly.</p>
-      <p style="color: #6b7280; font-size: 12px;">Sent via scout22 at the candidate's request.</p>
-    </div>
-  `;
-
-  return { text, html };
-}
-
-async function latestResumeSignedURL(
-  admin: ReturnType<typeof createAdminClient>,
-  profileId: string,
-): Promise<string | null> {
-  const { data: resume } = await admin
-    .from("resume_uploads")
-    .select("file_path")
-    .eq("profile_id", profileId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!resume?.file_path) return null;
-
-  const { data: signed } = await admin.storage
-    .from("resumes")
-    .createSignedUrl(resume.file_path, 60 * 60 * 24 * 7);
-  return signed?.signedUrl ?? null;
 }

@@ -11,7 +11,14 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient } from "../_shared/client.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
-import { sendEmployerApplicationEmail } from "../_shared/application_email.ts";
+import { sendPitchEmail } from "../_shared/pitch_email.ts";
+import {
+  attachmentFilename,
+  fetchUrlAttachment,
+  RESUME_ATTACHMENT_MAX_BYTES,
+  storageAttachment,
+  VIDEO_ATTACHMENT_MAX_BYTES,
+} from "../_shared/email_attachments.ts";
 import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 
@@ -20,6 +27,8 @@ const BATCH_LIMIT = 25;
 
 type RetryRow = {
   id: string;
+  candidate_profile_id: string | null;
+  candidate_compensation_range: string | null;
   candidate_name: string;
   candidate_headline: string | null;
   candidate_school_name: string | null;
@@ -50,7 +59,7 @@ Deno.serve(async (request) => {
   const { data: rows, error } = await admin
     .from("job_applications")
     .select(
-      "id, candidate_name, candidate_headline, candidate_school_name, candidate_dream_role, candidate_previous_employers, candidate_video_url, candidate_linkedin_url, candidate_instagram_username, candidate_tiktok_username, resume_file_path, email_delivery_attempts, application_email, job_title, company_name",
+      "id, candidate_profile_id, candidate_compensation_range, candidate_name, candidate_headline, candidate_school_name, candidate_dream_role, candidate_previous_employers, candidate_video_url, candidate_linkedin_url, candidate_instagram_username, candidate_tiktok_username, resume_file_path, email_delivery_attempts, application_email, job_title, company_name",
     )
     .eq("email_delivery_status", "failed")
     .lt("email_delivery_attempts", MAX_ATTEMPTS)
@@ -64,28 +73,63 @@ Deno.serve(async (request) => {
   const outcomes: Array<{ application_id: string; status: string; error: string | null }> = [];
 
   for (const row of (rows ?? []) as RetryRow[]) {
+    // Rebuild the same attachments as the original send from snapshot data.
+    const resumeAttachment = row.resume_file_path
+      ? await storageAttachment(
+        admin,
+        "resumes",
+        row.resume_file_path,
+        attachmentFilename(row.candidate_name, "Resume", row.resume_file_path, "pdf"),
+        RESUME_ATTACHMENT_MAX_BYTES,
+      )
+      : null;
+    const videoAttachment = row.candidate_video_url
+      ? await fetchUrlAttachment(
+        row.candidate_video_url,
+        attachmentFilename(row.candidate_name, "Pitch", row.candidate_video_url, "mp4"),
+        VIDEO_ATTACHMENT_MAX_BYTES,
+      )
+      : null;
+
     let resumeSignedURL: string | null = null;
-    if (row.resume_file_path) {
+    if (row.resume_file_path && !resumeAttachment) {
       const signed = await admin.storage
         .from("resumes")
         .createSignedUrl(row.resume_file_path, 60 * 60 * 24 * 7);
       resumeSignedURL = signed.data?.signedUrl ?? null;
     }
 
-    const result = await sendEmployerApplicationEmail({
+    let candidateEmail: string | null = null;
+    if (row.candidate_profile_id) {
+      const { data: candidateProfile } = await admin
+        .from("profiles")
+        .select("email")
+        .eq("id", row.candidate_profile_id)
+        .maybeSingle();
+      candidateEmail = candidateProfile?.email ?? null;
+    }
+
+    const result = await sendPitchEmail({
       to: row.application_email,
-      employerCompany: row.company_name,
-      jobTitle: row.job_title,
       candidateName: row.candidate_name,
+      candidateEmail,
       headline: row.candidate_headline,
+      jobTitle: row.job_title,
+      companyName: row.company_name,
       schoolName: row.candidate_school_name,
-      dreamRole: row.candidate_dream_role,
       previousEmployers: row.candidate_previous_employers ?? [],
-      pitchVideoURL: row.candidate_video_url,
-      resumeSignedURL,
+      compensationRange: row.candidate_compensation_range,
       linkedInURL: row.candidate_linkedin_url,
       instagramUsername: row.candidate_instagram_username,
       tiktokUsername: row.candidate_tiktok_username,
+      videoAttached: !!videoAttachment,
+      resumeAttached: !!resumeAttachment,
+      pitchVideoURL: row.candidate_video_url,
+      resumeSignedURL,
+    }, {
+      attachments: [resumeAttachment, videoAttachment].filter(
+        (a): a is NonNullable<typeof a> => !!a,
+      ),
     });
 
     const { error: updateError } = await admin

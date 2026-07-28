@@ -221,6 +221,7 @@ struct JobSeekerHomeView: View {
                 job: job,
                 draft: $applicationDraft,
                 videos: candidateVideos,
+                onRecordPitch: { showingVideoStudio = true },
                 onApply: {
                     onApply(applicationDraft)
                     applicationDraft = JobApplicationDraft()
@@ -486,7 +487,8 @@ struct JobSeekerHomeView: View {
     private func handleApplyTap(for job: JobPostingRecord) {
         if job.canApplyViaDrawer {
             applyDrawerJob = job
-        } else if workingProfile.resumeStoragePath != nil {
+        } else if workingProfile.resumeStoragePath != nil && workingProfile.introVideoURL != nil {
+            // Unified pitch: one-tap only when both required pieces exist.
             easyApplyConfirmation = job
         } else {
             applicationDraft = makeApplicationDraft(for: job)
@@ -1956,6 +1958,7 @@ private struct ApplySheet: View {
     let job: JobPostingRecord
     @Binding var draft: JobApplicationDraft
     var videos: [CandidateVideoRecord] = []
+    var onRecordPitch: () -> Void = {}
     let onApply: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -1974,6 +1977,7 @@ private struct ApplySheet: View {
 
     private var canApply: Bool {
         draft.resumeFilePath != nil
+            && draft.pitchVideoURL != nil
             && !job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -2009,26 +2013,33 @@ private struct ApplySheet: View {
                 )
 
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Pitch video")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(PassportTheme.textPrimary)
-                            Text(draft.pitchVideoURL == nil ? "Optional. No pitch video on your profile yet." : "Optional. Share your current pitch video with this application.")
-                                .font(.footnote)
-                                .foregroundStyle(PassportTheme.textSecondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { draft.includePitchVideo && draft.pitchVideoURL != nil },
-                            set: { draft.includePitchVideo = $0 }
-                        ))
-                        .labelsHidden()
-                        .disabled(draft.pitchVideoURL == nil)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Pitch video")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(PassportTheme.textPrimary)
+                        Text(draft.pitchVideoURL == nil
+                            ? "Required — every application is a video pitch. Record one and it rides along with your resume."
+                            : "Required — sent alongside your resume.")
+                            .font(.footnote)
+                            .foregroundStyle(PassportTheme.textSecondary)
                     }
 
-                    // M-C: pick which video rides along when there's a choice.
-                    if draft.includePitchVideo, draft.pitchVideoURL != nil, videos.count > 1 {
+                    if draft.pitchVideoURL == nil {
+                        Button {
+                            dismiss()
+                            onRecordPitch()
+                        } label: {
+                            Label("Record your pitch", systemImage: "video.badge.plus")
+                                .font(.subheadline.weight(.bold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .background(PassportTheme.accent)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .buttonStyle(.plain)
+                    } else if videos.count > 1 {
+                        // M-C: pick which video rides along.
                         Menu {
                             ForEach(videos) { video in
                                 Button(videoMenuTitle(video)) {

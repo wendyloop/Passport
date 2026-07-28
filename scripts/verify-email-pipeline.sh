@@ -127,9 +127,15 @@ from auth.users u where u.email = '$FIXTURE_EMAIL';
 update public.profiles set onboarding_complete = true, full_name = 'Scout Test Candidate'
 where email = '$FIXTURE_EMAIL';
 
+-- Use a REAL video object when one exists so the attachment path is
+-- exercised end to end; placeholder URL otherwise (falls back to a link).
 insert into public.job_seeker_profiles (profile_id, school_name, job_function, intro_video_url)
 select id, 'UC Berkeley', 'engineering',
-  'https://$PROJECT_REF.supabase.co/storage/v1/object/public/videos/zztest/intro.mp4'
+  coalesce(
+    (select 'https://$PROJECT_REF.supabase.co/storage/v1/object/public/videos/' || name
+     from storage.objects where bucket_id = 'videos' and name not like 'zztest%'
+     order by created_at desc limit 1),
+    'https://$PROJECT_REF.supabase.co/storage/v1/object/public/videos/zztest/intro.mp4')
 from public.profiles where email = '$FIXTURE_EMAIL'
 on conflict (profile_id) do update set intro_video_url = excluded.intro_video_url;
 

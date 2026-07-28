@@ -19,6 +19,12 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+export type EmailAttachment = {
+  filename: string;
+  // Base64-encoded file body, per Resend's attachments API.
+  content: string;
+};
+
 export type SendEmailParams = {
   to: string;
   subject: string;
@@ -26,6 +32,7 @@ export type SendEmailParams = {
   html: string;
   from?: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 };
 
 export type SendEmailResult = {
@@ -108,6 +115,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       text: params.text,
       html: params.html,
       ...(params.replyTo ? { reply_to: [params.replyTo] } : {}),
+      ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     }),
   });
 

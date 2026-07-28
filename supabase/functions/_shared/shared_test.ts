@@ -7,7 +7,8 @@ import { jsonError, jsonResponse } from "./http.ts";
 import { escapeHtml } from "./email.ts";
 import { firstNameOf, guessFounderEmail, normalizeDomain } from "./contacts.ts";
 import { buildPipelineRunRow } from "./pipeline_runs.ts";
-import { buildApplicationEmailContent } from "./application_email.ts";
+import { buildPitchEmailContent, pitchSubject } from "./pitch_email.ts";
+import { attachmentFilename } from "./email_attachments.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 
@@ -123,51 +124,6 @@ Deno.test("buildPipelineRunRow clamps negative durations", () => {
 
 // ─── application_email.ts (AUDIT P1-8 shared builder) ──────────────────────
 
-Deno.test("buildApplicationEmailContent shapes subject/text and escapes HTML", () => {
-  const content = buildApplicationEmailContent({
-    to: "jobs@acme.io",
-    employerCompany: "Acme <&> Co",
-    jobTitle: "iOS Engineer",
-    candidateName: "Sam <script>",
-    previousEmployers: ["PrevCo"],
-    resumeSignedURL: "https://example.com/resume.pdf",
-  });
-  assertEquals(content.subject, "New applicant: Sam <script> for iOS Engineer");
-  assertEquals(content.text.includes("Candidate: Sam <script>"), true);
-  assertEquals(content.text.includes("Previous employers: PrevCo"), true);
-  assertEquals(content.text.includes("Resume: https://example.com/resume.pdf"), true);
-  assertEquals(content.html.includes("<script>"), false, "candidate name must be escaped in HTML");
-  assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
-});
-
-Deno.test("buildApplicationEmailContent handles missing optionals", () => {
-  const content = buildApplicationEmailContent({
-    to: "jobs@acme.io",
-    employerCompany: "Acme",
-    jobTitle: "PM",
-    candidateName: "Sam",
-    previousEmployers: [],
-  });
-  assertEquals(content.text.includes("Previous employers: Not provided"), true);
-  assertEquals(content.text.includes("Resume: No resume uploaded"), true);
-  assertEquals(content.text.includes("Pitch video: Not provided"), true);
-});
-
-// Parked with the shelved Gmail transport in email.ts.
-/*
-Deno.test("forceGmailFrom keeps the display name, swaps the address", () => {
-  assertEquals(
-    forceGmailFrom("Wendy from scout22 <intro@tryscout22.com>", "wendy.scout22@gmail.com"),
-    "Wendy from scout22 <wendy.scout22@gmail.com>",
-  );
-});
-
-Deno.test("forceGmailFrom handles bare addresses", () => {
-  assertEquals(forceGmailFrom("intro@tryscout22.com", "w@gmail.com"), "w@gmail.com");
-  assertEquals(forceGmailFrom("", "w@gmail.com"), "w@gmail.com");
-});
-*/
-
 Deno.test("founderProfileGateReason gate order and resume kill-switch", () => {
   const gate = (hasPitchVideo: boolean, hasResume: boolean, requireResume: boolean) =>
     founderProfileGateReason({ hasPitchVideo, hasResume, requireResume });
@@ -228,4 +184,77 @@ Deno.test("mapSimilarityToScore clamps and maps through floor/ceiling", () => {
   assertEquals(mapSimilarityToScore(0.1, 0.2, 0.75), 0);
   assertEquals(mapSimilarityToScore(0.9, 0.2, 0.75), 100);
   assertEquals(mapSimilarityToScore(0.5, 0.75, 0.2), 0);
+});
+
+Deno.test("pitchSubject picks the strongest hook", () => {
+  assertEquals(
+    pitchSubject({ candidateName: "Sam", jobTitle: "iOS Engineer", headline: "CS @ Berkeley" }),
+    "Sam — video pitch for iOS Engineer (CS @ Berkeley)",
+  );
+  assertEquals(
+    pitchSubject({ candidateName: "Sam", jobTitle: "PM", previousEmployers: ["Stripe"] }),
+    "Sam — video pitch for PM (ex-Stripe)",
+  );
+  assertEquals(
+    pitchSubject({ candidateName: "Sam", jobTitle: "PM" }),
+    "Sam — video pitch for PM",
+  );
+});
+
+Deno.test("buildPitchEmailContent renders facts, escapes HTML, and reflects attachments", () => {
+  const content = buildPitchEmailContent({
+    to: "founder@acme.io",
+    recipientFirstName: "Jane",
+    candidateName: "Sam <script>",
+    candidateEmail: "sam@x.io",
+    headline: "CS @ Berkeley",
+    jobTitle: "Founding Engineer",
+    companyName: "Acme <&> Co",
+    note: "I love your product",
+    facts: {
+      years_experience: "2",
+      employers: [{ company: "Stripe", title: "SWE Intern", start_date: "2025-06", is_current: true }],
+      education: [{ school: "UC Berkeley", degree: "BS", field_of_study: "CS", graduation_year: "2026" }],
+      skills: ["Swift", "Go", ""],
+    },
+    compensationRange: "$150k+",
+    linkedInURL: "https://in/sam",
+    videoAttached: true,
+    resumeAttached: true,
+  });
+  assertEquals(content.text.includes("Hi Jane,"), true);
+  assertEquals(content.text.includes("SWE Intern · Stripe (2025-06 – now)"), true);
+  assertEquals(content.text.includes("Education: BS CS UC Berkeley (2026)"), true);
+  assertEquals(content.text.includes("Skills: Swift, Go"), true);
+  assertEquals(content.text.includes("Their pitch video and resume are attached."), true);
+  assertEquals(content.text.includes("goes straight to Sam <script> (sam@x.io)"), true);
+  assertEquals(content.html.includes("<script>"), false);
+  assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
+});
+
+Deno.test("buildPitchEmailContent falls back to links when not attached", () => {
+  const content = buildPitchEmailContent({
+    to: "jobs@acme.io",
+    candidateName: "Sam",
+    jobTitle: "PM",
+    companyName: "Acme",
+    videoAttached: false,
+    resumeAttached: false,
+    pitchVideoURL: "https://cdn/video.mp4",
+    resumeSignedURL: "https://signed/resume.pdf",
+  });
+  assertEquals(content.text.includes("attached"), false);
+  assertEquals(content.text.includes("Watch their pitch: https://cdn/video.mp4"), true);
+  assertEquals(content.text.includes("Resume: https://signed/resume.pdf"), true);
+  assertEquals(content.text.includes("Hi,"), true);
+});
+
+Deno.test("attachmentFilename sanitizes names and extensions", () => {
+  assertEquals(attachmentFilename("Wendy Shi", "Resume", "me/resume final.pdf", "pdf"), "Wendy_Shi_Resume.pdf");
+  assertEquals(
+    attachmentFilename("Sam", "Pitch", "https://cdn/videos/a/17-clip.MP4?token=x", "mp4"),
+    "Sam_Pitch.mp4",
+  );
+  assertEquals(attachmentFilename("é!", "Pitch", "no-extension", "mp4"), "e_Pitch.mp4");
+  assertEquals(attachmentFilename("", "Resume", "x.pdf", "pdf"), "Candidate_Resume.pdf");
 });

@@ -1,6 +1,13 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
-import { sendEmployerApplicationEmail } from "../_shared/application_email.ts";
+import { sendPitchEmail } from "../_shared/pitch_email.ts";
+import {
+  attachmentFilename,
+  fetchUrlAttachment,
+  RESUME_ATTACHMENT_MAX_BYTES,
+  storageAttachment,
+  VIDEO_ATTACHMENT_MAX_BYTES,
+} from "../_shared/email_attachments.ts";
 
 type ApplyRequest = {
   jobId?: string;
@@ -59,7 +66,7 @@ function normalizedSocialPayload(rawValue?: string | null) {
   };
 }
 
-// The employer email itself lives in _shared/application_email.ts so the
+// The employer email itself lives in _shared/pitch_email.ts so the
 // retry-application-emails cron pass (AUDIT P1-8) sends the identical email.
 
 // async function sendInstagramDM(params: {
@@ -138,7 +145,7 @@ Deno.serve(async (request) => {
     ] = await Promise.all([
       adminClient
         .from("profiles")
-        .select("id, role, full_name, headline")
+        .select("id, role, full_name, headline, email")
         .eq("id", user.id)
         .single(),
       adminClient
@@ -160,7 +167,7 @@ Deno.serve(async (request) => {
 
     const resumeQuery = adminClient
       .from("resume_uploads")
-      .select("file_path")
+      .select("file_path, parsed_json")
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1);
@@ -168,7 +175,7 @@ Deno.serve(async (request) => {
     const { data: resumeRecord, error: resumeError } = requestedResumePath
       ? await adminClient
         .from("resume_uploads")
-        .select("file_path")
+        .select("file_path, parsed_json")
         .eq("profile_id", user.id)
         .eq("file_path", requestedResumePath)
         .maybeSingle()
@@ -205,7 +212,7 @@ Deno.serve(async (request) => {
     // M-C: candidates can pick which of their videos rides along — but only
     // one they actually own (the client sends a bare URL).
     if (selectedVideoURL && selectedVideoURL !== candidateProfile?.intro_video_url) {
-      const { count: ownedCount, error: ownedError } = await admin
+      const { count: ownedCount, error: ownedError } = await adminClient
         .from("candidate_videos")
         .select("id", { count: "exact", head: true })
         .eq("profile_id", user.id)
@@ -220,6 +227,12 @@ Deno.serve(async (request) => {
     }
 
     const resolvedVideoURL = selectedVideoURL ?? candidateProfile?.intro_video_url ?? null;
+
+    // Unified pitch (2026-07-28): every application is a video pitch — same
+    // requirements as the founder path, only the recipient differs.
+    if (!resolvedVideoURL) {
+      throw new Error("A pitch video is required before applying.");
+    }
 
     if (socialPayload.linkedInURL || socialPayload.instagramUsername || socialPayload.tiktokUsername) {
       const { error: upsertCandidateProfileError } = await adminClient
@@ -281,26 +294,54 @@ Deno.serve(async (request) => {
         .eq("id", job.id);
     }
 
-    const signedResume = await adminClient.storage
-      .from("resumes")
-      .createSignedUrl(resumeRecord.file_path, 60 * 60 * 24 * 7);
+    // Attach the actual files; anything oversized/broken falls back to a
+    // link (resume link is a 7-day signed URL, video is a public URL).
+    const candidateName = insertedApplication.candidate_name as string;
+    const resumeAttachment = await storageAttachment(
+      adminClient,
+      "resumes",
+      resumeRecord.file_path,
+      attachmentFilename(candidateName, "Resume", resumeRecord.file_path, "pdf"),
+      RESUME_ATTACHMENT_MAX_BYTES,
+    );
+    const videoAttachment = resolvedVideoURL
+      ? await fetchUrlAttachment(
+        resolvedVideoURL,
+        attachmentFilename(candidateName, "Pitch", resolvedVideoURL, "mp4"),
+        VIDEO_ATTACHMENT_MAX_BYTES,
+      )
+      : null;
 
-    const resumeURL = signedResume.data?.signedUrl ?? null;
+    let resumeURL: string | null = null;
+    if (!resumeAttachment) {
+      const signedResume = await adminClient.storage
+        .from("resumes")
+        .createSignedUrl(resumeRecord.file_path, 60 * 60 * 24 * 7);
+      resumeURL = signedResume.data?.signedUrl ?? null;
+    }
 
-    const deliveryResult = await sendEmployerApplicationEmail({
+    const deliveryResult = await sendPitchEmail({
       to: job.application_email!,
-      employerCompany: job.company_name,
-      jobTitle: job.title,
-      candidateName: insertedApplication.candidate_name,
+      candidateName,
+      candidateEmail: profile.email ?? user.email ?? null,
       headline: insertedApplication.candidate_headline,
+      jobTitle: job.title,
+      companyName: job.company_name,
+      facts: resumeRecord.parsed_json ?? null,
       schoolName: insertedApplication.candidate_school_name,
-      dreamRole: insertedApplication.candidate_dream_role,
       previousEmployers,
-      pitchVideoURL: insertedApplication.candidate_video_url,
-      resumeSignedURL: resumeURL,
+      compensationRange: insertedApplication.candidate_compensation_range,
       linkedInURL: insertedApplication.candidate_linkedin_url,
       instagramUsername: insertedApplication.candidate_instagram_username,
       tiktokUsername: insertedApplication.candidate_tiktok_username,
+      videoAttached: !!videoAttachment,
+      resumeAttached: !!resumeAttachment,
+      pitchVideoURL: insertedApplication.candidate_video_url,
+      resumeSignedURL: resumeURL,
+    }, {
+      attachments: [resumeAttachment, videoAttachment].filter(
+        (a): a is NonNullable<typeof a> => !!a,
+      ),
     });
 
     await adminClient
