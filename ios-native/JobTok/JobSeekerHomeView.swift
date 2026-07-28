@@ -63,6 +63,12 @@ struct JobSeekerHomeView: View {
     @State private var selectedProfileTab: CandidateProfileTab = .video
     @State private var showingStrengthDetail = false
     @State private var showingProfileVideoPlayer = false
+    // Saved/applied jobs open as real feed cards (carousel + apply/pitch),
+    // rendered as an in-hierarchy overlay — NOT a modal — so the apply and
+    // founder sheets can still present above it.
+    @State private var savedFeedJobs: [JobPostingRecord] = []
+    @State private var savedFeedStartJob: JobPostingRecord?
+    @State private var savedFeedCurrentJobID: String?
     @State private var playerVideoURL: String?
     @State private var captionEditingVideo: CandidateVideoRecord?
     @State private var captionDraft = ""
@@ -198,6 +204,12 @@ struct JobSeekerHomeView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             candidateTabBar
+
+            if savedFeedStartJob != nil {
+                savedFeedViewer
+                    .transition(.move(edge: .bottom))
+                    .zIndex(2)
+            }
         }
         .tint(PassportTheme.accent)
         .onChange(of: currentFilters) { _, filters in
@@ -384,7 +396,8 @@ struct JobSeekerHomeView: View {
                                     job: job,
                                     pageWidth: pageWidth,
                                     pageHeight: pageHeight,
-                                    safeAreaBottom: proxy.safeAreaInsets.bottom
+                                    safeAreaBottom: proxy.safeAreaInsets.bottom,
+                                    activeJobID: currentJobID
                                 )
                             }
                         }
@@ -424,7 +437,8 @@ struct JobSeekerHomeView: View {
         job: JobPostingRecord,
         pageWidth: CGFloat,
         pageHeight: CGFloat,
-        safeAreaBottom: CGFloat
+        safeAreaBottom: CGFloat,
+        activeJobID: String?
     ) -> some View {
         Group {
             // Carousel-backed rows (ATS + board) render the structured carousel;
@@ -435,7 +449,7 @@ struct JobSeekerHomeView: View {
                     job: job,
                     carousel: carousel,
                     safeAreaBottom: safeAreaBottom,
-                    isActive: currentJobID == job.id,
+                    isActive: activeJobID == job.id,
                     onApply: { handleApplyTap(for: job) },
                     onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
                     onSave: { onToggleSavedJob(job.id) },
@@ -447,7 +461,7 @@ struct JobSeekerHomeView: View {
                     safeAreaBottom: safeAreaBottom,
                     alreadyApplied: appliedJobIDs.contains(job.id),
                     isSaved: savedJobIDs.contains(job.id),
-                    isActive: currentJobID == job.id,
+                    isActive: activeJobID == job.id,
                     onToggleSaved: { onToggleSavedJob(job.id) },
                     onApply: { handleApplyTap(for: job) },
                     onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
@@ -500,13 +514,79 @@ struct JobSeekerHomeView: View {
         founderEmailJob = job
     }
 
+    // Applied tiles open the job's feed card when the job is still
+    // resolvable (feed window or the saved-jobs id-fetch); snapshot-only
+    // applications just don't navigate.
+    private func openApplicationJob(_ application: JobApplicationRecord) {
+        let lookup = jobs.first { $0.id == application.jobID }
+            ?? savedJobs.first { $0.id == application.jobID }
+        guard let job = lookup else { return }
+        openFeedViewer(jobs: [job], startAt: job)
+    }
+
+    // Saved/applied tiles open the real feed experience: same cards, same
+    // apply/pitch buttons, paged vertically — just scoped to the tapped set.
+    private func openFeedViewer(jobs: [JobPostingRecord], startAt job: JobPostingRecord) {
+        savedFeedJobs = jobs
+        savedFeedCurrentJobID = job.id
+        withAnimation(.easeInOut(duration: 0.22)) {
+            savedFeedStartJob = job
+        }
+    }
+
+    private var savedFeedViewer: some View {
+        GeometryReader { proxy in
+            let pageWidth = proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing
+            let pageHeight = proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
+
+            ZStack(alignment: .topLeading) {
+                Color.black.ignoresSafeArea()
+
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(savedFeedJobs) { job in
+                            feedCard(
+                                job: job,
+                                pageWidth: pageWidth,
+                                pageHeight: pageHeight,
+                                safeAreaBottom: proxy.safeAreaInsets.bottom,
+                                activeJobID: savedFeedCurrentJobID
+                            )
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $savedFeedCurrentJobID)
+                .frame(width: pageWidth, height: pageHeight)
+                .offset(y: -proxy.safeAreaInsets.top)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        savedFeedStartJob = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(Circle().fill(Color.black.opacity(0.45)))
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 14)
+                .padding(.top, 8)
+            }
+        }
+    }
+
     private var applicationsView: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     screenHeader(
                         title: "Applications",
-                        subtitle: "A cleaner inbox for every role you’ve sent."
+                        subtitle: "Every pitch you’ve sent, at a glance."
                     )
 
                     if applications.isEmpty {
@@ -515,19 +595,17 @@ struct JobSeekerHomeView: View {
                             details: "Apply to a job from the feed and it will appear here."
                         )
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(applications.enumerated()), id: \.element.id) { index, application in
-                                MinimalApplicationRow(application: application)
-
-                                if index < applications.count - 1 {
-                                    Divider()
-                                        .overlay(PassportTheme.border.opacity(0.5))
-                                        .padding(.leading, 68)
-                                }
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                            spacing: 10
+                        ) {
+                            ForEach(applications) { application in
+                                ApplicationTile(
+                                    application: application,
+                                    onOpen: { openApplicationJob(application) }
+                                )
                             }
                         }
-                        .padding(.vertical, 6)
-                        .jobTokCard(cornerRadius: 28, fill: PassportTheme.surface)
                     }
                 }
                 .padding(20)
@@ -778,7 +856,7 @@ struct JobSeekerHomeView: View {
     // P redesign (mock v4): identity only — no stat row, no link chips
     // (links live in the About tab). Strength ring replaces the checklist.
     private var candidateProfileHero: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             HStack(alignment: .top) {
                 Spacer()
                 profileAvatar
@@ -789,21 +867,22 @@ struct JobSeekerHomeView: View {
                 Spacer()
             }
 
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Text(workingProfile.fullName.isEmpty ? "Your Name" : workingProfile.fullName)
-                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
                     .foregroundStyle(PassportTheme.textPrimary)
                     .multilineTextAlignment(.center)
 
                 Text(handleText)
-                    .font(.subheadline.weight(.bold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(PassportTheme.textSecondary)
 
                 Text(bioText)
-                    .font(.body)
-                    .foregroundStyle(PassportTheme.textPrimary)
+                    .font(.footnote)
+                    .foregroundStyle(hasCustomBio ? PassportTheme.textPrimary : PassportTheme.textMuted)
                     .multilineTextAlignment(.center)
-                    .lineLimit(3)
+                    .lineLimit(2)
+                    .padding(.top, 2)
 
                 if !heroMetaText.isEmpty {
                     Text(heroMetaText)
@@ -818,9 +897,9 @@ struct JobSeekerHomeView: View {
                 isEditingProfile = true
             } label: {
                 Text("Edit profile")
-                    .font(.subheadline.weight(.bold))
+                    .font(.footnote.weight(.bold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 9)
             }
             .background(PassportTheme.card)
             .foregroundStyle(PassportTheme.textPrimary)
@@ -832,9 +911,9 @@ struct JobSeekerHomeView: View {
             .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 24)
-        .jobTokCard(cornerRadius: 30)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .jobTokCard(cornerRadius: 24)
     }
 
     private var profileStrengthBadge: some View {
@@ -920,49 +999,69 @@ struct JobSeekerHomeView: View {
     private var profileVideoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             if candidateVideos.isEmpty && workingProfile.introVideoURL == nil {
-                Text("Your pitch video is the first thing employers see — it also unlocks direct founder intros. 1:00 max.")
-                    .font(.footnote)
-                    .foregroundStyle(PassportTheme.textSecondary)
-                    .padding(.horizontal, 2)
-            }
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 3), spacing: 1) {
-                if candidateVideos.isEmpty, let introURL = workingProfile.introVideoURL {
-                    videoTile(urlString: introURL, caption: nil, isPrimary: true)
-                } else {
-                    ForEach(candidateVideos) { video in
-                        videoTile(urlString: video.videoURL, caption: video.caption, isPrimary: video.isPrimary)
-                            .contextMenu {
-                                if !video.isPrimary {
-                                    Button("Set as primary") { onSetPrimaryVideo(video.id) }
-                                }
-                                Button("Edit caption") {
-                                    captionDraft = video.caption ?? ""
-                                    captionEditingVideo = video
-                                }
-                                Button("Delete video", role: .destructive) { onDeleteVideo(video.id) }
-                            }
-                    }
-                }
-
+                // No videos yet: one big CTA instead of a lonely grid cell.
                 Button {
                     showingVideoStudio = true
                 } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 22, weight: .semibold))
-                        Text("New video")
-                            .font(.caption2)
+                    VStack(spacing: 10) {
+                        Image(systemName: "video.badge.plus")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundStyle(PassportTheme.textPrimary)
+                        Text("Record your first pitch")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(PassportTheme.textPrimary)
+                        Text("The first thing employers see — unlocks founder intros. 1:00 max.")
+                            .font(.caption)
+                            .foregroundStyle(PassportTheme.textSecondary)
+                            .multilineTextAlignment(.center)
                     }
-                    .foregroundStyle(PassportTheme.textMuted)
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                    .background(PassportTheme.surface)
+                    .padding(.vertical, 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(PassportTheme.border, style: StrokeStyle(lineWidth: 1.5, dash: [7]))
+                    )
                 }
                 .buttonStyle(.plain)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 3), spacing: 1) {
+                    if candidateVideos.isEmpty, let introURL = workingProfile.introVideoURL {
+                        videoTile(urlString: introURL, caption: nil, isPrimary: true)
+                    } else {
+                        ForEach(candidateVideos) { video in
+                            videoTile(urlString: video.videoURL, caption: video.caption, isPrimary: video.isPrimary)
+                                .contextMenu {
+                                    if !video.isPrimary {
+                                        Button("Set as primary") { onSetPrimaryVideo(video.id) }
+                                    }
+                                    Button("Edit caption") {
+                                        captionDraft = video.caption ?? ""
+                                        captionEditingVideo = video
+                                    }
+                                    Button("Delete video", role: .destructive) { onDeleteVideo(video.id) }
+                                }
+                        }
+                    }
+
+                    Button {
+                        showingVideoStudio = true
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 26, weight: .semibold))
+                            Text("New video")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(PassportTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                        .background(PassportTheme.surface)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(PassportTheme.border.opacity(0.5))
+                .padding(.horizontal, -20)
             }
-            .background(PassportTheme.border.opacity(0.5))
-            .padding(.horizontal, -20)
         }
     }
 
@@ -1118,12 +1217,9 @@ struct JobSeekerHomeView: View {
                             job: job,
                             isApplied: appliedJobIDs.contains(job.id),
                             onOpen: {
-                                if workingProfile.resumeStoragePath != nil {
-                                    easyApplyConfirmation = job
-                                } else {
-                                    applicationDraft = makeApplicationDraft(for: job)
-                                    applyingJob = job
-                                }
+                                // Open the real feed card (carousel + apply /
+                                // pitch buttons), scoped to the saved set.
+                                openFeedViewer(jobs: savedJobs, startAt: job)
                             },
                             onUnsave: {
                                 onToggleSavedJob(job.id)
@@ -1224,9 +1320,13 @@ struct JobSeekerHomeView: View {
             parts.append("Experience at \(workingProfile.employers.joined(separator: ", ")).")
         }
         if parts.isEmpty {
-            return "Write a short bio that explains what you do, what you want next, and why employers should keep watching."
+            return "Add a short bio"
         }
         return parts.joined(separator: " ")
+    }
+
+    private var hasCustomBio: Bool {
+        !workingProfile.headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var aboutResumeCard: some View {
@@ -2747,88 +2847,90 @@ private struct CandidateProfileEditor: View {
     }
 }
 
-private struct MinimalApplicationRow: View {
+// TikTok-style applied-job tile: same visual family as SavedJobTile, with
+// the application status as the headline signal.
+private struct ApplicationTile: View {
     let application: JobApplicationRecord
+    let onOpen: () -> Void
+
+    private var style: CarouselStyle {
+        CarouselStyle.resolve(jobID: application.jobID, themeID: "slate-gradient")
+    }
+
+    private var statusLabel: String {
+        if application.emailDeliveryStatus == "failed" { return "RETRYING" }
+        switch application.status {
+        case "submitted": return "SENT"
+        case "reviewing": return "REVIEWING"
+        case "contacted": return "CONTACTED"
+        case "rejected": return "CLOSED"
+        case "hired": return "HIRED"
+        default: return application.status.uppercased()
+        }
+    }
+
+    private var statusColor: Color {
+        if application.emailDeliveryStatus == "failed" { return .orange }
+        switch application.status {
+        case "contacted", "hired": return Color(red: 0.45, green: 0.85, blue: 0.55)
+        case "rejected": return Color.white.opacity(0.35)
+        default: return Color(red: 0.96, green: 0.88, blue: 0.60)
+        }
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(PassportTheme.card)
-                    .frame(width: 54, height: 54)
-                Text(String(application.companyName.prefix(1)).uppercased())
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(PassportTheme.textPrimary)
-            }
+        Button(action: onOpen) {
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(application.jobTitle)
-                            .font(.headline)
-                            .foregroundStyle(PassportTheme.textPrimary)
-                        Text(application.companyName)
-                            .font(.subheadline)
-                            .foregroundStyle(PassportTheme.textSecondary)
-                    }
+                VStack(alignment: .leading, spacing: 6) {
                     Spacer()
-                    Text(ApplicationStatus(rawValue: application.status)?.title ?? application.status.capitalized)
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(PassportTheme.card)
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .clipShape(Capsule())
+                    CompanyMonogram(
+                        name: application.companyName,
+                        background: style.theme.accent,
+                        foreground: style.theme.onAccent,
+                        size: 34
+                    )
+                    Text(application.jobTitle)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(application.companyName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                    Text(SharedFormatters.relativeAge(of: application.appliedAt))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
 
-                HStack(spacing: 12) {
-                    if let location = application.jobLocation, !location.isEmpty {
-                        Label(location, systemImage: "mappin.and.ellipse")
-                    }
-                    deliveryStatusLabel
+                HStack(alignment: .top) {
+                    Text(statusLabel)
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(1)
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(statusColor))
+                    Spacer()
                 }
-                .font(.caption)
-                .foregroundStyle(PassportTheme.textSecondary)
-
-                Text(formattedAppliedDate(application.appliedAt))
-                    .font(.caption)
-                    .foregroundStyle(PassportTheme.textMuted)
+                .padding(8)
             }
+            .aspectRatio(0.8, contentMode: .fit)
+            .background(Color(red: 0.10, green: 0.10, blue: 0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-    }
-
-    // AUDIT P1-8: never imply the employer received the application when the
-    // email didn't send. Failed/skipped rows are retried hourly server-side
-    // (retry-application-emails); this label tells the candidate the truth
-    // in the meantime.
-    @ViewBuilder
-    private var deliveryStatusLabel: some View {
-        switch application.emailDeliveryStatus {
-        case "sent":
-            Label("Sent to employer", systemImage: "paperplane")
-        case "failed", "skipped":
-            Label("Delivery issue — retrying", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-        case "pending":
-            Label("Sending…", systemImage: "paperplane")
-        default:
-            Label(application.emailDeliveryStatus.capitalized, systemImage: "paperplane")
-        }
-    }
-
-    private func formattedAppliedDate(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return "Applied \(formatter.localizedString(for: date, relativeTo: .now))"
+        .buttonStyle(.plain)
     }
 }
 
-// One tile in the IG-style saved grid: 4:5, the job's archetype accent
-// as its color identity, an APPLIED flag when relevant, and a bookmark
-// that unsaves in place. Tapping the tile opens the apply flow.
 private struct SavedJobTile: View {
     let job: JobPostingRecord
     let isApplied: Bool
