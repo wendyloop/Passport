@@ -107,7 +107,7 @@ export function pitchHook(params: Pick<PitchEmailParams, "headline" | "facts" | 
 
 export function pitchSubject(params: Pick<PitchEmailParams, "candidateName" | "jobTitle" | "headline" | "facts" | "previousEmployers" | "schoolName">): string {
   const hook = pitchHook(params);
-  return `${params.candidateName} — video pitch for ${params.jobTitle}${hook ? ` (${hook})` : ""}`;
+  return `${params.candidateName} — 60-sec pitch for ${params.jobTitle}${hook ? ` (${hook})` : ""}`;
 }
 
 export function buildPitchEmailContent(params: PitchEmailParams): {
@@ -116,29 +116,36 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
   html: string;
 } {
   const greeting = clean(params.recipientFirstName) ? `Hi ${clean(params.recipientFirstName)},` : "Hi,";
-  const intro = `${params.candidateName} made you a 60-second video pitch for the ${params.jobTitle} role at ${params.companyName}.`;
+  const intro = `${params.candidateName} wants your ${params.jobTitle} role at ${params.companyName} — here's their 60-second video pitch.`;
+  // The founder's pain point is screening time; the video is the answer.
+  const whyWatch =
+    "Why watch: a minute of video tells you what resumes can't — how they think, how they communicate, and how much they actually want this. Worst case costs you 60 seconds; best case skips a screening call.";
   const note = clean(params.note);
   const headline = clean(params.headline);
-  const experience = experienceLines(params.facts, params.previousEmployers);
-  const education = educationLine(params.facts, params.schoolName);
-  const skills = skillsLine(params.facts);
-  const years = clean(params.facts?.years_experience);
-  const comp = clean(params.compensationRange);
 
-  const links = [
-    clean(params.linkedInURL) ? `LinkedIn: ${clean(params.linkedInURL)}` : null,
-    clean(params.githubURL) ? `GitHub: ${clean(params.githubURL)}` : null,
-    clean(params.portfolioURL) ? `Portfolio: ${clean(params.portfolioURL)}` : null,
-    clean(params.instagramUsername) ? `Instagram: @${clean(params.instagramUsername)}` : null,
-    clean(params.tiktokUsername) ? `TikTok: @${clean(params.tiktokUsername)}` : null,
-  ].filter((line): line is string => !!line);
+  // Three lines max — the video carries the pitch, this is just the floor.
+  const experience = experienceLines(params.facts, params.previousEmployers).slice(0, 1);
+  const education = educationLine(params.facts, params.schoolName);
+  const skills = (params.facts?.skills ?? []).map((skill) => skill.trim()).filter(Boolean).slice(0, 5).join(", ");
+  const factBullets = [
+    experience[0] ?? headline,
+    education ? `Education: ${education}` : null,
+    skills ? `Skills: ${skills}` : null,
+  ].filter((line): line is string => !!line).slice(0, 3);
+
+  // One link only — the strongest available.
+  const link = clean(params.linkedInURL)
+    ?? clean(params.githubURL)
+    ?? clean(params.portfolioURL)
+    ?? (clean(params.instagramUsername) ? `https://instagram.com/${clean(params.instagramUsername)}` : null)
+    ?? (clean(params.tiktokUsername) ? `https://www.tiktok.com/@${clean(params.tiktokUsername)}` : null);
 
   const attachmentLine = params.videoAttached && params.resumeAttached
-    ? "Their pitch video and resume are attached."
+    ? "Their video and resume are attached."
     : params.resumeAttached
       ? "Their resume is attached."
       : params.videoAttached
-        ? "Their pitch video is attached."
+        ? "Their video is attached."
         : null;
   const videoFallback = !params.videoAttached && clean(params.pitchVideoURL)
     ? `Watch their pitch: ${clean(params.pitchVideoURL)}`
@@ -147,9 +154,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ? `Resume: ${clean(params.resumeSignedURL)}`
     : null;
 
-  const replyLine = clean(params.candidateEmail)
-    ? `Reply to this email and it goes straight to ${params.candidateName} (${clean(params.candidateEmail)}).`
-    : `Reply to this email and it goes straight to ${params.candidateName}.`;
+  const replyLine = `Reply to this email and it goes straight to ${params.candidateName}${clean(params.candidateEmail) ? ` (${clean(params.candidateEmail)})` : ""}.`;
 
   const text = [
     greeting,
@@ -157,14 +162,11 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     intro,
     note ? `\nIn their words: "${note}"` : null,
     "",
-    headline,
-    experience.length ? "Experience:" : null,
-    ...experience.map((line) => `  - ${line}`),
-    education ? `Education: ${education}` : null,
-    skills ? `Skills: ${skills}` : null,
-    years ? `Years of experience: ${years}` : null,
-    comp ? `Compensation expectation: ${comp}` : null,
-    ...links,
+    whyWatch,
+    "",
+    `${params.candidateName} in ${factBullets.length === 1 ? "one line" : `${factBullets.length} lines`}:`,
+    ...factBullets.map((line) => `  - ${line}`),
+    link ? `  - ${link}` : null,
     "",
     attachmentLine,
     videoFallback,
@@ -174,22 +176,17 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     `— Sent via scout22 on ${params.candidateName}'s behalf`,
   ].filter((line): line is string => line !== null).join("\n");
 
-  const factRows = [
-    education ? `<li><strong>Education:</strong> ${escapeHtml(education)}</li>` : "",
-    skills ? `<li><strong>Skills:</strong> ${escapeHtml(skills)}</li>` : "",
-    years ? `<li><strong>Years of experience:</strong> ${escapeHtml(years)}</li>` : "",
-    comp ? `<li><strong>Compensation expectation:</strong> ${escapeHtml(comp)}</li>` : "",
-    ...links.map((line) => `<li>${escapeHtml(line)}</li>`),
-  ].join("");
-
   const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.5; color: #111827; max-width: 560px;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.55; color: #111827; max-width: 540px;">
       <p>${escapeHtml(greeting)}</p>
-      <p><strong>${escapeHtml(params.candidateName)}</strong> made you a 60-second video pitch for the <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)}.</p>
-      ${note ? `<blockquote style="margin: 8px 0; padding-left: 12px; border-left: 3px solid #d1d5db;">${escapeHtml(note)}</blockquote>` : ""}
-      ${headline ? `<p style="margin-bottom: 4px;">${escapeHtml(headline)}</p>` : ""}
-      ${experience.length ? `<p style="margin: 8px 0 2px;"><strong>Experience</strong></p><ul style="margin-top: 2px;">${experience.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : ""}
-      ${factRows ? `<ul>${factRows}</ul>` : ""}
+      <p><strong>${escapeHtml(params.candidateName)}</strong> wants your <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)} — here's their 60-second video pitch.</p>
+      ${note ? `<blockquote style="margin: 10px 0; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">&ldquo;${escapeHtml(note)}&rdquo;</blockquote>` : ""}
+      <p style="color: #374151;"><strong>Why watch:</strong> a minute of video tells you what resumes can't — how they think, how they communicate, and how much they actually want this. Worst case costs you 60 seconds; best case skips a screening call.</p>
+      <p style="margin-bottom: 2px;"><strong>${escapeHtml(params.candidateName)} in ${factBullets.length === 1 ? "one line" : `${factBullets.length} lines`}:</strong></p>
+      <ul style="margin-top: 2px;">
+        ${factBullets.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+        ${link ? `<li><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></li>` : ""}
+      </ul>
       ${attachmentLine ? `<p><strong>${escapeHtml(attachmentLine)}</strong></p>` : ""}
       ${videoFallback ? `<p><a href="${escapeHtml(clean(params.pitchVideoURL)!)}">▶ Watch their 60-second pitch</a></p>` : ""}
       ${resumeFallback ? `<p><a href="${escapeHtml(clean(params.resumeSignedURL)!)}">Open their resume</a></p>` : ""}

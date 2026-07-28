@@ -189,15 +189,15 @@ Deno.test("mapSimilarityToScore clamps and maps through floor/ceiling", () => {
 Deno.test("pitchSubject picks the strongest hook", () => {
   assertEquals(
     pitchSubject({ candidateName: "Sam", jobTitle: "iOS Engineer", headline: "CS @ Berkeley" }),
-    "Sam — video pitch for iOS Engineer (CS @ Berkeley)",
+    "Sam — 60-sec pitch for iOS Engineer (CS @ Berkeley)",
   );
   assertEquals(
     pitchSubject({ candidateName: "Sam", jobTitle: "PM", previousEmployers: ["Stripe"] }),
-    "Sam — video pitch for PM (ex-Stripe)",
+    "Sam — 60-sec pitch for PM (ex-Stripe)",
   );
   assertEquals(
     pitchSubject({ candidateName: "Sam", jobTitle: "PM" }),
-    "Sam — video pitch for PM",
+    "Sam — 60-sec pitch for PM",
   );
 });
 
@@ -226,7 +226,7 @@ Deno.test("buildPitchEmailContent renders facts, escapes HTML, and reflects atta
   assertEquals(content.text.includes("SWE Intern · Stripe (2025-06 – now)"), true);
   assertEquals(content.text.includes("Education: BS CS UC Berkeley (2026)"), true);
   assertEquals(content.text.includes("Skills: Swift, Go"), true);
-  assertEquals(content.text.includes("Their pitch video and resume are attached."), true);
+  assertEquals(content.text.includes("Their video and resume are attached."), true);
   assertEquals(content.text.includes("goes straight to Sam <script> (sam@x.io)"), true);
   assertEquals(content.html.includes("<script>"), false);
   assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
