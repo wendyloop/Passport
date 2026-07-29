@@ -110,7 +110,7 @@ export function pitchHook(params: Pick<PitchEmailParams, "headline" | "facts" | 
 
 export function pitchSubject(params: Pick<PitchEmailParams, "candidateName" | "jobTitle" | "headline" | "facts" | "previousEmployers" | "schoolName">): string {
   const hook = pitchHook(params);
-  return `${params.candidateName} — 60-sec pitch for ${params.jobTitle}${hook ? ` (${hook})` : ""}`;
+  return `Applicant for your ${params.jobTitle}: ${params.candidateName}${hook ? ` (${hook})` : ""}`;
 }
 
 export function buildPitchEmailContent(params: PitchEmailParams): {
@@ -118,17 +118,16 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
   text: string;
   html: string;
 } {
+  // Recruiter-submission shape (copy v4): present the candidate first,
+  // product positioning last. Hey, I have an applicant → highlights →
+  // their own words → video as the pre-screen → sign-off explains scout22.
   const greeting = clean(params.recipientFirstName) ? `Hi ${clean(params.recipientFirstName)},` : "Hi,";
-  const intro = `${params.candidateName} wants your ${params.jobTitle} role at ${params.companyName} — here's their 60-second video pitch.`;
-  // Three jobs in one paragraph: what this email is, why this candidate
-  // means it, and why video-first beats the ATS pile.
-  const whyWatch = params.limitedPitches
-    ? `I'm Wendy from scout22 — candidates here pitch startups on video instead of cover letters, and they only get five pitches a week. ${params.candidateName} chose to spend one on ${params.companyName}: that's genuine intent, not an ATS blast. Sixty seconds of them talking tells you more than any resume screen.`
-    : `I'm Wendy from scout22 — candidates here apply with a 60-second video instead of a cover letter. ${params.candidateName} picked ${params.companyName} out and recorded this for you: that's genuine interest, not an ATS blast. Sixty seconds of them talking tells you more than any resume screen.`;
+  const intro = params.limitedPitches
+    ? `I have an applicant who picked out your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`
+    : `I have an applicant for your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`;
   const note = clean(params.note);
   const headline = clean(params.headline);
 
-  // Three lines max — the video carries the pitch, this is just the floor.
   const experience = experienceLines(params.facts, params.previousEmployers).slice(0, 1);
   const education = educationLine(params.facts, params.schoolName);
   const skills = (params.facts?.skills ?? []).map((skill) => skill.trim()).filter(Boolean).slice(0, 5).join(", ");
@@ -145,58 +144,58 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ?? (clean(params.instagramUsername) ? `https://instagram.com/${clean(params.instagramUsername)}` : null)
     ?? (clean(params.tiktokUsername) ? `https://www.tiktok.com/@${clean(params.tiktokUsername)}` : null);
 
-  const attachmentLine = params.videoAttached && params.resumeAttached
-    ? "Their video and resume are attached."
+  const attachmentLine = params.videoAttached
+    ? `${params.candidateName.split(" ")[0]} recorded a 60-second intro — it's attached${params.resumeAttached ? " along with their resume" : ""}. One minute gives you a read on them before you ever book a call.`
     : params.resumeAttached
       ? "Their resume is attached."
-      : params.videoAttached
-        ? "Their video is attached."
-        : null;
+      : null;
   const videoFallback = !params.videoAttached && clean(params.pitchVideoURL)
-    ? `Watch their pitch: ${clean(params.pitchVideoURL)}`
+    ? `Watch their 60-second intro: ${clean(params.pitchVideoURL)}`
     : null;
   const resumeFallback = !params.resumeAttached && clean(params.resumeSignedURL)
     ? `Resume: ${clean(params.resumeSignedURL)}`
     : null;
 
   const replyLine = `Reply to this email and it goes straight to ${params.candidateName}${clean(params.candidateEmail) ? ` (${clean(params.candidateEmail)})` : ""}.`;
+  const footerLine =
+    "scout22 — where startups get to know applicants as people, not PDFs. Every application comes with a 60-second video.";
 
   const text = [
     greeting,
     "",
     intro,
-    note ? `\nIn their words: "${note}"` : null,
     "",
-    whyWatch,
-    "",
-    `${params.candidateName} in ${factBullets.length === 1 ? "one line" : `${factBullets.length} lines`}:`,
+    "A few highlights:",
     ...factBullets.map((line) => `  - ${line}`),
     link ? `  - ${link}` : null,
+    note ? `\nIn their words: "${note}"` : null,
     "",
     attachmentLine,
     videoFallback,
     resumeFallback,
     "",
     replyLine,
-    `— Sent via scout22 on ${params.candidateName}'s behalf`,
+    "",
+    "— Wendy",
+    footerLine,
   ].filter((line): line is string => line !== null).join("\n");
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.55; color: #111827; max-width: 540px;">
       <p>${escapeHtml(greeting)}</p>
-      <p><strong>${escapeHtml(params.candidateName)}</strong> wants your <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)} — here's their 60-second video pitch.</p>
-      ${note ? `<blockquote style="margin: 10px 0; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">&ldquo;${escapeHtml(note)}&rdquo;</blockquote>` : ""}
-      <p style="color: #374151;">${escapeHtml(whyWatch)}</p>
-      <p style="margin-bottom: 2px;"><strong>${escapeHtml(params.candidateName)} in ${factBullets.length === 1 ? "one line" : `${factBullets.length} lines`}:</strong></p>
+      <p>I have an applicant ${params.limitedPitches ? "who picked out" : "for"} your <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)} — <strong>${escapeHtml(params.candidateName)}</strong>.</p>
+      <p style="margin-bottom: 2px;"><strong>A few highlights:</strong></p>
       <ul style="margin-top: 2px;">
         ${factBullets.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
         ${link ? `<li><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></li>` : ""}
       </ul>
-      ${attachmentLine ? `<p><strong>${escapeHtml(attachmentLine)}</strong></p>` : ""}
-      ${videoFallback ? `<p><a href="${escapeHtml(clean(params.pitchVideoURL)!)}">▶ Watch their 60-second pitch</a></p>` : ""}
+      ${note ? `<p style="margin-bottom: 2px;">In their words:</p><blockquote style="margin: 4px 0 12px; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">&ldquo;${escapeHtml(note)}&rdquo;</blockquote>` : ""}
+      ${attachmentLine ? `<p>${escapeHtml(attachmentLine)}</p>` : ""}
+      ${videoFallback ? `<p><a href="${escapeHtml(clean(params.pitchVideoURL)!)}">▶ Watch their 60-second intro</a></p>` : ""}
       ${resumeFallback ? `<p><a href="${escapeHtml(clean(params.resumeSignedURL)!)}">Open their resume</a></p>` : ""}
       <p>${escapeHtml(replyLine)}</p>
-      <p style="color: #6b7280; font-size: 12px;">Sent via scout22 on ${escapeHtml(params.candidateName)}'s behalf.</p>
+      <p style="margin-bottom: 0;">— Wendy</p>
+      <p style="color: #6b7280; font-size: 12px; margin-top: 4px;">${escapeHtml(footerLine)}</p>
     </div>
   `;
 

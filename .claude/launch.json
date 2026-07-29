@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "carousel-jsx",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4519",
+        "--directory",
+        "/private/tmp/claude-501/-Users-wendy-Dev-Passport/1e6d932b-19ac-4fb3-a833-4c9b306b182f/scratchpad/carousel-jsx"
+      ],
+      "port": 4519
+    }
+  ]
+}
