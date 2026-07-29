@@ -17,8 +17,6 @@ import SwiftUI
 enum CarouselArchetype: String, CaseIterable {
     // ---- Full-bleed archetypes (phone-height slides) ----
 
-    /// Dark card with a glowing neon border and monogram byline.
-    case neonCard
     /// Push-notification illustration on a pastel gradient wallpaper.
     /// Deliberately stylized (rotation, oversized corners, no clock) so it
     /// reads as an illustration, not a fake system notification.
@@ -28,8 +26,6 @@ enum CarouselArchetype: String, CaseIterable {
     case glitchWindow
     /// Y2K chrome: metallic sparkles over a soft gradient, white serif card.
     case chromeStar
-    /// Outlined card above a neon perspective grid running to the horizon.
-    case cyberGrid
     /// Dark metallic card with a soft liquid sheen; quiet serif type.
     case liquidChrome
 
@@ -50,20 +46,25 @@ enum CarouselArchetype: String, CaseIterable {
     case handPainted
     /// Greige serif elegance: blurred silhouette, caps + italic, capsules.
     case quietLuxury
+    /// Sunlit warm still life: striped curtain light, vases, serif caps.
+    case warmMinimal
+    /// Dark lounge: blurred amber shapes, thin gold type, mono captions.
+    case afterHours
 
     // Cut by product decision (restore from git history if wanted):
     // `editorial` newspaper (2026-07-18); `scrapbook` and `giantType`
     // (2026-07-22, superseded by stickerScrapbook / motionEditorial);
-    // `poster` — the original pre-archetype layout (2026-07-22).
+    // `poster` — the original pre-archetype layout (2026-07-22);
+    // `neonCard` and `cyberGrid` full-bleeds (2026-07-29, template review).
 
     /// The selection pool. Selection is hash(job.id) mod count, so editing
     /// this list reshuffles which job gets which look — safe, since the
     /// choice is never persisted anywhere.
     static let active: [CarouselArchetype] = [
-        .neonCard, .notification,
-        .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome,
+        .notification, .glitchWindow, .chromeStar, .liquidChrome,
         .boldDrop, .sundayEdit, .motionEditorial, .stickerScrapbook,
         .daydreamY2K, .handPainted, .quietLuxury,
+        .warmMinimal, .afterHours,
     ]
 
     /// Card templates render as a 4:5 card on a dark ground instead of a
@@ -71,7 +72,8 @@ enum CarouselArchetype: String, CaseIterable {
     var isCardTemplate: Bool {
         switch self {
         case .boldDrop, .sundayEdit, .motionEditorial, .stickerScrapbook,
-             .daydreamY2K, .handPainted, .quietLuxury:
+             .daydreamY2K, .handPainted, .quietLuxury,
+             .warmMinimal, .afterHours:
             return true
         default:
             return false
@@ -116,9 +118,9 @@ struct CarouselStyle: Equatable {
     ) -> CarouselStyle {
         let family = CarouselPaletteFamily.family(forThemeID: themeID)
         guard !pool.isEmpty else {
-            // Fail-safe for a bad pool edit: neonCard, the oldest surviving
-            // archetype.
-            return CarouselStyle(archetype: .neonCard, family: family, theme: CarouselArchetype.neonCard.palette(for: family, themeID: themeID))
+            // Fail-safe for a bad pool edit: notification, the oldest
+            // surviving archetype.
+            return CarouselStyle(archetype: .notification, family: family, theme: CarouselArchetype.notification.palette(for: family, themeID: themeID))
         }
         let archetype = pool[Int(hash32(jobID) % UInt32(pool.count))]
         return CarouselStyle(archetype: archetype, family: family, theme: archetype.palette(for: family, themeID: themeID))
@@ -143,11 +145,9 @@ extension CarouselStyle {
     /// CarouselCardTemplates); the default only satisfies exhaustiveness.
     var headerFont: Font {
         switch archetype {
-        case .neonCard:     return .system(size: 24, weight: .heavy, design: .rounded)
         case .notification: return .system(size: 22, weight: .bold)
         case .glitchWindow: return .system(size: 21, weight: .heavy, design: .monospaced)
         case .chromeStar:   return .system(size: 24, weight: .bold, design: .serif)
-        case .cyberGrid:    return .system(size: 23, weight: .heavy)
         case .liquidChrome: return .system(size: 24, weight: .semibold, design: .serif)
         default:            return theme.titleFont
         }
@@ -156,13 +156,12 @@ extension CarouselStyle {
     var headerColor: Color { theme.textPrimary }
 
     /// Header copy transform: notification reads like a notification title,
-    /// glitch speaks snake_case, cyberGrid shouts, everyone else keeps the
-    /// lowercase feed voice.
+    /// glitch speaks snake_case, everyone else keeps the lowercase feed
+    /// voice.
     func headerText(_ raw: String) -> String {
         switch archetype {
         case .notification: return raw.prefix(1).uppercased() + raw.dropFirst()
         case .glitchWindow: return raw.replacingOccurrences(of: " ", with: "_")
-        case .cyberGrid:    return raw.uppercased()
         default:            return raw
         }
     }
@@ -172,7 +171,7 @@ extension CarouselStyle {
     /// (Card templates bypass SlideScaffold entirely.)
     var usesInteriorCard: Bool {
         switch archetype {
-        case .neonCard, .notification, .glitchWindow, .chromeStar, .cyberGrid, .liquidChrome:
+        case .notification, .glitchWindow, .chromeStar, .liquidChrome:
             return true
         default:
             return false
@@ -191,11 +190,9 @@ extension CarouselArchetype {
     /// Palette bundle for this archetype in the given family.
     func palette(for family: CarouselPaletteFamily, themeID: String) -> CarouselTheme {
         switch self {
-        case .neonCard:     return CarouselArchetype.neonCardPalettes[family]!
         case .notification: return CarouselArchetype.notificationPalettes[family]!
         case .glitchWindow: return CarouselArchetype.glitchWindowPalettes[family]!
         case .chromeStar:   return CarouselArchetype.chromeStarPalettes[family]!
-        case .cyberGrid:    return CarouselArchetype.cyberGridPalettes[family]!
         case .liquidChrome: return CarouselArchetype.liquidChromePalettes[family]!
         // Card templates keep one fixed palette (the approved preview look);
         // the theme mostly styles the dark ground + shared feed chrome.
@@ -206,6 +203,8 @@ extension CarouselArchetype {
         case .daydreamY2K:      return CarouselArchetype.cardGround("card-daydream-y2k", accent: Color(red: 0.89, green: 0.34, blue: 0.55))
         case .handPainted:      return CarouselArchetype.cardGround("card-hand-painted", accent: Color(red: 0.91, green: 0.70, blue: 0.24))
         case .quietLuxury:      return CarouselArchetype.cardGround("card-quiet-luxury", accent: Color(red: 0.89, green: 0.85, blue: 0.80))
+        case .warmMinimal:      return CarouselArchetype.cardGround("card-warm-minimal", accent: Color(red: 0.91, green: 0.84, blue: 0.72))
+        case .afterHours:       return CarouselArchetype.cardGround("card-after-hours", accent: Color(red: 0.94, green: 0.85, blue: 0.54))
         }
     }
 
@@ -227,62 +226,6 @@ extension CarouselArchetype {
         )
     }
 
-
-    // Near-black ground, one neon accent doing all the work.
-    private static let neonCardPalettes: [CarouselPaletteFamily: CarouselTheme] = [
-        .cool: CarouselTheme(
-            id: "neon-card-cool",
-            backgroundTop:    Color(red: 0.04, green: 0.05, blue: 0.08),
-            backgroundBottom: Color(red: 0.07, green: 0.09, blue: 0.13),
-            surface:          Color.white.opacity(0.05),
-            accent:           Color(red: 0.35, green: 0.85, blue: 1.00),
-            textPrimary:      Color(red: 0.96, green: 0.97, blue: 0.95),
-            textSecondary:    Color.white.opacity(0.62),
-            onAccent:         Color(red: 0.04, green: 0.05, blue: 0.08),
-            bulletGlyph:      "chevron.right",
-            titleFont:        .system(size: 30, weight: .heavy, design: .rounded),
-            bodyFont:         .system(size: 16, weight: .medium, design: .rounded)
-        ),
-        .warm: CarouselTheme(
-            id: "neon-card-warm",
-            backgroundTop:    Color(red: 0.07, green: 0.05, blue: 0.03),
-            backgroundBottom: Color(red: 0.11, green: 0.08, blue: 0.05),
-            surface:          Color.white.opacity(0.05),
-            accent:           Color(red: 1.00, green: 0.72, blue: 0.25),
-            textPrimary:      Color(red: 0.98, green: 0.96, blue: 0.92),
-            textSecondary:    Color.white.opacity(0.62),
-            onAccent:         Color(red: 0.07, green: 0.05, blue: 0.03),
-            bulletGlyph:      "chevron.right",
-            titleFont:        .system(size: 30, weight: .heavy, design: .rounded),
-            bodyFont:         .system(size: 16, weight: .medium, design: .rounded)
-        ),
-        .earthy: CarouselTheme(
-            id: "neon-card-earthy",
-            backgroundTop:    Color(red: 0.04, green: 0.07, blue: 0.04),
-            backgroundBottom: Color(red: 0.07, green: 0.11, blue: 0.07),
-            surface:          Color.white.opacity(0.05),
-            accent:           Color(red: 0.62, green: 0.95, blue: 0.30),
-            textPrimary:      Color(red: 0.95, green: 0.98, blue: 0.93),
-            textSecondary:    Color.white.opacity(0.62),
-            onAccent:         Color(red: 0.04, green: 0.07, blue: 0.04),
-            bulletGlyph:      "chevron.right",
-            titleFont:        .system(size: 30, weight: .heavy, design: .rounded),
-            bodyFont:         .system(size: 16, weight: .medium, design: .rounded)
-        ),
-        .playful: CarouselTheme(
-            id: "neon-card-playful",
-            backgroundTop:    Color(red: 0.08, green: 0.03, blue: 0.08),
-            backgroundBottom: Color(red: 0.12, green: 0.05, blue: 0.13),
-            surface:          Color.white.opacity(0.05),
-            accent:           Color(red: 1.00, green: 0.36, blue: 0.75),
-            textPrimary:      Color(red: 0.98, green: 0.95, blue: 0.97),
-            textSecondary:    Color.white.opacity(0.62),
-            onAccent:         Color(red: 0.08, green: 0.03, blue: 0.08),
-            bulletGlyph:      "chevron.right",
-            titleFont:        .system(size: 30, weight: .heavy, design: .rounded),
-            bodyFont:         .system(size: 16, weight: .medium, design: .rounded)
-        ),
-    ]
 
     // Pastel wallpaper behind white cards. textPrimary is the on-card ink;
     // textSecondary must read on both the card and the wallpaper.
@@ -404,30 +347,6 @@ extension CarouselArchetype {
             bottom: Color(red: 0.67, green: 0.61, blue: 0.80),
             ink:    Color(red: 0.21, green: 0.15, blue: 0.31),
             secondary: Color(red: 0.42, green: 0.36, blue: 0.53)),
-    ]
-
-    // Tron horizon: deep teal-black, one neon line color doing everything.
-    private static func cyberGridPalette(_ suffix: String, accent: Color) -> CarouselTheme {
-        CarouselTheme(
-            id: "cyber-grid-\(suffix)",
-            backgroundTop:    Color(red: 0.02, green: 0.06, blue: 0.08),
-            backgroundBottom: Color(red: 0.03, green: 0.09, blue: 0.11),
-            surface:          Color.white.opacity(0.04),
-            accent:           accent,
-            textPrimary:      .white,
-            textSecondary:    Color.white.opacity(0.60),
-            onAccent:         Color(red: 0.02, green: 0.06, blue: 0.08),
-            bulletGlyph:      "play.fill",
-            titleFont:        .system(size: 28, weight: .heavy),
-            bodyFont:         .system(size: 16, weight: .medium)
-        )
-    }
-
-    private static let cyberGridPalettes: [CarouselPaletteFamily: CarouselTheme] = [
-        .cool:    cyberGridPalette("cool",    accent: Color(red: 0.18, green: 0.85, blue: 0.96)),
-        .warm:    cyberGridPalette("warm",    accent: Color(red: 1.00, green: 0.59, blue: 0.20)),
-        .earthy:  cyberGridPalette("earthy",  accent: Color(red: 0.23, green: 0.94, blue: 0.63)),
-        .playful: cyberGridPalette("playful", accent: Color(red: 0.89, green: 0.31, blue: 1.00)),
     ]
 
     // Liquid chrome: near-black ground, gunmetal card, pale metallic accent.

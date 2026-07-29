@@ -90,6 +90,8 @@ struct CardTemplateSlideView: View {
         case .daydreamY2K:      DaydreamY2KCard.cover(s, job)
         case .handPainted:      HandPaintedCard.cover(s, job)
         case .quietLuxury:      QuietLuxuryCard.cover(s, job)
+        case .warmMinimal:      WarmMinimalCard.cover(s, job)
+        case .afterHours:       AfterHoursCard.cover(s, job)
         default:                EmptyView()
         }
     }
@@ -104,6 +106,8 @@ struct CardTemplateSlideView: View {
         case .daydreamY2K:      DaydreamY2KCard.interior(c)
         case .handPainted:      HandPaintedCard.interior(c)
         case .quietLuxury:      QuietLuxuryCard.interior(c)
+        case .warmMinimal:      WarmMinimalCard.interior(c)
+        case .afterHours:       AfterHoursCard.interior(c)
         default:                EmptyView()
         }
     }
@@ -1057,6 +1061,308 @@ enum QuietLuxuryCard {
             .frame(width: 334, alignment: .leading).at(28, 88)
             if let pill = c.pill {
                 capsule(pill.uppercased(), color: darkInk, action: c.pillAction).at(65, 408)
+            }
+        }
+    }
+}
+
+// MARK: - 07 · Warm minimal (after @kellishoponline)
+
+enum WarmMinimalCard {
+    static let bgTop = Color(red: 0.91, green: 0.84, blue: 0.72)
+    static let bgBot = Color(red: 0.87, green: 0.79, blue: 0.66)
+    static let card = Color(red: 0.96, green: 0.92, blue: 0.83)
+    static let ink = Color(red: 0.17, green: 0.14, blue: 0.08)
+    static let softInk = Color(red: 0.54, green: 0.46, blue: 0.33)
+    static let italicInk = Color(red: 0.36, green: 0.30, blue: 0.20)
+
+    static var ground: some View {
+        LinearGradient(colors: [bgTop, bgBot], startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Sunlit still life: striped curtain light, dark vases, a table — the
+    /// cover's whole backdrop, drawn with plain shapes like the reference.
+    static var scene: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [Color(red: 0.86, green: 0.77, blue: 0.62), bgTop],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .frame(width: 83, height: designH)
+            HStack(spacing: 0) {
+                ForEach(0..<23, id: \.self) { i in
+                    Rectangle()
+                        .fill(i % 2 == 0
+                              ? Color(red: 0.97, green: 0.94, blue: 0.86)
+                              : Color(red: 0.93, green: 0.87, blue: 0.75))
+                        .frame(width: 8.8)
+                }
+            }
+            .frame(width: 202, height: 368)
+            .blur(radius: 0.5)
+            .shadow(color: Color(red: 0.97, green: 0.94, blue: 0.86).opacity(0.55), radius: 43)
+            .at(101, 51)
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.37, green: 0.32, blue: 0.28), Color(red: 0.24, green: 0.20, blue: 0.17)],
+                    startPoint: .top, endPoint: .bottom
+                ))
+                .frame(width: 47, height: 119)
+                .at(43, 231)
+            UnevenRoundedRectangle(topLeadingRadius: 5, bottomLeadingRadius: 1.5, bottomTrailingRadius: 1.5, topTrailingRadius: 5)
+                .fill(Color(red: 0.18, green: 0.15, blue: 0.13))
+                .frame(width: 40, height: 47)
+                .rotationEffect(.degrees(2))
+                .at(47, 188)
+            Ellipse()
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.95, green: 0.90, blue: 0.80), Color(red: 0.85, green: 0.78, blue: 0.64)],
+                    startPoint: .top, endPoint: .bottom
+                ))
+                .frame(width: 170, height: 43)
+                .shadow(color: Color(red: 0.35, green: 0.27, blue: 0.16).opacity(0.2), radius: 11, y: 7)
+                .at(137, 318)
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.42, green: 0.35, blue: 0.29), Color(red: 0.31, green: 0.24, blue: 0.20)],
+                    startPoint: .top, endPoint: .bottom
+                ))
+                .frame(width: 21, height: 116)
+                .at(211, 350)
+            UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 5, bottomTrailingRadius: 5, topTrailingRadius: 12)
+                .fill(Color(red: 0.29, green: 0.23, blue: 0.19))
+                .frame(width: 25, height: 40)
+                .at(239, 285)
+        }
+    }
+
+    static func cover(_ s: CoverSlide, _ job: JobPostingRecord) -> some View {
+        ZStack(alignment: .topLeading) {
+            ground
+            scene
+            Text("SCOUT22")
+                .font(CarouselFonts.dmMono(8)).tracking(3)
+                .foregroundStyle(softInk)
+                .frame(width: designW).at(0, 20)
+            VStack(spacing: 2) {
+                ForEach(titleLines(s, job), id: \.self) { line in
+                    Text(line)
+                        .font(CarouselFonts.playfair(40)).tracking(2.2)
+                        .foregroundStyle(ink)
+                        .lineLimit(1).minimumScaleFactor(0.4)
+                }
+                Text("at \(job.displayCompanyName)")
+                    .font(CarouselFonts.playfairItalic(15))
+                    .foregroundStyle(italicInk)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .padding(.top, 8)
+            }
+            .frame(width: designW - 40).at(20, 78)
+            Text(coverMeta(s, job).uppercased())
+                .font(CarouselFonts.dmMono(9.5)).tracking(3)
+                .foregroundStyle(softInk)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: designW).at(0, 450)
+        }
+    }
+
+    static func interior(_ c: CardInterior) -> some View {
+        ZStack(alignment: .topLeading) {
+            ground
+            Rectangle()
+                .fill(card)
+                .frame(width: 311, height: 412)
+                .shadow(color: Color(red: 0.35, green: 0.27, blue: 0.16).opacity(0.25), radius: 22, y: 9)
+                .at(40, 38)
+            VStack(spacing: 0) {
+                Text("\((c.kicker ?? "SCOUT22").uppercased()) — 0\(c.order)")
+                    .font(CarouselFonts.dmMono(9)).tracking(3.6)
+                    .foregroundStyle(softInk)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(c.title.uppercased())
+                    .font(CarouselFonts.playfair(30)).tracking(1)
+                    .foregroundStyle(ink)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2).minimumScaleFactor(0.5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 17)
+                Rectangle().fill(ink).frame(width: 40, height: 2)
+                    .padding(.vertical, 18)
+                VStack(spacing: 12) {
+                    ForEach(Array(c.rows.enumerated()), id: \.offset) { _, row in
+                        VStack(spacing: 2) {
+                            Text(row.text)
+                                .font(CarouselFonts.playfairItalic(16))
+                                .foregroundStyle(italicInk)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2).minimumScaleFactor(0.7)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if let sub = row.sub {
+                                Text(sub.uppercased())
+                                    .font(CarouselFonts.dmMono(8.5)).tracking(2)
+                                    .foregroundStyle(softInk)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(width: 280).at(55, 78)
+            bottomLine(c).at(40, 415)
+        }
+    }
+
+    @ViewBuilder
+    private static func bottomLine(_ c: CardInterior) -> some View {
+        if let pill = c.pill, let action = c.pillAction {
+            Button(action: action) {
+                Text(pill.uppercased())
+                    .font(CarouselFonts.dmMono(9)).tracking(2.9)
+                    .foregroundStyle(ink)
+                    .frame(width: 220)
+                    .padding(.vertical, 8)
+                    .background(Capsule().stroke(ink, lineWidth: 1.5))
+                    .frame(width: 311)
+            }
+        } else if let pill = c.pill {
+            Text(pill.uppercased())
+                .font(CarouselFonts.dmMono(8.7)).tracking(2.9)
+                .foregroundStyle(softInk)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: 311)
+        }
+    }
+}
+
+// MARK: - 08 · After hours (after @weauroracreatives)
+
+enum AfterHoursCard {
+    static let gold = Color(red: 0.94, green: 0.85, blue: 0.54)
+    static let dimText = Color(red: 0.79, green: 0.80, blue: 0.76)
+
+    static var ground: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Color(red: 0.15, green: 0.17, blue: 0.19), location: 0),
+                .init(color: Color(red: 0.11, green: 0.12, blue: 0.14), location: 0.55),
+                .init(color: Color(red: 0.08, green: 0.09, blue: 0.10), location: 1),
+            ],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+    }
+
+    static func blob(_ w: CGFloat, _ h: CGFloat, _ colors: [Color], blur: CGFloat, opacity: Double, rotation: Double = 0, circle: Bool = false) -> some View {
+        Group {
+            if circle {
+                Circle().fill(colors[0]).frame(width: w, height: h)
+            } else {
+                Rectangle()
+                    .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+                    .frame(width: w, height: h)
+            }
+        }
+        .rotationEffect(.degrees(rotation))
+        .blur(radius: blur)
+        .opacity(opacity)
+    }
+
+    static func arrow(width: CGFloat) -> some View {
+        HStack(spacing: 1) {
+            Rectangle().fill(gold).frame(width: width, height: 1.2)
+            Image(systemName: "arrowtriangle.forward.fill")
+                .font(.system(size: 6))
+                .foregroundStyle(gold)
+        }
+    }
+
+    static func cover(_ s: CoverSlide, _ job: JobPostingRecord) -> some View {
+        ZStack(alignment: .topLeading) {
+            ground
+            blob(130, 343, [Color(red: 0.71, green: 0.41, blue: 0.24), Color(red: 0.43, green: 0.24, blue: 0.13)], blur: 19, opacity: 0.8, rotation: -5).at(-61, 29)
+            blob(144, 202, [Color(red: 0.21, green: 0.27, blue: 0.24)], blur: 23, opacity: 0.75).at(209, 87)
+            blob(108, 108, [Color(red: 0.16, green: 0.21, blue: 0.17)], blur: 17, opacity: 0.8, circle: true).at(119, 260)
+            blob(108, 123, [Color(red: 0.18, green: 0.16, blue: 0.14)], blur: 18, opacity: 0.9).at(303, 343)
+            VStack(spacing: 4) {
+                Text("EST. NYC")
+                    .font(CarouselFonts.dmMono(7)).tracking(2.2)
+                HStack(spacing: 12) {
+                    Text("VIDEO-FIRST").font(CarouselFonts.dmMono(7)).tracking(1.4)
+                    Text("s22").font(CarouselFonts.archivoBold(23)).tracking(0.7)
+                    Text("JOB DISCOVERY").font(CarouselFonts.dmMono(7)).tracking(1.4)
+                }
+            }
+            .foregroundStyle(gold)
+            .frame(width: designW).at(0, 38)
+            VStack(spacing: -4) {
+                ForEach(titleLines(s, job), id: \.self) { line in
+                    Text(line.lowercased())
+                        .font(.system(size: 44, weight: .light)).tracking(0.7)
+                        .foregroundStyle(gold)
+                        .lineLimit(1).minimumScaleFactor(0.4)
+                }
+            }
+            .frame(width: designW - 40).at(20, 178)
+            VStack(alignment: .trailing, spacing: 6) {
+                arrow(width: 70)
+                Text(job.displayCompanyName.uppercased())
+                    .font(CarouselFonts.dmMono(9.7)).tracking(1.4)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(coverMeta(s, job).uppercased())
+                    .font(CarouselFonts.dmMono(9.7)).tracking(1.4)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+            .foregroundStyle(gold)
+            .frame(width: 152, alignment: .trailing).at(217, 388)
+        }
+    }
+
+    static func interior(_ c: CardInterior) -> some View {
+        ZStack(alignment: .topLeading) {
+            ground
+            blob(152, 188, [Color(red: 0.21, green: 0.27, blue: 0.24)], blur: 25, opacity: 0.7).at(253, -22)
+            blob(137, 202, [Color(red: 0.54, green: 0.32, blue: 0.19), Color(red: 0.35, green: 0.20, blue: 0.10)], blur: 20, opacity: 0.7, rotation: -6).at(-51, 289)
+            Text("\(c.title.uppercased()) — SCOUT22")
+                .font(CarouselFonts.dmMono(8.7)).tracking(2.2)
+                .foregroundStyle(gold)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: 325, alignment: .leading).at(32, 38)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(c.rows.prefix(3).enumerated()), id: \.offset) { _, row in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(row.text.lowercased())
+                            .font(.system(size: 26, weight: .light)).tracking(0.4)
+                            .foregroundStyle(gold)
+                            .lineLimit(2).minimumScaleFactor(0.6)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let sub = row.sub {
+                            Text(sub.uppercased())
+                                .font(CarouselFonts.dmMono(9.4)).tracking(1.8)
+                                .foregroundStyle(dimText)
+                        }
+                    }
+                    .padding(.bottom, 13)
+                    Rectangle().fill(gold.opacity(0.35)).frame(height: 1)
+                        .padding(.bottom, 13)
+                }
+            }
+            .frame(width: 325, alignment: .leading).at(32, 84)
+            bottomLine(c).at(32, 432)
+        }
+    }
+
+    @ViewBuilder
+    private static func bottomLine(_ c: CardInterior) -> some View {
+        if let pill = c.pill {
+            let label = HStack(spacing: 8) {
+                arrow(width: 54)
+                Text(pill.uppercased())
+                    .font(CarouselFonts.dmMono(9.4)).tracking(1.8)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .foregroundStyle(gold)
+            if let action = c.pillAction {
+                Button(action: action) { label }
+            } else {
+                label
             }
         }
     }

@@ -212,11 +212,9 @@ private struct SlideView: View {
     @ViewBuilder
     private func cover(_ s: CoverSlide) -> some View {
         switch style.archetype {
-        case .neonCard:     NeonCardCoverView(slide: s, style: style, job: job)
         case .notification: NotificationCoverView(slide: s, style: style, job: job)
         case .glitchWindow: GlitchWindowCoverView(slide: s, style: style, job: job)
         case .chromeStar:   ChromeStarCoverView(slide: s, style: style, job: job)
-        case .cyberGrid:    CyberGridCoverView(slide: s, style: style, job: job)
         case .liquidChrome: LiquidChromeCoverView(slide: s, style: style, job: job)
         default:            EmptyView()
         }
@@ -246,19 +244,6 @@ private struct SlideScaffold<Content: View>: View {
     @ViewBuilder
     private var container: some View {
         switch style.archetype {
-        case .neonCard:
-            inner
-                .padding(22)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color.white.opacity(0.03))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(style.theme.accent.opacity(0.85), lineWidth: 1.5)
-                )
-                .shadow(color: style.theme.accent.opacity(0.4), radius: 16)
         case .notification:
             inner
                 .padding(20)
@@ -287,18 +272,6 @@ private struct SlideScaffold<Content: View>: View {
                         .fill(style.theme.surface)
                 )
                 .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
-        case .cyberGrid:
-            inner
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.black.opacity(0.35))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(style.theme.accent.opacity(0.9), lineWidth: 1.2)
-                )
         case .liquidChrome:
             inner
                 .padding(22)
@@ -315,22 +288,13 @@ private struct SlideScaffold<Content: View>: View {
 }
 
 // Section header ("the backstory", "the deets", …) in the archetype's voice:
-// neonCard gets an accent bar, glitch a prompt chevron, the rest type only.
+// glitch gets a prompt chevron, the rest type only.
 private struct SlideHeader: View {
     let title: String
     let style: CarouselStyle
 
     var body: some View {
         switch style.archetype {
-        case .neonCard:
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(style.theme.accent)
-                    .frame(width: 5, height: 24)
-                Text(style.headerText(title))
-                    .font(style.headerFont)
-                    .foregroundStyle(style.headerColor)
-            }
         case .glitchWindow:
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(">")
@@ -453,7 +417,6 @@ private struct AboutCompanySlideView: View {
         case .notification:              return .system(size: 13, weight: .semibold)
         case .glitchWindow:              return .system(size: 12, weight: .bold, design: .monospaced)
         case .chromeStar, .liquidChrome: return .system(size: 13, weight: .semibold, design: .serif)
-        case .cyberGrid:                 return .system(size: 12, weight: .heavy)
         default:                         return .system(size: 14, weight: .heavy, design: .rounded)
         }
     }

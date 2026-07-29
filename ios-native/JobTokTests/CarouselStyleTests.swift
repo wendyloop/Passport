@@ -44,9 +44,9 @@ final class CarouselStyleTests: XCTestCase {
     }
 
     // An empty pool (bad edit) must fail safe to a real archetype.
-    func testEmptyPoolFallsBackToNeonCard() {
+    func testEmptyPoolFallsBackToNotification() {
         let style = CarouselStyle.resolve(jobID: "job-1", themeID: "slate-gradient", pool: [])
-        XCTAssertEqual(style.archetype, .neonCard)
+        XCTAssertEqual(style.archetype, .notification)
     }
 
     // Palette family mirrors the backend's industry-biased theme groups, and
