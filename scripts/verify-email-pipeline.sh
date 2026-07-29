@@ -198,7 +198,36 @@ case "$(body_of "$R")" in
 esac
 
 echo "--- resume fixture (also unblocks the founder gate) ---"
-printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\nxref\n0 4\ntrailer<</Size 4/Root 1 0 R>>\n%%%%EOF\n' > /tmp/zztest-resume.$$.pdf
+# A structurally VALID one-page PDF (correct xref offsets + startxref) so
+# the email attachment actually opens in mail clients.
+python3 - "/tmp/zztest-resume.$$.pdf" <<'PYPDF'
+import sys
+
+objects = [
+    b"<</Type/Catalog/Pages 2 0 R>>",
+    b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+    b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>",
+    None,  # content stream, built below
+    b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+]
+stream = b"BT /F1 18 Tf 72 720 Td (scout22 test resume - Scout Test Candidate) Tj ET"
+objects[3] = b"<</Length " + str(len(stream)).encode() + b">>stream\n" + stream + b"\nendstream"
+
+out = bytearray(b"%PDF-1.4\n")
+offsets = []
+for i, body in enumerate(objects, start=1):
+    offsets.append(len(out))
+    out += str(i).encode() + b" 0 obj\n" + body + b"\nendobj\n"
+xref_at = len(out)
+out += b"xref\n0 " + str(len(objects) + 1).encode() + b"\n"
+out += b"0000000000 65535 f \n"
+for off in offsets:
+    out += ("%010d 00000 n \n" % off).encode()
+out += b"trailer\n<</Size " + str(len(objects) + 1).encode() + b"/Root 1 0 R>>\nstartxref\n"
+out += str(xref_at).encode() + b"\n%%EOF\n"
+
+open(sys.argv[1], "wb").write(bytes(out))
+PYPDF
 RES_PATH="$CAND_ID/zztest-resume.pdf"
 UP=$(curl -s -w '\n%{http_code}' -X POST "$SUPA_URL/storage/v1/object/resumes/$RES_PATH" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \

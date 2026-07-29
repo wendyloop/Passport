@@ -227,7 +227,7 @@ Deno.test("buildPitchEmailContent renders facts, escapes HTML, and reflects atta
   assertEquals(content.text.includes("Education: BS CS UC Berkeley (2026)"), true);
   assertEquals(content.text.includes("Skills: Swift, Go"), true);
   assertEquals(content.text.includes("along with their resume"), true);
-  assertEquals(content.text.includes("goes straight to Sam <script> (sam@x.io)"), true);
+  assertEquals(content.text.includes("Reply to this email to reach Sam <script>."), true);
   assertEquals(content.html.includes("<script>"), false);
   assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
 });

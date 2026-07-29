@@ -156,7 +156,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ? `Resume: ${clean(params.resumeSignedURL)}`
     : null;
 
-  const replyLine = `Reply to this email and it goes straight to ${params.candidateName}${clean(params.candidateEmail) ? ` (${clean(params.candidateEmail)})` : ""}.`;
+  const replyLine = `Reply to this email to reach ${params.candidateName}.`;
   const footerLine =
     "scout22 — where startups get to know applicants as people, not PDFs. Every application comes with a 60-second video.";
 
@@ -202,6 +202,12 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
   return { subject: pitchSubject(params), text, html };
 }
 
+// FIRST-100-USERS: pre-launch, replies on EVERY pitch path route to one
+// monitored human mailbox (same secret the founder path uses) so Wendy
+// sees each response. Unset FOUNDER_REPLY_TO_EMAIL to restore direct
+// reply-to-candidate at scale.
+const REPLY_TO_OVERRIDE = Deno.env.get("FOUNDER_REPLY_TO_EMAIL") ?? "";
+
 export async function sendPitchEmail(
   params: PitchEmailParams,
   options?: { from?: string; replyTo?: string; attachments?: EmailAttachment[] },
@@ -213,7 +219,7 @@ export async function sendPitchEmail(
     text: content.text,
     html: content.html,
     from: options?.from,
-    replyTo: options?.replyTo ?? clean(params.candidateEmail) ?? undefined,
+    replyTo: options?.replyTo ?? (REPLY_TO_OVERRIDE || (clean(params.candidateEmail) ?? undefined)),
     attachments: options?.attachments,
   });
 }
