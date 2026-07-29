@@ -29,7 +29,7 @@ enum JobTokVideoStudioPurpose {
     var subtitle: String {
         switch self {
         case .candidatePitch:
-            return "30-60 seconds: who you are, then one project you're proud of — show it off."
+            return "Up to 3 minutes: who you are, then one project you're proud of — show it off."
         case .employerRole:
             return "Pick clips, record, add text, and turn it into a hiring post."
         case .adminRole:
@@ -40,7 +40,7 @@ enum JobTokVideoStudioPurpose {
     var maxDuration: Double? {
         switch self {
         case .candidatePitch:
-            return 60
+            return 180
         case .employerRole, .adminRole:
             return nil
         }
@@ -292,7 +292,7 @@ struct JobTokVideoStudio: View {
             Button {
                 guard durationIsAllowed else {
                     if let maxDuration = purpose.maxDuration {
-                        studioError = "Keep this video under \(Int(maxDuration)) seconds."
+                        studioError = "Keep this video under \(Int(maxDuration) / 60) minutes."
                     }
                     return
                 }
@@ -1732,7 +1732,7 @@ private final class JobTokVideoEditorStore: ObservableObject {
             let resultAsset = AVURLAsset(url: resultURL)
             let duration = try await resultAsset.load(.duration).seconds
             if let maxDuration = purpose.maxDuration, duration > maxDuration {
-                throw JobTokVideoStudioError.message("Keep this video under \(Int(maxDuration)) seconds.")
+                throw JobTokVideoStudioError.message("Keep this video under \(Int(maxDuration) / 60) minutes.")
             }
 
             isProcessing = false

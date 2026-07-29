@@ -145,12 +145,12 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ?? (clean(params.tiktokUsername) ? `https://www.tiktok.com/@${clean(params.tiktokUsername)}` : null);
 
   const attachmentLine = params.videoAttached
-    ? `${params.candidateName.split(" ")[0]} recorded a 60-second intro — it's attached${params.resumeAttached ? " along with their resume" : ""}. One minute gives you a read on them before you ever book a call.`
+    ? `We have a video intro from ${params.candidateName.split(" ")[0]} — it's attached${params.resumeAttached ? " along with their resume" : ""}. A quick watch gives you a read on them before you ever book a call.`
     : params.resumeAttached
       ? "Their resume is attached."
       : null;
   const videoFallback = !params.videoAttached && clean(params.pitchVideoURL)
-    ? `Watch their 60-second intro: ${clean(params.pitchVideoURL)}`
+    ? `Watch their video intro: ${clean(params.pitchVideoURL)}`
     : null;
   const resumeFallback = !params.resumeAttached && clean(params.resumeSignedURL)
     ? `Resume: ${clean(params.resumeSignedURL)}`
@@ -158,7 +158,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
 
   const replyLine = `Reply to this email to reach ${params.candidateName}.`;
   const footerLine =
-    "scout22 — where startups get to know applicants as people, not PDFs. Every application comes with a 60-second video.";
+    "scout22 — where startups get to know applicants as people, not PDFs. Every application comes with a video intro.";
 
   const text = [
     greeting,
@@ -191,7 +191,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
       </ul>
       ${note ? `<p style="margin-bottom: 2px;">In their words:</p><blockquote style="margin: 4px 0 12px; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">&ldquo;${escapeHtml(note)}&rdquo;</blockquote>` : ""}
       ${attachmentLine ? `<p>${escapeHtml(attachmentLine)}</p>` : ""}
-      ${videoFallback ? `<p><a href="${escapeHtml(clean(params.pitchVideoURL)!)}">▶ Watch their 60-second intro</a></p>` : ""}
+      ${videoFallback ? `<p><a href="${escapeHtml(clean(params.pitchVideoURL)!)}">▶ Watch their video intro</a></p>` : ""}
       ${resumeFallback ? `<p><a href="${escapeHtml(clean(params.resumeSignedURL)!)}">Open their resume</a></p>` : ""}
       <p>${escapeHtml(replyLine)}</p>
       <p style="margin-bottom: 0;">— Wendy</p>

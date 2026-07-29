@@ -1010,7 +1010,7 @@ struct JobSeekerHomeView: View {
                         Text("Record your first pitch")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(PassportTheme.textPrimary)
-                        Text("The first thing employers see — unlocks founder intros. 1:00 max.")
+                        Text("The first thing employers see — unlocks founder intros. Up to 3:00.")
                             .font(.caption)
                             .foregroundStyle(PassportTheme.textSecondary)
                             .multilineTextAlignment(.center)

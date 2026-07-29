@@ -161,11 +161,11 @@ struct OnboardingFlowView: View {
 
     private var videoStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Record your 60-second pitch")
+            Text("Record your video intro")
                 .font(.system(size: 28, weight: .black, design: .rounded))
                 .foregroundStyle(PassportTheme.textPrimary)
 
-            Text("Founders reply to faces, not resumes. Your pitch video rides along with applications and founder intros.")
+            Text("Founders reply to faces, not resumes. Up to 3 minutes — it rides along with every application and founder intro.")
                 .foregroundStyle(PassportTheme.textSecondary)
 
             accentButton("Record or upload") {

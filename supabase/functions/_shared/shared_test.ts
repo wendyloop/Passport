@@ -244,7 +244,7 @@ Deno.test("buildPitchEmailContent falls back to links when not attached", () => 
     resumeSignedURL: "https://signed/resume.pdf",
   });
   assertEquals(content.text.includes("attached"), false);
-  assertEquals(content.text.includes("Watch their 60-second intro: https://cdn/video.mp4"), true);
+  assertEquals(content.text.includes("Watch their video intro: https://cdn/video.mp4"), true);
   assertEquals(content.text.includes("Resume: https://signed/resume.pdf"), true);
   assertEquals(content.text.includes("Hi,"), true);
 });
