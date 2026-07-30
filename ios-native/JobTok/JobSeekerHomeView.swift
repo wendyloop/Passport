@@ -675,6 +675,64 @@ struct JobSeekerHomeView: View {
                         .padding(.leading, 14)
                         .padding(.top, 8)
                     }
+                    .overlay(alignment: .bottom) {
+                        // Visible video actions — primary selection shouldn't
+                        // hide behind a long-press.
+                        if let video = item.video {
+                            HStack(spacing: 10) {
+                                if video.isPrimary {
+                                    Label("Primary video", systemImage: "star.fill")
+                                        .font(.caption.weight(.bold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 9)
+                                        .background(Capsule().fill(PassportTheme.accent))
+                                        .foregroundStyle(.black)
+                                } else {
+                                    Button {
+                                        profilePlayerItem = nil
+                                        onSetPrimaryVideo(video.id)
+                                    } label: {
+                                        Label("Set as primary", systemImage: "star")
+                                            .font(.caption.weight(.bold))
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 9)
+                                            .background(Capsule().fill(Color.white.opacity(0.16)))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                Button {
+                                    profilePlayerItem = nil
+                                    captionDraft = video.caption ?? ""
+                                    captionEditingVideo = video
+                                } label: {
+                                    Image(systemName: "text.bubble")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 38, height: 38)
+                                        .background(Circle().fill(Color.white.opacity(0.16)))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    profilePlayerItem = nil
+                                    onDeleteVideo(video.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(.red)
+                                        .frame(width: 38, height: 38)
+                                        .background(Circle().fill(Color.white.opacity(0.16)))
+                                }
+                                .buttonStyle(.plain)
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                        }
+                    }
                 }
                 .alert("Caption", isPresented: Binding(
                     get: { captionEditingVideo != nil },
@@ -1071,7 +1129,7 @@ struct JobSeekerHomeView: View {
                         videoTile(urlString: introURL, caption: nil, isPrimary: true)
                     } else {
                         ForEach(candidateVideos) { video in
-                            videoTile(urlString: video.videoURL, caption: video.caption, isPrimary: video.isPrimary)
+                            videoTile(urlString: video.videoURL, caption: video.caption, isPrimary: video.isPrimary, record: video)
                                 .contextMenu {
                                     if !video.isPrimary {
                                         Button("Set as primary") { onSetPrimaryVideo(video.id) }
@@ -1090,9 +1148,9 @@ struct JobSeekerHomeView: View {
         }
     }
 
-    private func videoTile(urlString: String, caption: String?, isPrimary: Bool) -> some View {
+    private func videoTile(urlString: String, caption: String?, isPrimary: Bool, record: CandidateVideoRecord? = nil) -> some View {
         Button {
-            profilePlayerItem = ProfileVideoPlayerItem(url: urlString)
+            profilePlayerItem = ProfileVideoPlayerItem(url: urlString, video: record)
         } label: {
             RemoteVideoSurface(
                 urlString: urlString,
@@ -3114,6 +3172,7 @@ private struct JobTileFooter: View {
 private struct ProfileVideoPlayerItem: Identifiable {
     let id = UUID()
     let url: String
+    var video: CandidateVideoRecord? = nil
 }
 
 private struct PendingVideoPost: Identifiable {

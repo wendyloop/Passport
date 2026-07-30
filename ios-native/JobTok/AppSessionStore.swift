@@ -456,6 +456,33 @@ final class AppSessionStore: ObservableObject {
         await runBusyTask { [self] in
             let session = try await requireSession()
             let userID = try requireUserID()
+
+            // Optimistic: the post shows in the grid immediately (playing
+            // from the local file); the server row replaces it when
+            // loadCurrentUserState refreshes after upload.
+            let isFirstVideo = candidateVideos.isEmpty && candidateDraft.introVideoURL == nil
+            let placeholder = CandidateVideoRecord(
+                id: "local-\(UUID().uuidString)",
+                profileID: userID,
+                videoURL: fileURL.absoluteString,
+                posterURL: nil,
+                caption: caption,
+                isPrimary: isFirstVideo,
+                durationSeconds: Int(duration.rounded()),
+                createdAt: Date()
+            )
+            candidateVideos.insert(placeholder, at: 0)
+
+            do {
+                try await performCandidateVideoUpload(fileURL: fileURL, duration: duration, caption: caption, isFirstVideo: isFirstVideo, userID: userID, session: session)
+            } catch {
+                candidateVideos.removeAll { $0.id == placeholder.id }
+                throw error
+            }
+        }
+    }
+
+    private func performCandidateVideoUpload(fileURL: URL, duration: Double, caption: String?, isFirstVideo: Bool, userID: String, session: AuthSession) async throws {
             let uploadURL = try await VideoProcessing.prepareVideoForUpload(fileURL)
             let fileName = uploadURL.lastPathComponent
             let videoData = try Data(contentsOf: uploadURL)
@@ -469,8 +496,9 @@ final class AppSessionStore: ObservableObject {
             )
             // M-C: the first video becomes primary (and mirrors into
             // intro_video_url below); later uploads never steal primary —
-            // that's an explicit action from the grid.
-            let isFirstVideo = candidateVideos.isEmpty && candidateDraft.introVideoURL == nil
+            // that's an explicit action from the grid. isFirstVideo comes
+            // from the caller, computed before the optimistic placeholder
+            // landed in candidateVideos.
             try await candidate.insertCandidateVideo(
                 userID: userID,
                 publicURL: upload.publicURL,
@@ -500,7 +528,6 @@ final class AppSessionStore: ObservableObject {
                 session: session
             )
             try await loadCurrentUserState()
-        }
     }
 
     // P2: employer moves an application through the pipeline / edits notes.

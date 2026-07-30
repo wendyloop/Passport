@@ -351,8 +351,15 @@ private struct LoopingPlayerLayerView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
-        uiView.playerLayer.player = player
-        uiView.playerLayer.videoGravity = videoGravity
+        // Reassigning an AVPlayerLayer's player is not free — SwiftUI calls
+        // this on every parent state change (each caption keystroke on the
+        // post page), so only touch the layer when something actually moved.
+        if uiView.playerLayer.player !== player {
+            uiView.playerLayer.player = player
+        }
+        if uiView.playerLayer.videoGravity != videoGravity {
+            uiView.playerLayer.videoGravity = videoGravity
+        }
     }
 }
 

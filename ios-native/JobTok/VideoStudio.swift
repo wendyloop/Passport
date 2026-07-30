@@ -2250,7 +2250,9 @@ private enum JobTokVideoComposer {
 
         var instructions: [AVMutableVideoCompositionInstruction] = []
         var cursor = CMTime.zero
-        let renderSize = CGSize(width: 1080, height: 1920)
+        // 720p portrait: pitch-video quality at half the encode work of 1080p,
+        // and small enough that the upload-prep pass never re-encodes.
+        let renderSize = CGSize(width: 720, height: 1280)
 
         for clip in clips {
             let asset = AVURLAsset(url: clip.url)
@@ -2349,7 +2351,7 @@ private enum JobTokVideoComposer {
         outputURL: URL,
         progress: @escaping (Double) -> Void
     ) async throws {
-        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720) else {
             throw JobTokVideoStudioError.message("The selected clips could not be exported.")
         }
 
@@ -2357,6 +2359,10 @@ private enum JobTokVideoComposer {
         exportSession.outputFileType = .mp4
         exportSession.shouldOptimizeForNetworkUse = true
         exportSession.videoComposition = videoComposition
+        // Target the upload cap directly so this is the ONLY encode — the
+        // old HighestQuality pass regularly blew past 45MB and triggered a
+        // full second compression in prepareVideoForUpload.
+        exportSession.fileLengthLimit = VideoProcessing.preferredUploadLimitBytes
 
         try? FileManager.default.removeItem(at: outputURL)
 
