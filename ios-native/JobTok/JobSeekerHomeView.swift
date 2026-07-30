@@ -3069,8 +3069,10 @@ private struct JobTileBackground: View {
     }
 }
 
-// Stats footer shared by Saved/Applications tiles: title + the scannable
-// facts (company · comp · work mode · age) over the preview's bottom edge.
+// Stats footer shared by Saved/Applications tiles: title bold, facts as
+// fine-print captions (company · comp · work mode · age), sitting directly
+// on the artwork like the original tiles — no band, just a soft shadow
+// for legibility.
 private struct JobTileFooter: View {
     let title: String
     let caption: String
@@ -3082,14 +3084,14 @@ private struct JobTileFooter: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
             Text(caption)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.78))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.65))
                 .lineLimit(1)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .shadow(color: .black.opacity(0.65), radius: 3, y: 1)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.58))
     }
 }
 

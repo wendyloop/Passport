@@ -1405,8 +1405,17 @@ struct JobCardPreview: View {
             )
             .allowsHitTesting(false)
         } else if case .cover(let coverSlide) = carousel.renderableSlides.first {
-            legacyCover(coverSlide, style: style)
-                .allowsHitTesting(false)
+            // Legacy covers are full-screen designs — render at design size
+            // and scale to the tile, cropping the bottom (where the feed's
+            // apply controls live) instead of squashing the layout.
+            GeometryReader { proxy in
+                let scale = proxy.size.width / 390
+                legacyCover(coverSlide, style: style)
+                    .frame(width: 390, height: 640)
+                    .scaleEffect(scale, anchor: .topLeading)
+            }
+            .clipped()
+            .allowsHitTesting(false)
         }
     }
 
