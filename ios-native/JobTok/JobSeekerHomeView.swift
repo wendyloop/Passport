@@ -639,18 +639,33 @@ struct JobSeekerHomeView: View {
                 } message: {
                     Text(strengthDetailMessage)
                 }
-                .sheet(isPresented: $showingProfileVideoPlayer) {
-                    if let videoURL = playerVideoURL ?? workingProfile.introVideoURL {
-                        RemoteVideoSurface(
-                            urlString: videoURL,
-                            isActive: true,
-                            videoGravity: .resizeAspect,
-                            autoPlay: true,
-                            allowsTapToTogglePlayback: true,
-                            showsPlayOverlayWhenPaused: true
-                        )
-                        .background(Color.black)
-                        .presentationDetents([.large])
+                .fullScreenCover(isPresented: $showingProfileVideoPlayer) {
+                    // TikTok-style: full screen, tap to pause, X to close.
+                    ZStack(alignment: .topLeading) {
+                        Color.black.ignoresSafeArea()
+                        if let videoURL = playerVideoURL ?? workingProfile.introVideoURL {
+                            RemoteVideoSurface(
+                                urlString: videoURL,
+                                isActive: true,
+                                videoGravity: .resizeAspect,
+                                autoPlay: true,
+                                allowsTapToTogglePlayback: true,
+                                showsPlayOverlayWhenPaused: true
+                            )
+                            .ignoresSafeArea()
+                        }
+                        Button {
+                            showingProfileVideoPlayer = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 38, height: 38)
+                                .background(Circle().fill(Color.black.opacity(0.45)))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 14)
+                        .padding(.top, 8)
                     }
                 }
                 .alert("Caption", isPresented: Binding(
@@ -1027,6 +1042,22 @@ struct JobSeekerHomeView: View {
                 }
                 .buttonStyle(.plain)
             } else {
+                HStack {
+                    Spacer()
+                    Button {
+                        showingVideoStudio = true
+                    } label: {
+                        Label("New video", systemImage: "plus")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(PassportTheme.accent)
+                            .foregroundStyle(.black)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 3), spacing: 0) {
                     if candidateVideos.isEmpty, let introURL = workingProfile.introVideoURL {
                         videoTile(urlString: introURL, caption: nil, isPrimary: true)
@@ -1045,22 +1076,6 @@ struct JobSeekerHomeView: View {
                                 }
                         }
                     }
-
-                    Button {
-                        showingVideoStudio = true
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 26, weight: .semibold))
-                            Text("New video")
-                                .font(.caption.weight(.semibold))
-                        }
-                        .foregroundStyle(PassportTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                        .background(PassportTheme.surface)
-                    }
-                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, -20)
             }
@@ -1078,7 +1093,7 @@ struct JobSeekerHomeView: View {
                 videoGravity: .resizeAspectFill,
                 autoPlay: false,
                 allowsTapToTogglePlayback: false,
-                showsPlayOverlayWhenPaused: true
+                showsPlayOverlayWhenPaused: false
             )
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .clipped()
@@ -2933,41 +2948,36 @@ private struct ApplicationTile: View {
                 .padding(8)
             }
             .aspectRatio(0.8, contentMode: .fit)
+            .overlay(alignment: .bottom) {
+                JobTileFooter(title: application.jobTitle, caption: footerCaption)
+            }
             .background(Color(red: 0.10, green: 0.10, blue: 0.12))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
+    private var footerCaption: String {
+        var parts = [application.companyName]
+        if let comp = job?.compensationSummary { parts.append(comp) }
+        if let mode = job?.workMode, !mode.isEmpty { parts.append(mode.capitalized) }
+        parts.append("applied \(SharedFormatters.relativeAge(of: application.appliedAt))")
+        return parts.joined(separator: " · ")
+    }
+
     private var fallbackSummary: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack {
             LinearGradient(
                 colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-
-            VStack(alignment: .leading, spacing: 6) {
-                CompanyMonogram(
-                    name: application.companyName,
-                    background: style.theme.accent,
-                    foreground: style.theme.onAccent,
-                    size: 34
-                )
-                Text(application.jobTitle)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                Text(application.companyName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .lineLimit(1)
-                Text(SharedFormatters.relativeAge(of: application.appliedAt))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            .padding(12)
+            CompanyMonogram(
+                name: application.companyName,
+                background: style.theme.accent,
+                foreground: style.theme.onAccent,
+                size: 44
+            )
         }
     }
 }
@@ -3010,12 +3020,23 @@ private struct SavedJobTile: View {
                 .padding(8)
             }
             .aspectRatio(0.8, contentMode: .fit)
+            .overlay(alignment: .bottom) {
+                JobTileFooter(title: job.title, caption: footerCaption)
+            }
             // Fixed dark ground (not the adaptive card color): the tile's
             // white text and accent identity must hold in light mode too.
             .background(Color(red: 0.10, green: 0.10, blue: 0.12))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private var footerCaption: String {
+        var parts = [job.displayCompanyName]
+        if let comp = job.compensationSummary { parts.append(comp) }
+        if let mode = job.workMode, !mode.isEmpty { parts.append(mode.capitalized) }
+        parts.append(SharedFormatters.relativeAge(of: job.createdAt))
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -3026,43 +3047,49 @@ private struct JobTileBackground: View {
     let style: CarouselStyle
 
     var body: some View {
-        if let carousel = job.carousel, !carousel.renderableSlides.isEmpty {
+        if let carousel = job.carousel, JobCardPreview.canPreview(job: job, carousel: carousel) {
             JobCardPreview(job: job, carousel: carousel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ZStack(alignment: .bottomLeading) {
+            // Text lives in the tile footer; this is just a themed ground.
+            ZStack {
                 LinearGradient(
                     colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-
-                VStack(alignment: .leading, spacing: 6) {
-                    CompanyMonogram(
-                        name: job.displayCompanyName,
-                        background: style.theme.accent,
-                        foreground: style.theme.onAccent,
-                        size: 34
-                    )
-                    Text(job.title)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Text(job.displayCompanyName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                    if let comp = job.compensationSummary {
-                        Text(comp)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(style.theme.accent)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(12)
+                CompanyMonogram(
+                    name: job.displayCompanyName,
+                    background: style.theme.accent,
+                    foreground: style.theme.onAccent,
+                    size: 44
+                )
             }
         }
+    }
+}
+
+// Stats footer shared by Saved/Applications tiles: title + the scannable
+// facts (company · comp · work mode · age) over the preview's bottom edge.
+private struct JobTileFooter: View {
+    let title: String
+    let caption: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Text(caption)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.78))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.58))
     }
 }
 

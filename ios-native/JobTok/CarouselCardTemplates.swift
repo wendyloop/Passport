@@ -1377,22 +1377,47 @@ enum AfterHoursCard {
 }
 
 // Mini first-slide preview for grid tiles (Saved / Applications) — the
-// job's actual cover card instead of a placeholder. CardCanvas self-scales
-// to the tile width; hit-testing off so the tile's button wins.
+// job's actual cover instead of a placeholder. Card-template styles render
+// through CardCanvas (self-scales to tile width); legacy full-bleed
+// archetypes render their real cover view, which is adaptive and fills the
+// tile directly. Hit-testing off so the tile's button wins.
 struct JobCardPreview: View {
     let job: JobPostingRecord
     let carousel: Carousel
 
+    static func canPreview(job: JobPostingRecord, carousel: Carousel) -> Bool {
+        guard let first = carousel.renderableSlides.first else { return false }
+        let style = CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId ?? "slate-gradient")
+        if style.archetype.isCardTemplate { return true }
+        if case .cover = first { return true }
+        return false
+    }
+
     var body: some View {
-        if let slide = carousel.renderableSlides.first {
+        let style = CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId ?? "slate-gradient")
+        if style.archetype.isCardTemplate, let slide = carousel.renderableSlides.first {
             CardTemplateSlideView(
                 slide: slide,
-                style: CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId ?? "slate-gradient"),
+                style: style,
                 job: job,
                 onEmailFounder: nil,
                 previewMode: true
             )
             .allowsHitTesting(false)
+        } else if case .cover(let coverSlide) = carousel.renderableSlides.first {
+            legacyCover(coverSlide, style: style)
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private func legacyCover(_ slide: CoverSlide, style: CarouselStyle) -> some View {
+        switch style.archetype {
+        case .notification: NotificationCoverView(slide: slide, style: style, job: job)
+        case .glitchWindow: GlitchWindowCoverView(slide: slide, style: style, job: job)
+        case .chromeStar: ChromeStarCoverView(slide: slide, style: style, job: job)
+        case .liquidChrome: LiquidChromeCoverView(slide: slide, style: style, job: job)
+        default: EmptyView()
         }
     }
 }
