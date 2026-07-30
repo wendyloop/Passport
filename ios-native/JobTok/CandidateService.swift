@@ -326,6 +326,18 @@ final class CandidateService {
         return envelope.match
     }
 
+    // Editor-driven corrections to the parsed resume (experience/education/
+    // skills shown on the profile). Owner-scoped by RLS.
+    func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {
+        let body: [String: AnyEncodable] = ["parsed_json": AnyEncodable(details)]
+        _ = try await transport.patchSingle(
+            path: "resume_uploads",
+            query: [("id", "eq.\(resumeID)")],
+            body: body,
+            session: session
+        ) as EmptyPayload
+    }
+
     // MARK: - Matching (M-F)
 
     func fetchJobMatchScores(jobIDs: [String], session: AuthSession) async throws -> [JobMatchScoreRecord] {

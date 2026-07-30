@@ -417,6 +417,15 @@ final class AppSessionStore: ObservableObject {
             )
             try await candidate.replaceJobSeekerEmployers(userID: userID, employers: draft.employers, session: session)
 
+            // LinkedIn-style editing: the About sections (experience/
+            // education/skills) come from the parsed resume, so editor
+            // corrections write back to parsed_json.
+            if let resume = latestResume,
+               let edited = draft.parsedResume,
+               edited != resume.parsedDetails {
+                try await candidate.updateResumeParsedDetails(resumeID: resume.id, details: edited, session: session)
+            }
+
             // Phase 2: when candidate discovery is turned on, visibility changes should
             // immediately influence employer browse queries rather than only applied-role access.
 

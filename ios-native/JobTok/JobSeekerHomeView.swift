@@ -2353,6 +2353,9 @@ private struct CandidateProfileEditor: View {
     let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var employersText = ""
+    @State private var editableExperience: [EditableExperienceEntry] = []
+    @State private var editableEducation: [EditableEducationEntry] = []
+    @State private var skillsText = ""
     @State private var validationMessage: String?
     @State private var initialFullName = ""
     @State private var initialHandle = ""
@@ -2382,6 +2385,16 @@ private struct CandidateProfileEditor: View {
                             dreamRoleField
                             editorDivider
                             jobFunctionField
+                        }
+
+                        editorSection("Experience") {
+                            experienceEditor
+                        }
+
+                        editorSection("Education & skills") {
+                            educationEditor
+                            editorDivider
+                            skillsEditor
                         }
 
                         editorSection("Preferences") {
@@ -2434,6 +2447,25 @@ private struct CandidateProfileEditor: View {
                     initialFullName = profile.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
                     initialHandle = profile.handle
                     employersText = profile.employers.joined(separator: ", ")
+                    let parsed = profile.parsedResume
+                    editableExperience = (parsed?.employers ?? []).map {
+                        EditableExperienceEntry(
+                            title: $0.title ?? "",
+                            company: $0.company ?? "",
+                            start: $0.startDate ?? "",
+                            end: $0.endDate ?? "",
+                            isCurrent: $0.isCurrent ?? false
+                        )
+                    }
+                    editableEducation = (parsed?.education ?? []).map {
+                        EditableEducationEntry(
+                            school: $0.school ?? "",
+                            degree: $0.degree ?? "",
+                            field: $0.fieldOfStudy ?? "",
+                            year: $0.graduationYear ?? ""
+                        )
+                    }
+                    skillsText = (parsed?.skills ?? []).joined(separator: ", ")
                     guard let initialTarget else { return }
                     DispatchQueue.main.async {
                         withAnimation(.easeInOut(duration: 0.18)) {
@@ -2505,6 +2537,7 @@ private struct CandidateProfileEditor: View {
                             .split(separator: ",")
                             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                             .filter { !$0.isEmpty }
+                        profile.parsedResume = serializedParsedResume()
                         onSave()
                         dismiss()
                     }
@@ -2512,6 +2545,165 @@ private struct CandidateProfileEditor: View {
                 }
             }
         }
+    }
+
+    private var experienceEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Shown on your profile's About tab — auto-filled from your resume, yours to correct.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+
+            ForEach($editableExperience) { $entry in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Position")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(PassportTheme.textMuted)
+                        Spacer()
+                        Button {
+                            editableExperience.removeAll { $0.id == entry.id }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    TextField("Title (SWE Intern)", text: $entry.title)
+                        .textFieldStyle(PassportTextFieldStyle())
+                    TextField("Company (Stripe)", text: $entry.company)
+                        .textFieldStyle(PassportTextFieldStyle())
+                    HStack(spacing: 8) {
+                        TextField("Start (2025-06)", text: $entry.start)
+                            .textFieldStyle(PassportTextFieldStyle())
+                        TextField("End", text: $entry.end)
+                            .textFieldStyle(PassportTextFieldStyle())
+                            .disabled(entry.isCurrent)
+                            .opacity(entry.isCurrent ? 0.4 : 1)
+                    }
+                    Toggle(isOn: $entry.isCurrent) {
+                        Text("I currently work here")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(PassportTheme.textSecondary)
+                    }
+                    .tint(PassportTheme.accent)
+                }
+                .padding(12)
+                .background(PassportTheme.card.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            Button {
+                editableExperience.append(EditableExperienceEntry())
+            } label: {
+                Label("Add position", systemImage: "plus")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(PassportTheme.accent)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var educationEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach($editableEducation) { $entry in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Education")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(PassportTheme.textMuted)
+                        Spacer()
+                        Button {
+                            editableEducation.removeAll { $0.id == entry.id }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    TextField("School (UC Berkeley)", text: $entry.school)
+                        .textFieldStyle(PassportTextFieldStyle())
+                    HStack(spacing: 8) {
+                        TextField("Degree (BS)", text: $entry.degree)
+                            .textFieldStyle(PassportTextFieldStyle())
+                        TextField("Field (CS)", text: $entry.field)
+                            .textFieldStyle(PassportTextFieldStyle())
+                        TextField("Year", text: $entry.year)
+                            .textFieldStyle(PassportTextFieldStyle())
+                            .frame(width: 76)
+                    }
+                }
+                .padding(12)
+                .background(PassportTheme.card.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            Button {
+                editableEducation.append(EditableEducationEntry())
+            } label: {
+                Label("Add education", systemImage: "plus")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(PassportTheme.accent)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var skillsEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Skills")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+            TextField("Swift, Go, Figma…", text: $skillsText, axis: .vertical)
+                .textFieldStyle(PassportTextFieldStyle())
+                .lineLimit(2...4)
+            Text("Comma-separated. Shown as chips on your profile.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+    }
+
+    private func serializedParsedResume() -> ParsedResumeDetails? {
+        let jobs = editableExperience.compactMap { entry -> ParsedResumeDetails.Employer? in
+            let title = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let company = entry.company.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty || !company.isEmpty else { return nil }
+            let start = entry.start.trimmingCharacters(in: .whitespacesAndNewlines)
+            let end = entry.end.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ParsedResumeDetails.Employer(
+                company: company.isEmpty ? nil : company,
+                title: title.isEmpty ? nil : title,
+                startDate: start.isEmpty ? nil : start,
+                endDate: entry.isCurrent || end.isEmpty ? nil : end,
+                isCurrent: entry.isCurrent
+            )
+        }
+        let education = editableEducation.compactMap { entry -> ParsedResumeDetails.Education? in
+            let school = entry.school.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !school.isEmpty else { return nil }
+            let degree = entry.degree.trimmingCharacters(in: .whitespacesAndNewlines)
+            let field = entry.field.trimmingCharacters(in: .whitespacesAndNewlines)
+            let year = entry.year.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ParsedResumeDetails.Education(
+                school: school,
+                degree: degree.isEmpty ? nil : degree,
+                fieldOfStudy: field.isEmpty ? nil : field,
+                graduationYear: year.isEmpty ? nil : year
+            )
+        }
+        let skills = skillsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if jobs.isEmpty && education.isEmpty && skills.isEmpty && profile.parsedResume == nil {
+            return nil
+        }
+        return ParsedResumeDetails(
+            currentTitle: profile.parsedResume?.currentTitle,
+            employers: jobs,
+            education: education,
+            skills: skills
+        )
     }
 
     private var editorDivider: some View {
@@ -3167,6 +3359,23 @@ private struct JobTileFooter: View {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+private struct EditableExperienceEntry: Identifiable {
+    let id = UUID()
+    var title = ""
+    var company = ""
+    var start = ""
+    var end = ""
+    var isCurrent = false
+}
+
+private struct EditableEducationEntry: Identifiable {
+    let id = UUID()
+    var school = ""
+    var degree = ""
+    var field = ""
+    var year = ""
 }
 
 private struct ProfileVideoPlayerItem: Identifiable {
