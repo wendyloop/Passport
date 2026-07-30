@@ -42,6 +42,7 @@ type JobRow = {
   company_id: string | null;
   experience_level: string | null;
   work_mode: string | null;
+  job_function: string | null;
   company_name: string | null;
   title: string | null;
   description: string | null;
@@ -69,6 +70,9 @@ type LLMContent = {
   youd_line: string;
   experience_level: string;
   work_mode: string;
+  // Free role classification riding the carousel call — fills the 40% of
+  // titles the regex can't place, so the feed's role filters work.
+  job_function: string;
   responsibilities: string[];
   requirements: string[];
   perks: string[];
@@ -162,7 +166,7 @@ Deno.serve(async (request) => {
   const { data: jobs, error: jobsError } = await admin
     .from("jobs")
     .select(
-      "id, company_id, company_name, title, description, location, compensation_text, compensation_min_annual, compensation_max_annual, compensation_min_hourly, compensation_max_hourly, employment_type, apply_url, experience_level, work_mode",
+      "id, company_id, company_name, title, description, location, compensation_text, compensation_min_annual, compensation_max_annual, compensation_min_hourly, compensation_max_hourly, employment_type, apply_url, experience_level, work_mode, job_function",
     )
     .in("id", candidateIds)
     .eq("is_active", true)
@@ -292,8 +296,9 @@ Deno.serve(async (request) => {
     const slides = assembleSlides(job, company, fundName, content, founder);
     const themeId = pickTheme(company.id, company.industry);
 
-    // Backfill experience_level/work_mode on the job from the LLM (it read
-    // the full JD; the ingest pass only saw the title). Fill nulls only, and
+    // Backfill experience_level/work_mode/job_function on the job from the
+    // LLM (it read the full JD; the ingest pass only saw the title). Fill
+    // nulls only, and
     // do it BEFORE the carousel upsert: jobs.updated_at bumps on update, and
     // the queue RPC treats updated_at > carousels.generated_at as "needs
     // regeneration" — updating after the upsert would loop this job forever.
@@ -304,6 +309,13 @@ Deno.serve(async (request) => {
       }
       if (!job.work_mode && llmContent.work_mode) {
         jobPatch.work_mode = llmContent.work_mode;
+      }
+      const validFunctions = new Set([
+        "engineering", "design", "product", "science", "sales", "marketing",
+        "support", "operations", "hr", "finance", "legal",
+      ]);
+      if (!job.job_function && validFunctions.has(llmContent.job_function)) {
+        jobPatch.job_function = llmContent.job_function;
       }
       if (Object.keys(jobPatch).length > 0) {
         const { error: patchError } = await admin.from("jobs").update(jobPatch).eq("id", job.id);
@@ -502,6 +514,7 @@ function fallbackContent(job: JobRow): LLMContent {
     company_blurb: blurb,
     youd_line: "",
     experience_level: "",
+    job_function: "",
     work_mode: "",
     responsibilities: [],
     requirements: [],
@@ -570,6 +583,9 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     "intern, entry, mid, senior, staff, exec — or empty string if the JD doesn't say. " +
     "entry means 0-2 years or new grad friendly; mid means 2-5 years. " +
     "work_mode: remote, hybrid, or onsite ONLY if the JD states it; else empty string. " +
+    "job_function: which team this role belongs to — one of engineering, design, product, science, " +
+    "sales, marketing, support, operations, hr, finance, legal — pick the closest fit from the title " +
+    "and JD; empty string only when the role genuinely fits none (e.g. drivers, retail floor staff). " +
     "responsibilities: what they'd actually do, short punchy phrases. " +
     "requirements: the few things that genuinely matter, not the full wishlist. " +
     "founders: people the JD explicitly names as founder, co-founder, or CEO of THIS company — " +
@@ -593,13 +609,14 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["hook", "company_blurb", "youd_line", "experience_level", "work_mode", "responsibilities", "requirements", "perks", "founders"],
+      required: ["hook", "company_blurb", "youd_line", "experience_level", "work_mode", "job_function", "responsibilities", "requirements", "perks", "founders"],
       properties: {
         hook: { type: "string", maxLength: 70 },
         company_blurb: { type: "string", maxLength: 120 },
         youd_line: { type: "string", maxLength: 80 },
         experience_level: { type: "string", enum: ["intern", "entry", "mid", "senior", "staff", "exec", ""] },
         work_mode: { type: "string", enum: ["remote", "hybrid", "onsite", ""] },
+        job_function: { type: "string", enum: ["engineering", "design", "product", "science", "sales", "marketing", "support", "operations", "hr", "finance", "legal", ""] },
         responsibilities: { type: "array", maxItems: 4, items: { type: "string", maxLength: 70 } },
         requirements: { type: "array", maxItems: 4, items: { type: "string", maxLength: 60 } },
         perks: { type: "array", maxItems: 3, items: { type: "string", maxLength: 50 } },

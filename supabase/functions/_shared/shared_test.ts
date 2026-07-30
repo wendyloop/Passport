@@ -258,3 +258,21 @@ Deno.test("attachmentFilename sanitizes names and extensions", () => {
   assertEquals(attachmentFilename("é!", "Pitch", "no-extension", "mp4"), "e_Pitch.mp4");
   assertEquals(attachmentFilename("", "Resume", "x.pdf", "pdf"), "Candidate_Resume.pdf");
 });
+
+Deno.test("classifyTitle v2 recovers previously unmapped titles", () => {
+  assertEquals(classifyTitle("Forward Deployed Engineer"), "engineering");
+  assertEquals(classifyTitle("Engineering Manager"), "engineering");
+  assertEquals(classifyTitle("Web Developer"), "engineering");
+  assertEquals(classifyTitle("Senior Accountant"), "finance");
+  assertEquals(classifyTitle("Solutions Architect"), "support");
+  assertEquals(classifyTitle("Solutions Consultant 2"), "support");
+  assertEquals(classifyTitle("Account Development Representative I - DACH"), "sales");
+  assertEquals(classifyTitle("Solar Appointment Setter"), "sales");
+  assertEquals(classifyTitle("Research Scientist II"), "science");
+  // Specific team rules still beat the generic engineer catch-all.
+  assertEquals(classifyTitle("Sales Engineer"), "sales");
+  assertEquals(classifyTitle("Solutions Engineer"), "support");
+  // Non-startup-function roles stay unclassified (product decision pending).
+  assertEquals(classifyTitle("Heavy Equipment CDL Driver"), null);
+  assertEquals(classifyTitle("Stylist (Retail) (Part-time)"), null);
+});

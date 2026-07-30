@@ -1,7 +1,11 @@
 // Title-keyword job_function classification for board/ATS jobs, which arrive
 // with no function metadata. Imperfect by design — it exists so the app's
-// function filters match something. Mirrors the SQL backfill in migration
-// 20260709120000_pipeline_rescue.sql; keep the two in sync.
+// function filters match something. v2 (2026-07-30) broadened the rules
+// after 40% of the live catalog matched nothing (bare "Engineer" titles,
+// "Accountant", "Solutions Architect"…). Mirrors the SQL backfills in
+// migrations 20260709120000 and 20260730120000; keep them in sync. The LLM
+// pass in generate-carousel refines from the full JD for whatever the
+// title alone can't place.
 
 export type JobFunction =
   | "engineering" | "design" | "product" | "science" | "sales" | "marketing"
@@ -9,15 +13,19 @@ export type JobFunction =
 
 const RULES: Array<[JobFunction, RegExp]> = [
   ["engineering", /software|backend|frontend|full.?stack|platform engineer|infrastructure|devops|sre|site reliab|mobile engineer|ios |android|embedded|firmware|security engineer|data engineer|ml engineer|machine learning|ai engineer|research engineer|hardware|electrical engineer|mechanical engineer|qa engineer|test engineer/],
-  ["science", /data scien|data analy|analytics|research scien|applied scien|quantitative/],
+  ["science", /data scien|data analy|analytics|research scien|applied scien|quantitative|\bscientist\b/],
   ["product", /product manager|product owner|technical program|program manager|head of product|product lead/],
-  ["design", /designer|design lead|\bux\b|\bui designer|user experience|user interface|brand design/],
-  ["sales", /sales|account exec|account manager|business develop|\bbdr\b|\bsdr\b|revenue|partnership/],
-  ["marketing", /marketing|growth|content|brand manager|\bseo\b|social media|community manager/],
-  ["support", /customer success|customer support|support engineer|solutions engineer|implementation|technical account/],
+  ["design", /designer|design lead|\bux\b|\bui designer|user experience|user interface|brand design|graphic|illustrator|creative director/],
+  ["sales", /sales|account exec|account manager|account develop|account represent|business develop|\bbdr\b|\bsdr\b|revenue|partnership|appointment setter/],
+  ["marketing", /marketing|growth|content|brand manager|\bseo\b|social media|community manager|communications/],
+  ["support", /customer success|customer support|support engineer|solutions engineer|solutions architect|solutions consultant|implementation|technical account|help ?desk|customer experience/],
   ["hr", /recruit|talent|people ops|people partner|\bhr\b|human resources/],
-  ["finance", /finance|accounting|controller|fp&a|treasury|payroll/],
+  ["finance", /finance|accounting|accountant|controller|fp&a|treasury|payroll|bookkeep|billing|\btax\b/],
   ["legal", /legal|counsel|compliance|regulatory|paralegal/],
+  // v2 generic catch-alls, deliberately LAST before operations: "Sales
+  // Engineer"/"Solutions Architect" already matched their real teams above;
+  // whatever still says engineer/developer is engineering.
+  ["engineering", /\bengineer(ing)?\b|\bdeveloper\b/],
   ["operations", /operations|\bops\b|chief of staff|office manager|executive assistant|logistics|supply chain/],
 ];
 
