@@ -280,7 +280,7 @@ struct NativeRootView: View {
             onSaveProfile: { profile in Task { await store.saveCandidateProfile(profile) } },
             onUploadAvatar: { data in Task { await store.uploadCandidateAvatar(imageData: data) } },
             onUploadResume: { url in Task { await store.uploadResume(fileURL: url) } },
-            onUploadVideo: { url, duration in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration) } },
+            onUploadVideo: { url, duration, caption in Task { await store.uploadCandidateVideo(fileURL: url, duration: duration, caption: caption) } },
             onRequestResumePreview: { try await store.requestResumePreviewURL() },
             onApply: { draft in Task { await store.applyToJob(draft) } },
             onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },

@@ -22,7 +22,7 @@ struct JobSeekerHomeView: View {
     let onSaveProfile: (CandidateProfileDraft) -> Void
     let onUploadAvatar: (Data) -> Void
     let onUploadResume: (URL) -> Void
-    let onUploadVideo: (URL, Double) -> Void
+    let onUploadVideo: (URL, Double, String?) -> Void
     let onRequestResumePreview: () async throws -> URL?
     let onApply: (JobApplicationDraft) -> Void
     let onToggleSavedJob: (String) -> Void
@@ -62,14 +62,14 @@ struct JobSeekerHomeView: View {
     @State private var founderReachableOnly = false
     @State private var selectedProfileTab: CandidateProfileTab = .video
     @State private var showingStrengthDetail = false
-    @State private var showingProfileVideoPlayer = false
+    @State private var profilePlayerItem: ProfileVideoPlayerItem?
+    @State private var pendingVideoPost: PendingVideoPost?
     // Saved/applied jobs open as real feed cards (carousel + apply/pitch),
     // rendered as an in-hierarchy overlay — NOT a modal — so the apply and
     // founder sheets can still present above it.
     @State private var savedFeedJobs: [JobPostingRecord] = []
     @State private var savedFeedStartJob: JobPostingRecord?
     @State private var savedFeedCurrentJobID: String?
-    @State private var playerVideoURL: String?
     @State private var captionEditingVideo: CandidateVideoRecord?
     @State private var captionDraft = ""
     @State private var profileEditorTarget: CandidateProfileEditTarget?
@@ -91,7 +91,7 @@ struct JobSeekerHomeView: View {
         onSaveProfile: @escaping (CandidateProfileDraft) -> Void,
         onUploadAvatar: @escaping (Data) -> Void,
         onUploadResume: @escaping (URL) -> Void,
-        onUploadVideo: @escaping (URL, Double) -> Void,
+        onUploadVideo: @escaping (URL, Double, String?) -> Void,
         onRequestResumePreview: @escaping () async throws -> URL?,
         onApply: @escaping (JobApplicationDraft) -> Void,
         onToggleSavedJob: @escaping (String) -> Void,
@@ -299,6 +299,16 @@ struct JobSeekerHomeView: View {
                 currentJobID = incoming
             }
             onConsumeSharedJob()
+        }
+        .fullScreenCover(item: $pendingVideoPost) { pending in
+            VideoPostView(
+                composed: pending.composed,
+                onPost: { caption in
+                    pendingVideoPost = nil
+                    onUploadVideo(pending.composed.url, pending.composed.duration, caption)
+                },
+                onCancel: { pendingVideoPost = nil }
+            )
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
             JobTokVideoStudio(
@@ -639,23 +649,21 @@ struct JobSeekerHomeView: View {
                 } message: {
                     Text(strengthDetailMessage)
                 }
-                .fullScreenCover(isPresented: $showingProfileVideoPlayer) {
+                .fullScreenCover(item: $profilePlayerItem) { item in
                     // TikTok-style: full screen, tap to pause, X to close.
                     ZStack(alignment: .topLeading) {
                         Color.black.ignoresSafeArea()
-                        if let videoURL = playerVideoURL ?? workingProfile.introVideoURL {
-                            RemoteVideoSurface(
-                                urlString: videoURL,
-                                isActive: true,
-                                videoGravity: .resizeAspect,
-                                autoPlay: true,
-                                allowsTapToTogglePlayback: true,
-                                showsPlayOverlayWhenPaused: true
-                            )
-                            .ignoresSafeArea()
-                        }
+                        RemoteVideoSurface(
+                            urlString: item.url,
+                            isActive: true,
+                            videoGravity: .resizeAspect,
+                            autoPlay: true,
+                            allowsTapToTogglePlayback: true,
+                            showsPlayOverlayWhenPaused: true
+                        )
+                        .ignoresSafeArea()
                         Button {
-                            showingProfileVideoPlayer = false
+                            profilePlayerItem = nil
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 16, weight: .bold))
@@ -1084,8 +1092,7 @@ struct JobSeekerHomeView: View {
 
     private func videoTile(urlString: String, caption: String?, isPrimary: Bool) -> some View {
         Button {
-            playerVideoURL = urlString
-            showingProfileVideoPlayer = true
+            profilePlayerItem = ProfileVideoPlayerItem(url: urlString)
         } label: {
             RemoteVideoSurface(
                 urlString: urlString,
@@ -1095,6 +1102,8 @@ struct JobSeekerHomeView: View {
                 allowsTapToTogglePlayback: false,
                 showsPlayOverlayWhenPaused: false
             )
+            // The embedded UIKit player view must never eat the tile tap.
+            .allowsHitTesting(false)
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .clipped()
             .overlay(alignment: .topLeading) {
@@ -1121,6 +1130,7 @@ struct JobSeekerHomeView: View {
                         .foregroundStyle(PassportTheme.textPrimary)
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1872,7 +1882,13 @@ struct JobSeekerHomeView: View {
     private func acceptComposedVideo(_ composedVideo: JobTokComposedVideo) {
         workingProfile.introVideoFileName = composedVideo.fileName
         workingProfile.introVideoDuration = composedVideo.duration
-        onUploadVideo(composedVideo.url, composedVideo.duration)
+        // TikTok flow: the studio hands off to a post page (caption +
+        // preview) instead of uploading immediately. Small delay so the
+        // studio's cover finishes dismissing before the next one presents.
+        let pending = PendingVideoPost(composed: composedVideo)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+            pendingVideoPost = pending
+        }
     }
 
     private func formattedImportDate(_ date: Date?) -> String {
@@ -3092,6 +3108,110 @@ private struct JobTileFooter: View {
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ProfileVideoPlayerItem: Identifiable {
+    let id = UUID()
+    let url: String
+}
+
+private struct PendingVideoPost: Identifiable {
+    let id = UUID()
+    let composed: JobTokComposedVideo
+}
+
+// TikTok-style post page: looping preview beside a caption field, one big
+// Post button. The caption tells reviewers what this video is about ("my
+// intro", "walkthrough of my hackathon project"…).
+private struct VideoPostView: View {
+    let composed: JobTokComposedVideo
+    let onPost: (String?) -> Void
+    let onCancel: () -> Void
+
+    @State private var caption = ""
+    @FocusState private var captionFocused: Bool
+
+    private static let maxCaptionChars = 150
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .frame(width: 38, height: 38)
+                        .background(PassportTheme.card)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Text("New video")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(PassportTheme.textPrimary)
+                Spacer()
+                Color.clear.frame(width: 38, height: 38)
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField(
+                        "Describe your video — \"my 60-sec intro\", \"walkthrough of my hackathon project\"…",
+                        text: $caption,
+                        axis: .vertical
+                    )
+                    .lineLimit(4...8)
+                    .focused($captionFocused)
+                    .foregroundStyle(PassportTheme.textPrimary)
+                    .onChange(of: caption) { _, newValue in
+                        if newValue.count > Self.maxCaptionChars {
+                            caption = String(newValue.prefix(Self.maxCaptionChars))
+                        }
+                    }
+
+                    Text("\(caption.count)/\(Self.maxCaptionChars)")
+                        .font(.caption2)
+                        .foregroundStyle(PassportTheme.textMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                RemoteVideoSurface(
+                    urlString: composed.url.absoluteString,
+                    isActive: true,
+                    videoGravity: .resizeAspectFill,
+                    autoPlay: true,
+                    allowsTapToTogglePlayback: false,
+                    showsPlayOverlayWhenPaused: false,
+                    isMuted: true
+                )
+                .allowsHitTesting(false)
+                .frame(width: 104, height: 152)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(16)
+            .jobTokCard(cornerRadius: 20)
+
+            Spacer()
+
+            Button {
+                let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                onPost(trimmed.isEmpty ? nil : trimmed)
+            } label: {
+                Label("Post", systemImage: "paperplane.fill")
+                    .font(.headline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+            }
+            .background(PassportTheme.accent)
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .buttonStyle(.plain)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(PassportTheme.background.ignoresSafeArea())
+        .onAppear { captionFocused = true }
     }
 }
 
