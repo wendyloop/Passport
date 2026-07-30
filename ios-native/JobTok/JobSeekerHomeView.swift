@@ -151,7 +151,9 @@ struct JobSeekerHomeView: View {
             location: selectedLocationFilter,
             experience: selectedExperienceFilter,
             workMode: selectedWorkModeFilter,
-            pay: selectedPayFilter
+            pay: selectedPayFilter,
+            jobFunction: selectedJobFunction,
+            founderReachable: founderReachableOnly
         )
     }
 
@@ -3836,11 +3838,20 @@ struct FeedFilters: Equatable {
     var experience: ExperienceFilter = .all
     var workMode: WorkModeFilter = .all
     var pay: JobPayFilter = .all
+    // Server-side too: the fetch window is 200+200 of a 33k catalog, so
+    // client-only role/founder filtering starved results (e.g. Product ×
+    // founder-reachable = 180 real jobs, ~1 in a typical window).
+    var jobFunction: JobFunctionOption? = nil
+    var founderReachable: Bool = false
 
     /// PostgREST conditions, ANDed with the feed query. Multiple `or=`
     /// params are separate top-level conditions (PostgREST ANDs them).
     var postgrestParams: [(String, String)] {
         var params: [(String, String)] = []
+
+        if let jobFunction {
+            params.append(("job_function", "eq.\(jobFunction.rawValue)"))
+        }
 
         switch experience {
         case .all: break

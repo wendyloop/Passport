@@ -191,11 +191,20 @@ final class SupabaseService {
         // Filters run server-side: the fetch window is 200+200 rows of a 33k
         // catalog, so client-only filtering would miss nearly all matches.
         if publishedOnly && employerID == nil {
-            let filterParams = filters.postgrestParams
+            var filterParams = filters.postgrestParams
+            // Founder-reachable requires filtering on the embedded company —
+            // PostgREST only allows that through an !inner join, so the
+            // company embed flips to inner and gains the flag condition.
+            let companyEmbed = filters.founderReachable
+                ? "company:companies!inner(id,name,domain,logo_url,stage,founder_contactable)"
+                : "company:companies(id,name,domain,logo_url,stage,founder_contactable)"
+            if filters.founderReachable {
+                filterParams.append(("company.founder_contactable", "eq.true"))
+            }
             async let videos: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("select", "*,\(companyEmbed),carousel:carousels(theme_id,slide_count,content,status)"),
                     ("is_published", "eq.true"),
                     ("is_active", "eq.true"),
                     ("source_kind", "in.(reel,employer_post)"),
@@ -207,7 +216,7 @@ final class SupabaseService {
             async let carousels: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels!inner(theme_id,slide_count,content,status)"),
+                    ("select", "*,\(companyEmbed),carousel:carousels!inner(theme_id,slide_count,content,status)"),
                     ("is_published", "eq.true"),
                     ("is_active", "eq.true"),
                     ("source_kind", "in.(ats,board)"),
