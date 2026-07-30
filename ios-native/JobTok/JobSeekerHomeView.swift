@@ -517,10 +517,13 @@ struct JobSeekerHomeView: View {
     // Applied tiles open the job's feed card when the job is still
     // resolvable (feed window or the saved-jobs id-fetch); snapshot-only
     // applications just don't navigate.
-    private func openApplicationJob(_ application: JobApplicationRecord) {
-        let lookup = jobs.first { $0.id == application.jobID }
+    private func resolvedJob(for application: JobApplicationRecord) -> JobPostingRecord? {
+        jobs.first { $0.id == application.jobID }
             ?? savedJobs.first { $0.id == application.jobID }
-        guard let job = lookup else { return }
+    }
+
+    private func openApplicationJob(_ application: JobApplicationRecord) {
+        guard let job = resolvedJob(for: application) else { return }
         openFeedViewer(jobs: [job], startAt: job)
     }
 
@@ -602,6 +605,7 @@ struct JobSeekerHomeView: View {
                             ForEach(applications) { application in
                                 ApplicationTile(
                                     application: application,
+                                    job: resolvedJob(for: application),
                                     onOpen: { openApplicationJob(application) }
                                 )
                             }
@@ -857,41 +861,40 @@ struct JobSeekerHomeView: View {
     // (links live in the About tab). Strength ring replaces the checklist.
     private var candidateProfileHero: some View {
         VStack(spacing: 12) {
-            HStack(alignment: .top) {
-                Spacer()
+            // Mock v4 layout: avatar on the left, identity on the right —
+            // less vertical space up top, more room for the content below.
+            HStack(alignment: .center, spacing: 14) {
                 profileAvatar
                     .overlay(alignment: .bottomLeading) {
                         profileStrengthBadge
                             .offset(x: -6, y: 4)
                     }
-                Spacer()
-            }
 
-            VStack(spacing: 4) {
-                Text(workingProfile.fullName.isEmpty ? "Your Name" : workingProfile.fullName)
-                    .font(.system(size: 21, weight: .bold, design: .rounded))
-                    .foregroundStyle(PassportTheme.textPrimary)
-                    .multilineTextAlignment(.center)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(workingProfile.fullName.isEmpty ? "Your Name" : workingProfile.fullName)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .lineLimit(1)
 
-                Text(handleText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PassportTheme.textSecondary)
+                    Text(handleText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PassportTheme.textSecondary)
 
-                Text(bioText)
-                    .font(.footnote)
-                    .foregroundStyle(hasCustomBio ? PassportTheme.textPrimary : PassportTheme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .padding(.top, 2)
-
-                if !heroMetaText.isEmpty {
-                    Text(heroMetaText)
+                    Text(bioText)
                         .font(.footnote)
-                        .foregroundStyle(PassportTheme.textMuted)
-                        .multilineTextAlignment(.center)
+                        .foregroundStyle(hasCustomBio ? PassportTheme.textPrimary : PassportTheme.textMuted)
+                        .lineLimit(2)
+                        .padding(.top, 1)
+
+                    if !heroMetaText.isEmpty {
+                        Text(heroMetaText)
+                            .font(.caption)
+                            .foregroundStyle(PassportTheme.textMuted)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity)
 
             Button {
                 isEditingProfile = true
@@ -1024,7 +1027,7 @@ struct JobSeekerHomeView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 3), spacing: 1) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 3), spacing: 0) {
                     if candidateVideos.isEmpty, let introURL = workingProfile.introVideoURL {
                         videoTile(urlString: introURL, caption: nil, isPrimary: true)
                     } else {
@@ -1059,7 +1062,6 @@ struct JobSeekerHomeView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .background(PassportTheme.border.opacity(0.5))
                 .padding(.horizontal, -20)
             }
         }
@@ -1747,7 +1749,7 @@ struct JobSeekerHomeView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 108, height: 108)
+                .frame(width: 84, height: 84)
 
             if let avatarURL = workingProfile.avatarURL, let url = URL(string: avatarURL) {
                 AsyncImage(url: url) { image in
@@ -1757,7 +1759,7 @@ struct JobSeekerHomeView: View {
                 } placeholder: {
                     avatarInitials
                 }
-                .frame(width: 100, height: 100)
+                .frame(width: 78, height: 78)
                 .clipShape(Circle())
             } else {
                 avatarInitials
@@ -1770,9 +1772,9 @@ struct JobSeekerHomeView: View {
                 photoLibrary: .shared()
             ) {
                 Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(PassportTheme.textPrimary)
-                    .padding(8)
+                    .padding(6)
                     .background(PassportTheme.card)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(PassportTheme.border.opacity(0.7), lineWidth: 1))
@@ -1784,7 +1786,7 @@ struct JobSeekerHomeView: View {
         Text(initialsText)
             .font(.system(size: 34, weight: .black, design: .rounded))
             .foregroundStyle(.black)
-            .frame(width: 100, height: 100)
+            .frame(width: 78, height: 78)
             .background(PassportTheme.accent)
             .clipShape(Circle())
     }
@@ -2272,33 +2274,35 @@ private struct CandidateProfileEditor: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        fullNameField
-                        handleField
-                        headlineField
-                        schoolField
-                        employersField
-                        dreamRoleField
-                        compensationRangeField
-                        roleSpotlightHint
-                        linkFields
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Job function")
-                                .font(.headline)
-                                .foregroundStyle(PassportTheme.textPrimary)
-
-                            Picker("Job function", selection: $profile.jobFunction) {
-                                ForEach(JobFunctionOption.allCases) { option in
-                                    Text(option.title).tag(option)
-                                }
-                            }
-                            .pickerStyle(.wheel)
-                            .frame(height: 150)
+                    VStack(alignment: .leading, spacing: 24) {
+                        // LinkedIn-style grouped sections: related fields
+                        // share one card under a small section header.
+                        editorSection("Intro") {
+                            fullNameField
+                            editorDivider
+                            handleField
+                            editorDivider
+                            headlineField
                         }
-                        .padding(18)
-                        .jobTokCard(cornerRadius: 22)
-                        .id(CandidateProfileEditTarget.jobFunction)
+
+                        editorSection("Background") {
+                            schoolField
+                            editorDivider
+                            employersField
+                            editorDivider
+                            dreamRoleField
+                            editorDivider
+                            jobFunctionField
+                        }
+
+                        editorSection("Preferences") {
+                            compensationRangeField
+                        }
+
+                        editorSection("Links") {
+                            roleSpotlightHint
+                            linkFields
+                        }
 
                         // The editor's Visibility toggle is hidden for
                         // candidate-only v0 (same rationale as
@@ -2421,6 +2425,58 @@ private struct CandidateProfileEditor: View {
         }
     }
 
+    private var editorDivider: some View {
+        Divider().overlay(PassportTheme.border.opacity(0.4))
+    }
+
+    private func editorSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(0.8)
+                .foregroundStyle(PassportTheme.textMuted)
+                .padding(.leading, 6)
+
+            VStack(alignment: .leading, spacing: 16) {
+                content()
+            }
+            .padding(18)
+            .jobTokCard(cornerRadius: 22)
+        }
+    }
+
+    private var jobFunctionField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Job function")
+                .font(.headline)
+                .foregroundStyle(PassportTheme.textPrimary)
+
+            Menu {
+                ForEach(JobFunctionOption.allCases) { option in
+                    Button(option.title) { profile.jobFunction = option }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Text(profile.jobFunction.title)
+                        .foregroundStyle(PassportTheme.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PassportTheme.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(PassportTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            Text("Orders your links and powers the feed's role filters.")
+                .font(.footnote)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .id(CandidateProfileEditTarget.jobFunction)
+    }
+
     private var fullNameField: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -2443,8 +2499,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.fullName)
     }
 
@@ -2475,8 +2529,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.handle)
     }
 
@@ -2504,8 +2556,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.headline)
     }
 
@@ -2532,8 +2582,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.dreamRole)
     }
 
@@ -2560,8 +2608,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.school)
     }
 
@@ -2589,8 +2635,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.employers)
     }
 
@@ -2624,8 +2668,6 @@ private struct CandidateProfileEditor: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.compensation)
     }
 
@@ -2646,8 +2688,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.linkedIn)
     }
 
@@ -2722,8 +2762,6 @@ private struct CandidateProfileEditor: View {
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.github)
     }
 
@@ -2740,8 +2778,6 @@ private struct CandidateProfileEditor: View {
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(CandidateProfileEditTarget.portfolio)
     }
 
@@ -2774,8 +2810,6 @@ private struct CandidateProfileEditor: View {
                 .font(.footnote)
                 .foregroundStyle(PassportTheme.textSecondary)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(target)
     }
 
@@ -2841,8 +2875,6 @@ private struct CandidateProfileEditor: View {
                 .lineLimit(axis == .vertical ? 3...6 : 1...1)
                 .focused($focusedField, equals: target)
         }
-        .padding(18)
-        .jobTokCard(cornerRadius: 22)
         .id(target)
     }
 }
@@ -2851,10 +2883,11 @@ private struct CandidateProfileEditor: View {
 // the application status as the headline signal.
 private struct ApplicationTile: View {
     let application: JobApplicationRecord
+    var job: JobPostingRecord? = nil
     let onOpen: () -> Void
 
     private var style: CarouselStyle {
-        CarouselStyle.resolve(jobID: application.jobID, themeID: "slate-gradient")
+        CarouselStyle.resolve(jobID: application.jobID, themeID: job?.carousel?.themeId ?? "slate-gradient")
     }
 
     private var statusLabel: String {
@@ -2881,35 +2914,11 @@ private struct ApplicationTile: View {
     var body: some View {
         Button(action: onOpen) {
             ZStack(alignment: .top) {
-                LinearGradient(
-                    colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Spacer()
-                    CompanyMonogram(
-                        name: application.companyName,
-                        background: style.theme.accent,
-                        foreground: style.theme.onAccent,
-                        size: 34
-                    )
-                    Text(application.jobTitle)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Text(application.companyName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                    Text(SharedFormatters.relativeAge(of: application.appliedAt))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.4))
+                if let job {
+                    JobTileBackground(job: job, style: style)
+                } else {
+                    fallbackSummary
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
 
                 HStack(alignment: .top) {
                     Text(statusLabel)
@@ -2929,6 +2938,38 @@ private struct ApplicationTile: View {
         }
         .buttonStyle(.plain)
     }
+
+    private var fallbackSummary: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                CompanyMonogram(
+                    name: application.companyName,
+                    background: style.theme.accent,
+                    foreground: style.theme.onAccent,
+                    size: 34
+                )
+                Text(application.jobTitle)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text(application.companyName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                Text(SharedFormatters.relativeAge(of: application.appliedAt))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(12)
+        }
+    }
 }
 
 private struct SavedJobTile: View {
@@ -2944,38 +2985,7 @@ private struct SavedJobTile: View {
     var body: some View {
         Button(action: onOpen) {
             ZStack(alignment: .top) {
-                LinearGradient(
-                    colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Spacer()
-                    CompanyMonogram(
-                        name: job.displayCompanyName,
-                        background: style.theme.accent,
-                        foreground: style.theme.onAccent,
-                        size: 34
-                    )
-                    Text(job.title)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Text(job.displayCompanyName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                    if let comp = job.compensationSummary {
-                        Text(comp)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(style.theme.accent)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                JobTileBackground(job: job, style: style)
 
                 HStack(alignment: .top) {
                     if isApplied {
@@ -3006,6 +3016,53 @@ private struct SavedJobTile: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+// Shared tile ground: the job's REAL cover card when a carousel exists,
+// monogram summary otherwise (video jobs, not-yet-generated carousels).
+private struct JobTileBackground: View {
+    let job: JobPostingRecord
+    let style: CarouselStyle
+
+    var body: some View {
+        if let carousel = job.carousel, !carousel.renderableSlides.isEmpty {
+            JobCardPreview(job: job, carousel: carousel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    CompanyMonogram(
+                        name: job.displayCompanyName,
+                        background: style.theme.accent,
+                        foreground: style.theme.onAccent,
+                        size: 34
+                    )
+                    Text(job.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(job.displayCompanyName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                    if let comp = job.compensationSummary {
+                        Text(comp)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(style.theme.accent)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(12)
+            }
+        }
     }
 }
 

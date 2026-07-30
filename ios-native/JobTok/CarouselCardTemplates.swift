@@ -19,23 +19,31 @@ struct CardTemplateSlideView: View {
     let style: CarouselStyle
     let job: JobPostingRecord
     let onEmailFounder: (() -> Void)?
+    // Grid-tile previews render just the card, no feed letterboxing.
+    var previewMode: Bool = false
 
     var body: some View {
-        // Instagram framing: the art runs the full device width with square
-        // corners, vertically centered in the space above the apply
-        // controls — the dark ground is just letterboxing, not a border.
-        // The top padding biases the card ~1cm (60pt) below true center,
-        // per product review.
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
+        if previewMode {
             CardCanvas {
                 content
             }
-            Spacer(minLength: 0)
+        } else {
+            // Instagram framing: the art runs the full device width with square
+            // corners, vertically centered in the space above the apply
+            // controls — the dark ground is just letterboxing, not a border.
+            // The top padding biases the card ~1cm (60pt) below true center,
+            // per product review.
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                CardCanvas {
+                    content
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 120)
+            .padding(.bottom, 230)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.top, 120)
-        .padding(.bottom, 230)
-        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -1364,6 +1372,27 @@ enum AfterHoursCard {
             } else {
                 label
             }
+        }
+    }
+}
+
+// Mini first-slide preview for grid tiles (Saved / Applications) — the
+// job's actual cover card instead of a placeholder. CardCanvas self-scales
+// to the tile width; hit-testing off so the tile's button wins.
+struct JobCardPreview: View {
+    let job: JobPostingRecord
+    let carousel: Carousel
+
+    var body: some View {
+        if let slide = carousel.renderableSlides.first {
+            CardTemplateSlideView(
+                slide: slide,
+                style: CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId ?? "slate-gradient"),
+                job: job,
+                onEmailFounder: nil,
+                previewMode: true
+            )
+            .allowsHitTesting(false)
         }
     }
 }
