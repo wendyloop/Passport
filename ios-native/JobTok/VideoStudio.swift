@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import PhotosUI
 import AVFoundation
 import UniformTypeIdentifiers
 import UIKit
@@ -834,6 +835,24 @@ private struct JobTokVideoLibraryPicker: View {
         VStack(spacing: 14) {
             switch libraryStore.authorizationState {
             case .authorized, .limited:
+                if libraryStore.authorizationState == .limited {
+                    // "Selected Photos" access: without this, videos outside
+                    // the shared selection silently never appear.
+                    HStack(spacing: 10) {
+                        Text("Only your selected videos are shown.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PassportTheme.textSecondary)
+                        Spacer()
+                        Button("Manage") {
+                            presentLimitedLibraryPicker()
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PassportTheme.accent)
+                    }
+                    .padding(12)
+                    .background(PassportTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(
                         columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3),
@@ -924,6 +943,15 @@ private struct JobTokVideoLibraryPicker: View {
         }
     }
 
+    private func presentLimitedLibraryPicker() {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let window = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow }) ?? scenes.first?.windows.first,
+              let root = window.rootViewController else { return }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: top)
+    }
+
     private func toggle(asset: PHAsset) {
         if selectedClips.contains(where: { $0.fileName == asset.localIdentifier }) {
             selectedClips.removeAll { $0.fileName == asset.localIdentifier }
@@ -953,11 +981,26 @@ private struct JobTokVideoLibraryPicker: View {
 }
 
 @MainActor
-private final class JobTokPhotoLibraryStore: ObservableObject {
+private final class JobTokPhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var assets: [PHAsset] = []
     @Published var authorizationState: PHAuthorizationStatus = .notDetermined
 
     private let manager = PHCachingImageManager()
+    private var isObservingLibrary = false
+
+    deinit {
+        if isObservingLibrary {
+            PHPhotoLibrary.shared().unregisterChangeObserver(self)
+        }
+    }
+
+    // Limited-access users can change their selection (or save new videos)
+    // while the picker is open — refetch so the grid always reflects it.
+    func photoLibraryDidChange(_ changeInstance: PHChange) {
+        DispatchQueue.main.async { [weak self] in
+            self?.fetchVideos()
+        }
+    }
 
     func requestAccess() async {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -970,6 +1013,11 @@ private final class JobTokPhotoLibraryStore: ObservableObject {
         guard authorizationState == .authorized || authorizationState == .limited else {
             assets = []
             return
+        }
+
+        if !isObservingLibrary {
+            PHPhotoLibrary.shared().register(self)
+            isObservingLibrary = true
         }
 
         fetchVideos()
