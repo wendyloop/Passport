@@ -23,10 +23,10 @@ struct ProfileSettingsDrawer: View {
     let onLogOut: () -> Void
     let onDeleteAccount: () -> Void
 
-    @AppStorage("jobtok.themePreference") private var themePreferenceRaw = AppThemePreference.dark.rawValue
+    @AppStorage("jobtok.themePreference") private var themePreferenceRaw = AppThemePreference.light.rawValue
 
     private var themePreference: AppThemePreference {
-        get { AppThemePreference(rawValue: themePreferenceRaw) ?? .dark }
+        get { AppThemePreference(rawValue: themePreferenceRaw) ?? .light }
         nonmutating set { themePreferenceRaw = newValue.rawValue }
     }
 

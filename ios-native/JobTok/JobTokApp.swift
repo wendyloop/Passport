@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct JobTokApp: App {
-    @AppStorage("jobtok.themePreference") private var themePreferenceRaw = AppThemePreference.dark.rawValue
+    @AppStorage("jobtok.themePreference") private var themePreferenceRaw = AppThemePreference.light.rawValue
 
     init() {
         // Card carousel templates draw with bundled display fonts.
@@ -10,7 +10,7 @@ struct JobTokApp: App {
     }
 
     private var themePreference: AppThemePreference {
-        AppThemePreference(rawValue: themePreferenceRaw) ?? .dark
+        AppThemePreference(rawValue: themePreferenceRaw) ?? .light
     }
 
     var body: some Scene {
