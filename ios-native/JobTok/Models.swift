@@ -31,6 +31,8 @@ enum JobFunctionOption: String, CaseIterable, Identifiable, Codable {
     case hr
     case finance
     case legal
+    case programManagement = "program_management"
+    case clinical
 
     var id: String { rawValue }
 
@@ -47,6 +49,8 @@ enum JobFunctionOption: String, CaseIterable, Identifiable, Codable {
         case .hr: return "HR"
         case .finance: return "Finance"
         case .legal: return "Legal"
+        case .programManagement: return "Project/Program"
+        case .clinical: return "Clinical"
         }
     }
 }

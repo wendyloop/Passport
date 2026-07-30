@@ -313,6 +313,7 @@ Deno.serve(async (request) => {
       const validFunctions = new Set([
         "engineering", "design", "product", "science", "sales", "marketing",
         "support", "operations", "hr", "finance", "legal",
+        "program_management", "clinical",
       ]);
       if (!job.job_function && validFunctions.has(llmContent.job_function)) {
         jobPatch.job_function = llmContent.job_function;
@@ -584,8 +585,10 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
     "entry means 0-2 years or new grad friendly; mid means 2-5 years. " +
     "work_mode: remote, hybrid, or onsite ONLY if the JD states it; else empty string. " +
     "job_function: which team this role belongs to — one of engineering, design, product, science, " +
-    "sales, marketing, support, operations, hr, finance, legal — pick the closest fit from the title " +
-    "and JD; empty string only when the role genuinely fits none (e.g. drivers, retail floor staff). " +
+    "sales, marketing, support, operations, hr, finance, legal, program_management, clinical — pick " +
+    "the closest fit from the title and JD (project/program managers → program_management; nurses, " +
+    "clinicians, therapists → clinical); empty string only when the role genuinely fits none " +
+    "(e.g. drivers, retail floor staff). " +
     "responsibilities: what they'd actually do, short punchy phrases. " +
     "requirements: the few things that genuinely matter, not the full wishlist. " +
     "founders: people the JD explicitly names as founder, co-founder, or CEO of THIS company — " +
@@ -616,7 +619,7 @@ async function extractWithLLM(job: JobRow): Promise<LLMContent> {
         youd_line: { type: "string", maxLength: 80 },
         experience_level: { type: "string", enum: ["intern", "entry", "mid", "senior", "staff", "exec", ""] },
         work_mode: { type: "string", enum: ["remote", "hybrid", "onsite", ""] },
-        job_function: { type: "string", enum: ["engineering", "design", "product", "science", "sales", "marketing", "support", "operations", "hr", "finance", "legal", ""] },
+        job_function: { type: "string", enum: ["engineering", "design", "product", "science", "sales", "marketing", "support", "operations", "hr", "finance", "legal", "program_management", "clinical", ""] },
         responsibilities: { type: "array", maxItems: 4, items: { type: "string", maxLength: 70 } },
         requirements: { type: "array", maxItems: 4, items: { type: "string", maxLength: 60 } },
         perks: { type: "array", maxItems: 3, items: { type: "string", maxLength: 50 } },

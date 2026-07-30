@@ -9,23 +9,30 @@
 
 export type JobFunction =
   | "engineering" | "design" | "product" | "science" | "sales" | "marketing"
-  | "support" | "operations" | "hr" | "finance" | "legal";
+  | "support" | "operations" | "hr" | "finance" | "legal"
+  | "program_management" | "clinical";
 
 const RULES: Array<[JobFunction, RegExp]> = [
   ["engineering", /software|backend|frontend|full.?stack|platform engineer|infrastructure|devops|sre|site reliab|mobile engineer|ios |android|embedded|firmware|security engineer|data engineer|ml engineer|machine learning|ai engineer|research engineer|hardware|electrical engineer|mechanical engineer|qa engineer|test engineer/],
   ["science", /data scien|data analy|analytics|research scien|applied scien|quantitative|\bscientist\b/],
-  ["product", /product manager|product owner|technical program|program manager|head of product|product lead/],
+  ["product", /product manager|product owner|head of product|product lead/],
   ["design", /designer|design lead|\bux\b|\bui designer|user experience|user interface|brand design|graphic|illustrator|creative director/],
+  // v3: project/program management is its own section (product decision
+  // 2026-07-30) — before the team rules below so every PM flavor lands here.
+  ["program_management", /program manager|project manager|technical program|program lead|scrum master|\bpmo\b/],
+  // v3: clinical roles at healthcare startups. MUST run before legal —
+  // /counsel/ would otherwise eat "counselor".
+  ["clinical", /nurse|physician|clinician|clinical|therapist|therapy\b|psycholog|psychiatr|counselor|dental|dentist|pharmac|paramedic|medical assistant|medical director|behavior technician|\brn\b|endocrinolog|cardiolog|dermatolog|patholog|radiolog|oncolog|pediatric|primary care|urgent care|telehealth|dietitian|nutritionist|midwife|phlebotom|health information|caregiver|home health|veterinar/],
   ["sales", /sales|account exec|account manager|account develop|account represent|business develop|\bbdr\b|\bsdr\b|revenue|partnership|appointment setter/],
   ["marketing", /marketing|growth|content|brand manager|\bseo\b|social media|community manager|communications/],
-  ["support", /customer success|customer support|support engineer|solutions engineer|solutions architect|solutions consultant|implementation|technical account|help ?desk|customer experience/],
+  ["support", /customer success|customer support|support engineer|solutions engineer|solutions architect|solutions consultant|implementation|technical account|help ?desk|customer experience|engagement manager|deployment strategist|domain consultant|client solutions|delivery lead/],
   ["hr", /recruit|talent|people ops|people partner|\bhr\b|human resources/],
-  ["finance", /finance|accounting|accountant|controller|fp&a|treasury|payroll|bookkeep|billing|\btax\b/],
-  ["legal", /legal|counsel|compliance|regulatory|paralegal/],
+  ["finance", /finance|accounting|accountant|controller|fp&a|treasury|payroll|bookkeep|billing|\btax\b|accounts payable|accounts receivable/],
+  ["legal", /legal|counsel|compliance|regulatory|paralegal|contracts manager/],
   // v2 generic catch-alls, deliberately LAST before operations: "Sales
   // Engineer"/"Solutions Architect" already matched their real teams above;
   // whatever still says engineer/developer is engineering.
-  ["engineering", /\bengineer(ing)?\b|\bdeveloper\b/],
+  ["engineering", /\bengineer(ing)?\b|\bdeveloper\b|\barchitect\b/],
   ["operations", /operations|\bops\b|chief of staff|office manager|executive assistant|logistics|supply chain/],
 ];
 

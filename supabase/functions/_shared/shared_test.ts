@@ -276,3 +276,21 @@ Deno.test("classifyTitle v2 recovers previously unmapped titles", () => {
   assertEquals(classifyTitle("Heavy Equipment CDL Driver"), null);
   assertEquals(classifyTitle("Stylist (Retail) (Part-time)"), null);
 });
+
+Deno.test("classifyTitle v3: program_management and clinical buckets", () => {
+  assertEquals(classifyTitle("Program Manager"), "program_management");
+  assertEquals(classifyTitle("Technical Program Manager"), "program_management");
+  assertEquals(classifyTitle("Senior Project Manager"), "program_management");
+  assertEquals(classifyTitle("Marketing Project Manager"), "program_management");
+  assertEquals(classifyTitle("Product Manager"), "product");
+  assertEquals(classifyTitle("Nurse Practitioner"), "clinical");
+  assertEquals(classifyTitle("Registered Behavior Technician (RBT)"), "clinical");
+  assertEquals(classifyTitle("Telehealth Endocrinologist"), "clinical");
+  assertEquals(classifyTitle("Genetic Counselor"), "clinical");
+  assertEquals(classifyTitle("General Counsel"), "legal");
+  assertEquals(classifyTitle("Technical Architect"), "engineering");
+  assertEquals(classifyTitle("Accounts Payable Specialist"), "finance");
+  assertEquals(classifyTitle("Contracts Manager"), "legal");
+  assertEquals(classifyTitle("Engagement Manager"), "support");
+  assertEquals(classifyTitle("AI Deployment Strategist"), "support");
+});
