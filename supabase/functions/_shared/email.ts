@@ -6,6 +6,10 @@
 // the sendViaGmail block for how to revive it.
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// FIRST-100-USERS: while volume is tiny, BCC every outbound email to a
+// monitored inbox so Wendy sees exactly what candidates are sending.
+// Turn off by unsetting the MONITOR_BCC_EMAIL secret — no redeploy needed.
+const MONITOR_BCC_EMAIL = Deno.env.get("MONITOR_BCC_EMAIL") ?? "";
 const DEFAULT_FROM = Deno.env.get("JOBTOK_FROM_EMAIL") ?? "Wendy <wendy@tryscout22.com>";
 // const GMAIL_SMTP_USER = Deno.env.get("GMAIL_SMTP_USER") ?? "";
 // const GMAIL_SMTP_APP_PASSWORD = Deno.env.get("GMAIL_SMTP_APP_PASSWORD") ?? "";
@@ -115,6 +119,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       text: params.text,
       html: params.html,
       ...(params.replyTo ? { reply_to: [params.replyTo] } : {}),
+      ...(MONITOR_BCC_EMAIL ? { bcc: [MONITOR_BCC_EMAIL] } : {}),
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     }),
   });
