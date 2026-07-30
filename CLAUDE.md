@@ -5,9 +5,16 @@ vertical feed of job videos/carousels and apply with a resume + 60-second pitch 
 Employers post jobs, review applicants, discover candidates, and send outreach emails.
 Admins bulk-import jobs from social posts and Apify scrape pipelines.
 
-The product was renamed scout22, but every code-level name (targets, schemes, bundle
-IDs, `jobtok://` deep link, App Group) is still JobTok. This is intentional — renaming
-touches App Store Connect and Supabase OAuth. Do not rename.
+The product was renamed scout22. As of 2026-07-28 the **bundle IDs and display
+name are scout22** (`com.tryscout22.scout22`, extension `.share`, tests
+`.tests`) — safe because OAuth rides the URL scheme, not the bundle ID. The
+remaining JobTok names are deliberate legacy — code-level names (targets,
+schemes, file/type names), the `jobtok://` deep-link scheme (Supabase OAuth
+redirect + share links depend on it), the App Group
+`group.com.jobtok.shared` (doubles as the Keychain access group), and the
+`com.jobtok.supabase` Keychain service. Do not rename those. App Store
+Connect still needs its record's bundle ID switched by Wendy before the next
+TestFlight upload.
 
 ## Architecture
 
