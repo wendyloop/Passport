@@ -2,15 +2,15 @@
 
 This folder contains the primary SwiftUI iOS app for scout22.
 
-> The Xcode project files, scheme, target, bundle identifiers, app group, and `jobtok://` deep link scheme still use the legacy `JobTok` / `jobtok` names. Renaming these would require an Xcode project rename, App Group migration, App Store Connect updates, and Supabase OAuth redirect changes — they're left as-is intentionally.
+> Project, scheme, targets, and Swift types were renamed to `scout22` on 2026-07-31. The `jobtok://` deep-link scheme, App Group `group.com.jobtok.shared`, and `com.jobtok.*` Keychain services deliberately keep the legacy name — renaming them would break Supabase OAuth redirects and strand signed-in sessions.
 
 ## Open in Xcode
 
 Open:
 
-- `ios-native/JobTok.xcodeproj`
+- `ios-native/scout22.xcodeproj`
 
-Then choose the `JobTok` scheme and run it on an iPhone simulator.
+Then choose the `scout22` scheme and run it on an iPhone simulator.
 
 ## Current state
 
@@ -29,7 +29,7 @@ Then choose the `JobTok` scheme and run it on an iPhone simulator.
 
 ## Native app setup
 
-Set these build settings on the `JobTok` target:
+Set these build settings on the `scout22` target:
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`

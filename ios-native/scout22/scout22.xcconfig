@@ -1,4 +1,4 @@
-// Real values live in JobTok.local.xcconfig (gitignored). Copy this file's
+// Real values live in scout22.local.xcconfig (gitignored). Copy this file's
 // keys there and fill them in from the Supabase dashboard (Settings → API).
 //
 // Threat model note: the anon key is a public client credential — it ships
@@ -9,4 +9,4 @@ SUPABASE_URL = "https:"
 SUPABASE_ANON_KEY = "your-anon-key"
 SUPABASE_REDIRECT_SCHEME = jobtok
 
-#include? "JobTok.local.xcconfig"
+#include? "scout22.local.xcconfig"

@@ -16,7 +16,7 @@ set -u
 
 PROJECT_REF="zqfurscyhmxlvrfendnc"
 SUPA_URL="https://${PROJECT_REF}.supabase.co"
-XCCONFIG="/Users/wendy/Dev/Passport/ios-native/JobTok/JobTok.local.xcconfig"
+XCCONFIG="/Users/wendy/Dev/Passport/ios-native/scout22/scout22.local.xcconfig"
 RECIPIENT="${RECIPIENT:-winniebear288@gmail.com}"
 KEEP_FIXTURE="${KEEP_FIXTURE:-0}"
 FIXTURE_EMAIL="candt@emailverify.local"

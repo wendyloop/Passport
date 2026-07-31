@@ -1,5 +1,5 @@
 import XCTest
-@testable import JobTok
+@testable import scout22
 
 final class CarouselThemesTests: XCTestCase {
     // The backend can add theme ids at any time; an unknown id must fall

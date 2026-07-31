@@ -124,7 +124,7 @@ struct EmployerHomeView: View {
             .presentationDetents([.large])
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
-            JobTokEmployerRoleWorkflow(
+            Scout22EmployerRoleWorkflow(
                 profile: workingProfile,
                 accountEmail: accountEmail,
                 onCancel: {
@@ -434,7 +434,7 @@ struct EmployerHomeView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
         .padding(.vertical, 24)
-        .jobTokCard(cornerRadius: 30)
+        .scout22Card(cornerRadius: 30)
     }
 
     private var employerProfileTabBar: some View {
@@ -498,7 +498,7 @@ struct EmployerHomeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .jobTokChromeCapsule()
+        .scout22ChromeCapsule()
     }
 
     private var employerVideosTab: some View {
@@ -551,7 +551,7 @@ struct EmployerHomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
     }
 
     private var employerCompanyTab: some View {
@@ -574,7 +574,7 @@ struct EmployerHomeView: View {
                 employerMetaRow(title: "Open roles", value: "\(publishedJobsCount) live • \(draftJobsCount) draft")
             }
             .padding(20)
-            .jobTokCard(cornerRadius: 28)
+            .scout22Card(cornerRadius: 28)
         }
     }
 
@@ -934,7 +934,7 @@ private struct EmployerApplicantCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 
     private func applicationStatusPill(title: String) -> some View {
@@ -1029,7 +1029,7 @@ private struct EmployerProfileEditor: View {
                 .foregroundStyle(PassportTheme.textSecondary)
         }
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 
     private func field(title: String, text: Binding<String>, axis: Axis = .horizontal, placeholder: String? = nil) -> some View {
@@ -1043,7 +1043,7 @@ private struct EmployerProfileEditor: View {
                 .lineLimit(axis == .vertical ? 3...5 : 1...1)
         }
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 
     private func fullNameCooldownText(from date: Date) -> String {
@@ -1203,7 +1203,7 @@ private struct EmployerRoleVideoDetailSheet: View {
                             .foregroundStyle(PassportTheme.textSecondary)
                     }
                     .padding(20)
-                    .jobTokCard(cornerRadius: 28)
+                    .scout22Card(cornerRadius: 28)
 
                     Button(job.isPublished ? "Unpublish Post" : "Publish Post") {
                         onTogglePublishState()
@@ -1307,7 +1307,7 @@ private struct EmployerOutreachSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                         .padding(18)
-                        .jobTokCard(cornerRadius: 22)
+                        .scout22Card(cornerRadius: 22)
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -1330,7 +1330,7 @@ private struct EmployerOutreachSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .padding(18)
-                    .jobTokCard(cornerRadius: 22)
+                    .scout22Card(cornerRadius: 22)
 
                     Button {
                         let relatedJobID = selectedRelatedJobID.isEmpty ? nil : selectedRelatedJobID

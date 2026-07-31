@@ -11,7 +11,7 @@ Conventions (unchanged): every item with a code anchor has a
 `TODO(deferred):` marker at its implementation site — list them with:
 
 ```bash
-grep -rn "TODO(deferred)" ios-native/JobTok supabase/functions services
+grep -rn "TODO(deferred)" ios-native/scout22 supabase/functions services
 ```
 
 Keep marker and table row in sync; delete both when an item ships.
@@ -34,7 +34,7 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
-| T1 | Employer + admin view refactors (extract subviews, route networking through services; incl. `JobTokEmployerRoleWorkflow` out of `VideoStudio.swift`) | refactor pass | L | do together with T5 |
+| T1 | Employer + admin view refactors (extract subviews, route networking through services; incl. `Scout22EmployerRoleWorkflow` out of `VideoStudio.swift`) | refactor pass | L | do together with T5 |
 | T5 | `CandidateStore` split out of `AppSessionStore` | refactor pass; anchor `AppSessionStore.swift` | M | pair with T1 |
 | T6 | Full DI: protocol-extract services, inject through view tree | refactor pass; anchor `SupabaseService.swift` | M–L | with first service-level tests |
 | T7 | **First pass shipped 2026-07-11**: ImageRenderer render-smoke tests (crash/zero-size regressions) in `RenderSmokeTests.swift`. Remainder: pixel-diff snapshots via swift-snapshot-testing (SPM) with recorded baselines | refactor pass | M | — |

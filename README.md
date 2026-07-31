@@ -25,9 +25,9 @@ Passport/
 ## Local setup
 
 1. Start Supabase locally from the repo root.
-2. Open `ios-native/JobTok.xcodeproj` in Xcode.
-3. Set the Supabase build settings for the `JobTok` target.
-4. Run the `JobTok` scheme in the simulator.
+2. Open `ios-native/scout22.xcodeproj` in Xcode.
+3. Set the Supabase build settings for the `scout22` target.
+4. Run the `scout22` scheme in the simulator.
 
 ## Current product surface
 

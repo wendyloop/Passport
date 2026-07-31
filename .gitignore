@@ -30,7 +30,7 @@ supabase/.branches
 supabase/.temp
 
 # Local Xcode build settings (real Supabase credentials)
-ios-native/JobTok/JobTok.local.xcconfig
+ios-native/scout22/scout22.local.xcconfig
 
 # macOS
 .DS_Store

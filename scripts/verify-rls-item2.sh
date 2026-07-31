@@ -11,7 +11,7 @@ set -u
 
 PROJECT_REF="zqfurscyhmxlvrfendnc"
 SUPA_URL="https://${PROJECT_REF}.supabase.co"
-XCCONFIG="/Users/wendy/Dev/Passport/ios-native/JobTok/JobTok.local.xcconfig"
+XCCONFIG="/Users/wendy/Dev/Passport/ios-native/scout22/scout22.local.xcconfig"
 
 MGMT_TOKEN=$(security find-generic-password -s "Supabase CLI" -w | sed 's/^go-keyring-base64://' | base64 -d)
 ANON_KEY=$(grep '^SUPABASE_ANON_KEY' "$XCCONFIG" | sed 's/.*= *//' | tr -d ' "')

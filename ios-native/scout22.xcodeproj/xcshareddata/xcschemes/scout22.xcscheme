@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A50000010000000000000001"
-               BuildableName = "JobTok.app"
-               BlueprintName = "JobTok"
-               ReferencedContainer = "container:JobTok.xcodeproj">
+               BuildableName = "scout22.app"
+               BlueprintName = "scout22"
+               ReferencedContainer = "container:scout22.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AE00000100000000000000D1"
-               BuildableName = "JobTokTests.xctest"
-               BlueprintName = "JobTokTests"
-               ReferencedContainer = "container:JobTok.xcodeproj">
+               BuildableName = "scout22Tests.xctest"
+               BlueprintName = "scout22Tests"
+               ReferencedContainer = "container:scout22.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A50000010000000000000001"
-            BuildableName = "JobTok.app"
-            BlueprintName = "JobTok"
-            ReferencedContainer = "container:JobTok.xcodeproj">
+            BuildableName = "scout22.app"
+            BlueprintName = "scout22"
+            ReferencedContainer = "container:scout22.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A50000010000000000000001"
-            BuildableName = "JobTok.app"
-            BlueprintName = "JobTok"
-            ReferencedContainer = "container:JobTok.xcodeproj">
+            BuildableName = "scout22.app"
+            BlueprintName = "scout22"
+            ReferencedContainer = "container:scout22.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

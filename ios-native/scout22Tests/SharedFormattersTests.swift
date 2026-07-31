@@ -1,5 +1,5 @@
 import XCTest
-@testable import JobTok
+@testable import scout22
 
 final class SharedFormattersTests: XCTestCase {
     func testAnnualRange() {

@@ -1,6 +1,6 @@
 import XCTest
 import SwiftUI
-@testable import JobTok
+@testable import scout22
 
 // T7 (first pass): render smoke tests via ImageRenderer — catches
 // crash-on-render and zero-size regressions in the feed's key views.

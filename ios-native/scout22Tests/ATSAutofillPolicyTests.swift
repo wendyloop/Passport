@@ -1,6 +1,6 @@
 import XCTest
 import JavaScriptCore
-@testable import JobTok
+@testable import scout22
 
 // AUDIT P1-6: autofill injection is allowlisted to the 14 known ATS domains
 // and host matching is suffix-based (spoof-resistant).

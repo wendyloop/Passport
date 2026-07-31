@@ -20,7 +20,7 @@ async function sendCandidateEmail(params: {
 }) {
   const intro = params.relatedJobTitle
     ? `${params.employerName} from ${params.companyName} reached out about ${params.relatedJobTitle}.`
-    : `${params.employerName} from ${params.companyName} reached out through JobTok.`;
+    : `${params.employerName} from ${params.companyName} reached out through scout22.`;
 
   const text = [
     `Hi ${params.candidateName},`,
@@ -179,7 +179,7 @@ Deno.serve(async (request) => {
       profile_id: candidateId,
       type: "candidate_outreach_received",
       title: "New employer outreach",
-      body: `${employerProfile.company_name ?? "An employer"} reached out to you through JobTok.`,
+      body: `${employerProfile.company_name ?? "An employer"} reached out to you through scout22.`,
       metadata: {
         outreach_id: outreach.id,
         employer_profile_id: user.id,

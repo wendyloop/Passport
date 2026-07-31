@@ -1,5 +1,5 @@
 import XCTest
-@testable import JobTok
+@testable import scout22
 
 // These lock in the constraint-name string matching. If a migration renames
 // a constraint, the corresponding case here should fail and force the copy

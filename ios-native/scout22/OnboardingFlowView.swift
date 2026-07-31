@@ -73,7 +73,7 @@ struct OnboardingFlowView: View {
             }
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
-            JobTokVideoStudio(
+            Scout22VideoStudio(
                 purpose: .candidatePitch,
                 startMode: .library,
                 onCancel: { showingVideoStudio = false },

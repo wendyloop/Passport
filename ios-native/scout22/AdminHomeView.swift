@@ -34,7 +34,7 @@ struct AdminHomeView: View {
             .background(PassportTheme.background)
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
-            JobTokVideoStudio(
+            Scout22VideoStudio(
                 purpose: .adminRole,
                 startMode: .library,
                 onCancel: {
@@ -174,7 +174,7 @@ struct AdminHomeView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(18)
-                        .jobTokCard(cornerRadius: 22)
+                        .scout22Card(cornerRadius: 22)
                     }
                 }
             }
@@ -503,7 +503,7 @@ private struct AdminCreateJobSheet: View {
             .disabled(isImportingMetadata || draft.sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 
     private var importedSummarySection: some View {
@@ -548,7 +548,7 @@ private struct AdminCreateJobSheet: View {
             }
         }
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 
     private var employerPicker: some View {
@@ -863,6 +863,6 @@ private struct AdminInfoCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 }

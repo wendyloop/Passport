@@ -1,5 +1,5 @@
 import XCTest
-@testable import JobTok
+@testable import scout22
 
 // AUDIT P0-1: bootstrap must distinguish "network unreachable" (keep the
 // persisted session, retry later) from "refresh token rejected" (sign out).

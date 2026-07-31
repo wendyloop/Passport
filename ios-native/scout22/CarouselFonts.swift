@@ -4,7 +4,7 @@ import CoreText
 // Bundled display fonts for the card carousel templates (Fonts/ folder,
 // Latin subsets, all OFL-licensed — ~500KB total). Registered at runtime
 // via CoreText so no Info.plist UIAppFonts entry is needed; call
-// CarouselFonts.registerAll() once at app start (JobTokApp does).
+// CarouselFonts.registerAll() once at app start (Scout22App does).
 //
 // Every accessor falls back gracefully: if a face failed to register,
 // Font.custom silently renders the system font, so a missing file can

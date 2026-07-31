@@ -126,7 +126,7 @@ The only writer that sets them is the `upsert_board_jobs` RPC (hardcodes
 |---|---|---|
 | Apify scrape results | [process-apify-results/index.ts:456-496](supabase/functions/process-apify-results/index.ts#L456) | **Silent** — bulk-upsert error is only `console.error`'d ([:492](supabase/functions/process-apify-results/index.ts#L492)), function returns 200 to Apify, `scrape_query_stats.inserted` records 0 |
 | Shared reel (share extension) | [ingest-shared-reel/index.ts:240](supabase/functions/ingest-shared-reel/index.ts#L240) | Error returned to the admin's share sheet |
-| Admin social import + employer job posting (iOS, direct PostgREST) | [SupabaseService.swift:247-303](ios-native/JobTok/SupabaseService.swift#L247) | PostgREST 400 surfaced in the app |
+| Admin social import + employer job posting (iOS, direct PostgREST) | [SupabaseService.swift:247-303](ios-native/scout22/SupabaseService.swift#L247) | PostgREST 400 surfaced in the app |
 
 Net: since 2026-06-18 (source_kind) no reel/employer/admin/Apify job can have
 been inserted; the Apify pipeline in particular has been paying for actor runs
@@ -681,7 +681,7 @@ ingest-jobs run in 36h") becomes one SQL query / future admin-screen widget.
 
 ### DB-P2-1 · Feed queries have no matching index
 
-The iOS feed ([SupabaseService.swift:169-221](ios-native/JobTok/SupabaseService.swift#L169))
+The iOS feed ([SupabaseService.swift:169-221](ios-native/scout22/SupabaseService.swift#L169))
 runs two queries: `is_published=true AND is_active=true AND source_kind IN
 (…) ORDER BY created_at DESC LIMIT 200`. The only relevant index,
 `jobs_published_created_at_idx (is_published, created_at)`, forces the

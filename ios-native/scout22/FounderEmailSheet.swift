@@ -129,7 +129,7 @@ struct FounderEmailSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 
@@ -156,7 +156,7 @@ struct FounderEmailSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 
@@ -184,7 +184,7 @@ struct FounderEmailSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 
@@ -211,7 +211,7 @@ struct FounderEmailSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 
@@ -238,7 +238,7 @@ struct FounderEmailSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 
@@ -286,7 +286,7 @@ struct FounderEmailSheet: View {
                 .foregroundStyle(PassportTheme.textSecondary)
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .jobTokCard(cornerRadius: 20)
+                .scout22Card(cornerRadius: 20)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Add a personal line (optional)")
@@ -380,7 +380,7 @@ struct FounderEmailSheet: View {
             Spacer()
         }
         .padding(16)
-        .jobTokCard(cornerRadius: 20)
+        .scout22Card(cornerRadius: 20)
     }
 
     private func sentView(remaining: Int, limit: Int) -> some View {
@@ -406,7 +406,7 @@ struct FounderEmailSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .padding(24)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 
@@ -425,7 +425,7 @@ struct FounderEmailSheet: View {
             .font(.subheadline.weight(.bold))
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
         .padding(20)
     }
 

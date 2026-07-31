@@ -71,7 +71,7 @@ struct ProfileSettingsDrawer: View {
                 }
             }
             .padding(18)
-            .jobTokCard(cornerRadius: 22)
+            .scout22Card(cornerRadius: 22)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Account")
@@ -89,7 +89,7 @@ struct ProfileSettingsDrawer: View {
                 .buttonStyle(.plain)
             }
             .padding(18)
-            .jobTokCard(cornerRadius: 22)
+            .scout22Card(cornerRadius: 22)
 
             Spacer()
         }
@@ -122,7 +122,7 @@ struct ProfileSettingsDrawer: View {
 }
 
 extension View {
-    func jobTokCard(cornerRadius: CGFloat = 24, fill: Color = PassportTheme.surface) -> some View {
+    func scout22Card(cornerRadius: CGFloat = 24, fill: Color = PassportTheme.surface) -> some View {
         background(fill)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
@@ -132,7 +132,7 @@ extension View {
             .shadow(color: PassportTheme.shadow, radius: 16, y: 10)
     }
 
-    func jobTokChromeCapsule() -> some View {
+    func scout22ChromeCapsule() -> some View {
         background(PassportTheme.surface.opacity(0.96))
             .clipShape(Capsule())
             .overlay(Capsule().stroke(PassportTheme.border.opacity(0.6), lineWidth: 1))
@@ -224,7 +224,7 @@ struct InfoCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .jobTokCard(cornerRadius: 22)
+        .scout22Card(cornerRadius: 22)
     }
 }
 

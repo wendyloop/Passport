@@ -1,4 +1,4 @@
-# Pre-launch audit — scout22 / JobTok
+# Pre-launch audit — scout22 (formerly JobTok)
 
 Full scan 2026-07-11 (no prior AUDIT.md; all findings OPEN, none resolved).
 Scope: `ios-native/` (26 Swift files), all 21 edge functions, `_shared/`, RLS
@@ -35,7 +35,7 @@ unpublished jobs; all 4 cron functions use the fail-closed cron secret.
 ## P0 — blocks launch
 
 ### P0-1 · Any offline launch destroys the persisted session — RESOLVED 2026-07-13
-[AppSessionStore.swift:124-139](ios-native/JobTok/AppSessionStore.swift#L124)
+[AppSessionStore.swift:124-139](ios-native/scout22/AppSessionStore.swift#L124)
 `bootstrap()` treats *every* error from `ensureValidSession` /
 `loadCurrentUserState` — including plain network unreachability — as fatal:
 `clearSession()` wipes the stored refresh token and drops to the sign-in
@@ -79,7 +79,7 @@ schedule right now, by choice. The cron-secret gate stays in place for manual
 and any future scheduled invocations.
 
 ### P0-3 · Share-extension CFBundleVersion is hardcoded to "1" — RESOLVED 2026-07-11
-[JobTokShareExtension/Info.plist:17-20](ios-native/JobTokShareExtension/Info.plist#L17)
+[scout22ShareExtension/Info.plist:17-20](ios-native/scout22ShareExtension/Info.plist#L17)
 The app uses `$(CURRENT_PROJECT_VERSION)` (currently 3); the extension pins
 `1`. Xcode already warns; App Store Connect validation flags mismatched
 extension versions at upload (ITMS-90473 class), so this surfaces exactly at
@@ -98,8 +98,8 @@ report CFBundleVersion 3 / short 1.2. They can no longer drift.
 ## P1 — fix before real users
 
 ### P1-1 · Auth tokens live in UserDefaults, not the Keychain — RESOLVED 2026-07-13
-[AppSessionStore.swift:44-46](ios-native/JobTok/AppSessionStore.swift#L44),
-[807-817](ios-native/JobTok/AppSessionStore.swift#L807)
+[AppSessionStore.swift:44-46](ios-native/scout22/AppSessionStore.swift#L44),
+[807-817](ios-native/scout22/AppSessionStore.swift#L807)
 The full session (access + refresh token) is JSON-encoded into
 `UserDefaults.standard`, and the access token is mirrored into the App Group
 defaults for the share extension — plaintext plists, included in unencrypted
@@ -121,7 +121,7 @@ access group the extension uses). Manual follow-up: exercise one share-sheet
 import on a signed-in build. Suite 44/44 + 16/16.
 
 ### P1-2 · The "submitted" funnel event is never logged on the happy path — RESOLVED 2026-07-13
-[ApplyDrawerView.swift:140-160](ios-native/JobTok/ApplyDrawerView.swift#L140)
+[ApplyDrawerView.swift:140-160](ios-native/scout22/ApplyDrawerView.swift#L140)
 `handleSubmission` only logs an event of type `"submitted"` when the earlier
 `"opened"` log *failed* (`eventId == nil`); otherwise it reuses the opened
 event's id and just attaches fields to it. `application_events` — the base for
@@ -139,7 +139,7 @@ fixture candidate JWT + test job, replaying the app's exact call sequence
 submitted event.
 
 ### P1-3 · No timeouts or retries on any Supabase request
-[SupabaseTransport.swift:216](ios-native/JobTok/SupabaseTransport.swift#L216)
+[SupabaseTransport.swift:216](ios-native/scout22/SupabaseTransport.swift#L216)
 All traffic goes through `URLSession.shared` with the 60-second default and no
 retry, and the app is 100% network-backed — one stalled request leaves a
 spinner (or a disabled `isBusy` UI) hanging for a minute with no recovery.
@@ -147,7 +147,7 @@ spinner (or a disabled `isBusy` UI) hanging for a minute with no recovery.
 `timeoutIntervalForRequest` ≈ 15–30 s and a single retry for idempotent GETs.
 
 ### P1-4 · Employer "open resume" fails silently — RESOLVED 2026-07-15
-[EmployerHomeView.swift:256-262](ios-native/JobTok/EmployerHomeView.swift#L256)
+[EmployerHomeView.swift:256-262](ios-native/scout22/EmployerHomeView.swift#L256)
 `try? await onRequestResumeURL(...)` swallows every failure (expired session,
 403, network), so tapping the resume button does visibly nothing — a dead-end
 on the employer's single most important action. **Fix:** route the error into
@@ -176,9 +176,9 @@ per-candidate cooldown mirroring `send-founder-email`, and cap
 subject/message lengths.
 
 ### P1-6 · ATS autofill fills and captures invisible fields — RESOLVED 2026-07-13
-[ApplyDrawerView.swift:301-307](ios-native/JobTok/ApplyDrawerView.swift#L301)
-(fill: [317-337](ios-native/JobTok/ApplyDrawerView.swift#L317), capture:
-[391-413](ios-native/JobTok/ApplyDrawerView.swift#L391))
+[ApplyDrawerView.swift:301-307](ios-native/scout22/ApplyDrawerView.swift#L301)
+(fill: [317-337](ios-native/scout22/ApplyDrawerView.swift#L317), capture:
+[391-413](ios-native/scout22/ApplyDrawerView.swift#L391))
 `isFillable` excludes `type=hidden` but not CSS-hidden inputs
 (`display:none`, zero-size, off-screen). A malicious or compromised apply page
 can plant invisible inputs labeled "email"/"phone"/"salary expectation", let
@@ -200,7 +200,7 @@ suffix matching (+ smartrecruiters/recruitee coverage). 6 new tests, incl.
 executing the real injected JS gate in JavaScriptCore. Suite 50/50 + 16/16.
 
 ### P1-7 · Profile save can wipe the employer-history list
-[CandidateService.swift:83-101](ios-native/JobTok/CandidateService.swift#L83)
+[CandidateService.swift:83-101](ios-native/scout22/CandidateService.swift#L83)
 `replaceJobSeekerEmployers` deletes all rows, then inserts the new set as a
 second request — if the insert fails (timeout, RLS hiccup, app kill), the
 user's previous-employers list is gone. **Fix:** replace both calls with one
@@ -230,7 +230,7 @@ hourly cron is live and recording clean pipeline_runs rows (25 no-op runs,
 ### P1-9 · Employer "private" notes are readable by the candidate — RESOLVED 2026-07-13 *(added in reconciliation pass — new in M3 code)*
 [20260711130000_m3_trust.sql:33](supabase/migrations/20260711130000_m3_trust.sql#L33),
 select policy [20260519100000_jobtok_mvp.sql:160-174](supabase/migrations/20260519100000_jobtok_mvp.sql#L160),
-UI promise [EmployerHomeView.swift:1410](ios-native/JobTok/EmployerHomeView.swift#L1410)
+UI promise [EmployerHomeView.swift:1410](ios-native/scout22/EmployerHomeView.swift#L1410)
 M3 added `job_applications.internal_notes` with an employer-scoped UPDATE
 policy, but the SELECT policy is row-scoped to *participants* — including the
 candidate — and there are no column-level grants. The candidate app fetches
@@ -269,52 +269,52 @@ header path lands; query strings end up in gateway/proxy logs. **Fix:** delete
 the fallback and rotate the secret before launch.
 
 ### P2-3 · Force cast in the transport decode path
-[SupabaseTransport.swift:199-201](ios-native/JobTok/SupabaseTransport.swift#L199)
+[SupabaseTransport.swift:199-201](ios-native/scout22/SupabaseTransport.swift#L199)
 `EmptyPayload() as! T` is guarded by the `T.self == EmptyPayload.self` check
 today but is one refactor away from a crash. **Fix:** `as? T` with a thrown
 `invalidResponse` fallback.
 
 ### P2-4 · Multi-MB synchronous disk reads on the main actor
-[AppSessionStore.swift:237, 367, 503, 584, 774](ios-native/JobTok/AppSessionStore.swift#L237)
+[AppSessionStore.swift:237, 367, 503, 584, 774](ios-native/scout22/AppSessionStore.swift#L237)
 `try Data(contentsOf:)` for compressed videos (~10–30 MB) runs inside a
 `@MainActor` class and briefly blocks the UI on every upload. **Fix:** hop the
 read to a detached task, or stream uploads with
 `URLSession.upload(for:fromFile:)`.
 
 ### P2-5 · Concurrent busy-tasks fight over `isBusy`/`errorMessage`
-[AppSessionStore.swift:846-870](ios-native/JobTok/AppSessionStore.swift#L846)
+[AppSessionStore.swift:846-870](ios-native/scout22/AppSessionStore.swift#L846)
 Two overlapping `runBusyTask` calls: the first to finish flips `isBusy = false`
 (re-enabling buttons) and can clear/overwrite the other's error. **Fix:** use
 an in-flight counter instead of a boolean.
 
 ### P2-6 · Raw backend response dumped into a user-facing alert
-[SupabaseService.swift:324-330](ios-native/JobTok/SupabaseService.swift#L324)
+[SupabaseService.swift:324-330](ios-native/scout22/SupabaseService.swift#L324)
 `parseSharedJobPosting` errors embed up to 2 000 chars of raw response body.
 Admin-only surface, but still debug output in an alert. **Fix:** log the raw
 body via `AppLog` and show a short message.
 
 ### P2-7 · Force-unwrapped deep-link URL from build config
-[NativeRootView.swift:24](ios-native/JobTok/NativeRootView.swift#L24)
+[NativeRootView.swift:24](ios-native/scout22/NativeRootView.swift#L24)
 `URL(string: "\(config.redirectScheme)://auth-callback")!` crashes at sign-in
 tap if `SUPABASE_REDIRECT_SCHEME` is ever set to something URL-invalid —
 developer-error only, but a guard costs two lines. **Fix:** `guard let` with a
 configuration-error alert.
 
 ### P2-8 · Deprecated AVFoundation APIs and Sendable violations
-[VideoStudio.swift:2284-2325](ios-native/JobTok/VideoStudio.swift#L2284)
+[VideoStudio.swift:2284-2325](ios-native/scout22/VideoStudio.swift#L2284)
 `preferredTransform`/`naturalSize` (deprecated since iOS 16) and an
 `AVAssetExportSession` captured in a `@Sendable` closure produce a wall of
 build warnings and will bite on a future SDK bump. **Fix:** migrate to
 `load(.preferredTransform)` async accessors.
 
 ### P2-9 · Cold start runs 6+ dependent network calls serially
-[AppSessionStore.swift:683-689](ios-native/JobTok/AppSessionStore.swift#L683)
+[AppSessionStore.swift:683-689](ios-native/scout22/AppSessionStore.swift#L683)
 `loadCurrentUserState` awaits profile, seeker profile, employer profile,
 employers, resume, notifications one at a time before role data even starts.
 **Fix:** group the independent fetches with `async let`.
 
 ### P2-10 · Unbounded employer-side queries
-[SupabaseService.swift:369-389](ios-native/JobTok/SupabaseService.swift#L369)
+[SupabaseService.swift:369-389](ios-native/scout22/SupabaseService.swift#L369)
 `fetchDiscoverableCandidates` / `fetchCandidateOutreachMessages` have no
 `limit`; fine today, quietly heavy at scale (the candidate feed is capped at
 200+200 by design). **Fix:** add limits matching what the UI actually renders.

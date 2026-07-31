@@ -79,7 +79,7 @@ function normalizedSocialPayload(rawValue?: string | null) {
 //   const lines = [
 //     `Hi @${params.creatorHandle}! 👋`,
 //     ``,
-//     `${params.candidateName} just applied to your hiring post on JobTok.`,
+//     `${params.candidateName} just applied to your hiring post on scout22.`,
 //     params.headline ? `"${params.headline}"` : null,
 //     params.resumeURL ? `\nResume: ${params.resumeURL}` : null,
 //     `\nReply to this message to connect with them directly.`,

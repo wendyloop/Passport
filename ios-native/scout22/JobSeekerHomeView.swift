@@ -315,7 +315,7 @@ struct JobSeekerHomeView: View {
             )
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
-            JobTokVideoStudio(
+            Scout22VideoStudio(
                 purpose: .candidatePitch,
                 startMode: .library,
                 onCancel: {
@@ -918,7 +918,7 @@ struct JobSeekerHomeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .jobTokChromeCapsule()
+        .scout22ChromeCapsule()
     }
 
     private func filterPill(title: String) -> some View {
@@ -1011,7 +1011,7 @@ struct JobSeekerHomeView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
-        .jobTokCard(cornerRadius: 24)
+        .scout22Card(cornerRadius: 24)
     }
 
     private var profileStrengthBadge: some View {
@@ -1492,7 +1492,7 @@ struct JobSeekerHomeView: View {
             }
         }
         .padding(16)
-        .jobTokCard(cornerRadius: 20)
+        .scout22Card(cornerRadius: 20)
     }
 
     @ViewBuilder
@@ -1680,7 +1680,7 @@ struct JobSeekerHomeView: View {
                     target: .portfolio
                 )
             }
-            .jobTokCard(cornerRadius: 20)
+            .scout22Card(cornerRadius: 20)
 
             Text("Different reviewers check different links — marketing looks at Instagram and TikTok, engineering at GitHub, design at your portfolio.")
                 .font(.caption2)
@@ -1806,7 +1806,7 @@ struct JobSeekerHomeView: View {
             .tint(PassportTheme.accent)
         }
         .padding(20)
-        .jobTokCard(cornerRadius: 28)
+        .scout22Card(cornerRadius: 28)
     }
 
     private func openProfileEditor(target: CandidateProfileEditTarget) {
@@ -1951,7 +1951,7 @@ struct JobSeekerHomeView: View {
         }
     }
 
-    private func acceptComposedVideo(_ composedVideo: JobTokComposedVideo) {
+    private func acceptComposedVideo(_ composedVideo: Scout22ComposedVideo) {
         workingProfile.introVideoFileName = composedVideo.fileName
         workingProfile.introVideoDuration = composedVideo.duration
         // TikTok flow: the studio hands off to a post page (caption +
@@ -2736,7 +2736,7 @@ private struct CandidateProfileEditor: View {
                 content()
             }
             .padding(18)
-            .jobTokCard(cornerRadius: 22)
+            .scout22Card(cornerRadius: 22)
         }
     }
 
@@ -3400,14 +3400,14 @@ private struct ProfileVideoPlayerItem: Identifiable {
 
 private struct PendingVideoPost: Identifiable {
     let id = UUID()
-    let composed: JobTokComposedVideo
+    let composed: Scout22ComposedVideo
 }
 
 // TikTok-style post page: looping preview beside a caption field, one big
 // Post button. The caption tells reviewers what this video is about ("my
 // intro", "walkthrough of my hackathon project"…).
 private struct VideoPostView: View {
-    let composed: JobTokComposedVideo
+    let composed: Scout22ComposedVideo
     let onPost: (String?) -> Void
     let onCancel: () -> Void
 
@@ -3472,7 +3472,7 @@ private struct VideoPostView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .padding(16)
-            .jobTokCard(cornerRadius: 20)
+            .scout22Card(cornerRadius: 20)
 
             Spacer()
 

@@ -5,13 +5,13 @@ import AVFoundation
 import UniformTypeIdentifiers
 import UIKit
 
-struct JobTokComposedVideo {
+struct Scout22ComposedVideo {
     let url: URL
     let duration: Double
     let fileName: String
 }
 
-enum JobTokVideoStudioPurpose {
+enum Scout22VideoStudioPurpose {
     case candidatePitch
     case employerRole
     case adminRole
@@ -57,28 +57,28 @@ enum JobTokVideoStudioPurpose {
     }
 }
 
-enum JobTokVideoStudioStartMode {
+enum Scout22VideoStudioStartMode {
     case library
     case camera
 }
 
-struct JobTokVideoStudio: View {
-    let purpose: JobTokVideoStudioPurpose
-    var startMode: JobTokVideoStudioStartMode = .library
+struct Scout22VideoStudio: View {
+    let purpose: Scout22VideoStudioPurpose
+    var startMode: Scout22VideoStudioStartMode = .library
     let onCancel: () -> Void
-    let onComplete: (JobTokComposedVideo) -> Void
+    let onComplete: (Scout22ComposedVideo) -> Void
 
-    @State private var selectedTab: JobTokVideoStudioTab
-    @State private var selectedClips: [JobTokVideoClip] = []
-    @State private var editorClips: [JobTokVideoClip] = []
+    @State private var selectedTab: Scout22VideoStudioTab
+    @State private var selectedClips: [Scout22VideoClip] = []
+    @State private var editorClips: [Scout22VideoClip] = []
     @State private var showingEditor = false
     @State private var studioError: String?
 
     init(
-        purpose: JobTokVideoStudioPurpose,
-        startMode: JobTokVideoStudioStartMode = .library,
+        purpose: Scout22VideoStudioPurpose,
+        startMode: Scout22VideoStudioStartMode = .library,
         onCancel: @escaping () -> Void,
-        onComplete: @escaping (JobTokComposedVideo) -> Void
+        onComplete: @escaping (Scout22ComposedVideo) -> Void
     ) {
         self.purpose = purpose
         self.startMode = startMode
@@ -93,7 +93,7 @@ struct JobTokVideoStudio: View {
                 .ignoresSafeArea()
 
             if showingEditor {
-                JobTokVideoEditor(
+                Scout22VideoEditor(
                     clips: editorClips,
                     purpose: purpose,
                     onBack: {
@@ -114,7 +114,7 @@ struct JobTokVideoStudio: View {
                     Group {
                         switch selectedTab {
                         case .library:
-                            JobTokVideoLibraryPicker(
+                            Scout22VideoLibraryPicker(
                                 purpose: purpose,
                                 selectedClips: $selectedClips,
                                 onCameraShortcut: {
@@ -125,7 +125,7 @@ struct JobTokVideoStudio: View {
                                 onError: { studioError = $0 }
                             )
                         case .camera:
-                            JobTokCameraRecorder(
+                            Scout22CameraRecorder(
                                 purpose: purpose,
                                 recordedClips: $selectedClips,
                                 onError: { studioError = $0 }
@@ -232,7 +232,7 @@ struct JobTokVideoStudio: View {
 
     private var sourceTabs: some View {
         HStack(spacing: 10) {
-            ForEach(JobTokVideoStudioTab.allCases) { tab in
+            ForEach(Scout22VideoStudioTab.allCases) { tab in
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         selectedTab = tab
@@ -325,7 +325,7 @@ struct JobTokVideoStudio: View {
 // 2,300-line VideoStudio.swift and belongs with the employer refactor —
 // extract it into its own file when EmployerHomeView is refactored.
 // See docs/DEFERRED_WORK.md.
-struct JobTokEmployerRoleWorkflow: View {
+struct Scout22EmployerRoleWorkflow: View {
     let profile: EmployerProfileDraft
     let accountEmail: String
     let onCancel: () -> Void
@@ -333,8 +333,8 @@ struct JobTokEmployerRoleWorkflow: View {
 
     @State private var step: EmployerRoleWorkflowStep = .select
     @State private var sourceMode: EmployerRoleSourceMode = .library
-    @State private var selectedClips: [JobTokVideoClip] = []
-    @State private var composedVideo: JobTokComposedVideo?
+    @State private var selectedClips: [Scout22VideoClip] = []
+    @State private var composedVideo: Scout22ComposedVideo?
     @State private var draft = JobPostingDraft()
     @State private var compensationText = ""
     @State private var hourlyRateText = ""
@@ -415,7 +415,7 @@ struct JobTokEmployerRoleWorkflow: View {
 
             Group {
                 if sourceMode == .library {
-                    JobTokVideoLibraryPicker(
+                    Scout22VideoLibraryPicker(
                         purpose: .employerRole,
                         selectedClips: $selectedClips,
                         onCameraShortcut: {
@@ -424,7 +424,7 @@ struct JobTokEmployerRoleWorkflow: View {
                         onError: { errorMessage = $0 }
                     )
                 } else {
-                    JobTokCameraRecorder(
+                    Scout22CameraRecorder(
                         purpose: .employerRole,
                         recordedClips: $selectedClips,
                         onError: { errorMessage = $0 }
@@ -476,7 +476,7 @@ struct JobTokEmployerRoleWorkflow: View {
     }
 
     private var editStep: some View {
-        JobTokVideoEditor(
+        Scout22VideoEditor(
             clips: selectedClips,
             purpose: .employerRole,
             onBack: {
@@ -524,7 +524,7 @@ struct JobTokEmployerRoleWorkflow: View {
 
                             if let url = composedVideo?.url {
                                 ZStack(alignment: .bottomLeading) {
-                                    JobTokEditableVideoSurface(url: url)
+                                    Scout22EditableVideoSurface(url: url)
                                         .frame(width: 96, height: 152)
                                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                     Text("Preview")
@@ -790,7 +790,7 @@ private enum EmployerRoleDetailField: String, CaseIterable, Identifiable {
     }
 }
 
-private enum JobTokVideoStudioTab: String, CaseIterable, Identifiable {
+private enum Scout22VideoStudioTab: String, CaseIterable, Identifiable {
     case library
     case camera
 
@@ -815,7 +815,7 @@ private enum JobTokVideoStudioTab: String, CaseIterable, Identifiable {
     }
 }
 
-private struct JobTokVideoClip: Identifiable, Equatable {
+private struct Scout22VideoClip: Identifiable, Equatable {
     let id = UUID()
     let url: URL
     let fileName: String
@@ -823,13 +823,13 @@ private struct JobTokVideoClip: Identifiable, Equatable {
     let thumbnail: UIImage?
 }
 
-private struct JobTokVideoLibraryPicker: View {
-    let purpose: JobTokVideoStudioPurpose
-    @Binding var selectedClips: [JobTokVideoClip]
+private struct Scout22VideoLibraryPicker: View {
+    let purpose: Scout22VideoStudioPurpose
+    @Binding var selectedClips: [Scout22VideoClip]
     let onCameraShortcut: () -> Void
     let onError: (String) -> Void
 
-    @StateObject private var libraryStore = JobTokPhotoLibraryStore()
+    @StateObject private var libraryStore = Scout22PhotoLibraryStore()
 
     var body: some View {
         VStack(spacing: 14) {
@@ -880,7 +880,7 @@ private struct JobTokVideoLibraryPicker: View {
                         .buttonStyle(.plain)
 
                         ForEach(libraryStore.assets, id: \.localIdentifier) { asset in
-                            JobTokAssetThumbnailCell(
+                            Scout22AssetThumbnailCell(
                                 asset: asset,
                                 selectionIndex: selectedClips.firstIndex(where: { $0.fileName == asset.localIdentifier }).map { $0 + 1 },
                                 onTap: {
@@ -963,7 +963,7 @@ private struct JobTokVideoLibraryPicker: View {
                 let clip = try await libraryStore.loadClip(for: asset)
                 await MainActor.run {
                     selectedClips.append(
-                        JobTokVideoClip(
+                        Scout22VideoClip(
                             url: clip.url,
                             fileName: asset.localIdentifier,
                             duration: clip.duration,
@@ -981,7 +981,7 @@ private struct JobTokVideoLibraryPicker: View {
 }
 
 @MainActor
-private final class JobTokPhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
+private final class Scout22PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var assets: [PHAsset] = []
     @Published var authorizationState: PHAuthorizationStatus = .notDetermined
 
@@ -1050,18 +1050,18 @@ private final class JobTokPhotoLibraryStore: NSObject, ObservableObject, PHPhoto
         }
     }
 
-    func loadClip(for asset: PHAsset) async throws -> JobTokLoadedClip {
+    func loadClip(for asset: PHAsset) async throws -> Scout22LoadedClip {
         let avAsset = try await requestAVAsset(for: asset)
 
         let url: URL
         if let urlAsset = avAsset as? AVURLAsset {
             url = try copyMediaFileToTemporaryDirectory(from: urlAsset.url)
         } else {
-            throw JobTokVideoStudioError.message("This video format could not be loaded.")
+            throw Scout22VideoStudioError.message("This video format could not be loaded.")
         }
 
         let thumbnail = try await generateThumbnail(from: AVURLAsset(url: url))
-        return JobTokLoadedClip(url: url, duration: asset.duration, thumbnail: thumbnail)
+        return Scout22LoadedClip(url: url, duration: asset.duration, thumbnail: thumbnail)
     }
 
     private func requestAVAsset(for asset: PHAsset) async throws -> AVAsset {
@@ -1078,7 +1078,7 @@ private final class JobTokPhotoLibraryStore: NSObject, ObservableObject, PHPhoto
                 }
 
                 guard let asset else {
-                    continuation.resume(throwing: JobTokVideoStudioError.message("The selected video could not be loaded."))
+                    continuation.resume(throwing: Scout22VideoStudioError.message("The selected video could not be loaded."))
                     return
                 }
 
@@ -1088,18 +1088,18 @@ private final class JobTokPhotoLibraryStore: NSObject, ObservableObject, PHPhoto
     }
 }
 
-private struct JobTokLoadedClip {
+private struct Scout22LoadedClip {
     let url: URL
     let duration: Double
     let thumbnail: UIImage?
 }
 
-private struct JobTokAssetThumbnailCell: View {
+private struct Scout22AssetThumbnailCell: View {
     let asset: PHAsset
     let selectionIndex: Int?
     let onTap: () -> Void
 
-    @StateObject private var imageLoader = JobTokAssetThumbnailLoader()
+    @StateObject private var imageLoader = Scout22AssetThumbnailLoader()
 
     var body: some View {
         Button(action: onTap) {
@@ -1161,7 +1161,7 @@ private struct JobTokAssetThumbnailCell: View {
 }
 
 @MainActor
-private final class JobTokAssetThumbnailLoader: ObservableObject {
+private final class Scout22AssetThumbnailLoader: ObservableObject {
     @Published var image: UIImage?
     private let store = PHCachingImageManager()
 
@@ -1185,12 +1185,12 @@ private final class JobTokAssetThumbnailLoader: ObservableObject {
     }
 }
 
-private struct JobTokCameraRecorder: View {
-    let purpose: JobTokVideoStudioPurpose
-    @Binding var recordedClips: [JobTokVideoClip]
+private struct Scout22CameraRecorder: View {
+    let purpose: Scout22VideoStudioPurpose
+    @Binding var recordedClips: [Scout22VideoClip]
     let onError: (String) -> Void
 
-    @StateObject private var recorder = JobTokCameraRecorderStore()
+    @StateObject private var recorder = Scout22CameraRecorderStore()
 
     var body: some View {
         ZStack {
@@ -1218,7 +1218,7 @@ private struct JobTokCameraRecorder: View {
                 }
             } else {
                 ZStack(alignment: .top) {
-                    JobTokCameraPreview(session: recorder.session)
+                    Scout22CameraPreview(session: recorder.session)
                         .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 32, style: .continuous)
@@ -1310,8 +1310,8 @@ private struct JobTokCameraRecorder: View {
 }
 
 @MainActor
-private final class JobTokCameraRecorderStore: NSObject, ObservableObject, @preconcurrency AVCaptureFileOutputRecordingDelegate {
-    @Published var recordedClips: [JobTokVideoClip] = []
+private final class Scout22CameraRecorderStore: NSObject, ObservableObject, @preconcurrency AVCaptureFileOutputRecordingDelegate {
+    @Published var recordedClips: [Scout22VideoClip] = []
     @Published var isRecording = false
     @Published var permissionDenied = false
     @Published var errorMessage: String?
@@ -1439,7 +1439,7 @@ private final class JobTokCameraRecorderStore: NSObject, ObservableObject, @prec
                 let asset = AVURLAsset(url: outputFileURL)
                 let duration = try await asset.load(.duration).seconds
                 let thumbnail = try await generateThumbnail(from: asset)
-                let clip = JobTokVideoClip(
+                let clip = Scout22VideoClip(
                     url: outputFileURL,
                     fileName: outputFileURL.lastPathComponent,
                     duration: duration,
@@ -1481,22 +1481,22 @@ private final class JobTokCameraRecorderStore: NSObject, ObservableObject, @prec
     }
 }
 
-private struct JobTokCameraPreview: UIViewRepresentable {
+private struct Scout22CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
 
-    func makeUIView(context: Context) -> JobTokCameraPreviewView {
-        let view = JobTokCameraPreviewView()
+    func makeUIView(context: Context) -> Scout22CameraPreviewView {
+        let view = Scout22CameraPreviewView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
         return view
     }
 
-    func updateUIView(_ uiView: JobTokCameraPreviewView, context: Context) {
+    func updateUIView(_ uiView: Scout22CameraPreviewView, context: Context) {
         uiView.previewLayer.session = session
     }
 }
 
-private final class JobTokCameraPreviewView: UIView {
+private final class Scout22CameraPreviewView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
 
     var previewLayer: AVCaptureVideoPreviewLayer {
@@ -1504,27 +1504,27 @@ private final class JobTokCameraPreviewView: UIView {
     }
 }
 
-private struct JobTokVideoEditor: View {
-    let clips: [JobTokVideoClip]
-    let purpose: JobTokVideoStudioPurpose
+private struct Scout22VideoEditor: View {
+    let clips: [Scout22VideoClip]
+    let purpose: Scout22VideoStudioPurpose
     let onBack: () -> Void
-    let onComplete: (JobTokComposedVideo) -> Void
+    let onComplete: (Scout22ComposedVideo) -> Void
 
-    @StateObject private var editorStore: JobTokVideoEditorStore
+    @StateObject private var editorStore: Scout22VideoEditorStore
     @State private var showingTextSheet = false
-    @State private var editingSticker: JobTokTextSticker?
+    @State private var editingSticker: Scout22TextSticker?
 
     init(
-        clips: [JobTokVideoClip],
-        purpose: JobTokVideoStudioPurpose,
+        clips: [Scout22VideoClip],
+        purpose: Scout22VideoStudioPurpose,
         onBack: @escaping () -> Void,
-        onComplete: @escaping (JobTokComposedVideo) -> Void
+        onComplete: @escaping (Scout22ComposedVideo) -> Void
     ) {
         self.clips = clips
         self.purpose = purpose
         self.onBack = onBack
         self.onComplete = onComplete
-        _editorStore = StateObject(wrappedValue: JobTokVideoEditorStore(clips: clips, purpose: purpose))
+        _editorStore = StateObject(wrappedValue: Scout22VideoEditorStore(clips: clips, purpose: purpose))
     }
 
     var body: some View {
@@ -1534,7 +1534,7 @@ private struct JobTokVideoEditor: View {
             GeometryReader { proxy in
                 ZStack {
                     if let url = editorStore.previewURL {
-                        JobTokEditableVideoSurface(url: url)
+                        Scout22EditableVideoSurface(url: url)
                             .ignoresSafeArea()
                     } else {
                         ZStack {
@@ -1665,7 +1665,7 @@ private struct JobTokVideoEditor: View {
             await editorStore.preparePreview()
         }
         .sheet(isPresented: $showingTextSheet) {
-            JobTokTextOverlayEditor(
+            Scout22TextOverlayEditor(
                 sticker: editingSticker,
                 onSave: { sticker in
                     editorStore.saveSticker(sticker)
@@ -1685,19 +1685,19 @@ private struct JobTokVideoEditor: View {
 }
 
 @MainActor
-private final class JobTokVideoEditorStore: ObservableObject {
+private final class Scout22VideoEditorStore: ObservableObject {
     @Published var previewURL: URL?
-    @Published var stickers: [JobTokTextSticker] = []
+    @Published var stickers: [Scout22TextSticker] = []
     @Published var selectedAudioURL: URL?
     @Published var isProcessing = false
     @Published var processingProgress = 0.0
     @Published var processingMessage = "Processing..."
     @Published var errorMessage: String?
 
-    let clips: [JobTokVideoClip]
-    let purpose: JobTokVideoStudioPurpose
+    let clips: [Scout22VideoClip]
+    let purpose: Scout22VideoStudioPurpose
 
-    init(clips: [JobTokVideoClip], purpose: JobTokVideoStudioPurpose) {
+    init(clips: [Scout22VideoClip], purpose: Scout22VideoStudioPurpose) {
         self.clips = clips
         self.purpose = purpose
     }
@@ -1716,7 +1716,7 @@ private final class JobTokVideoEditorStore: ObservableObject {
 
             processingMessage = "Merging clips..."
             isProcessing = true
-            let result = try await JobTokVideoComposer.concatenate(clips: clips, progress: { progress in
+            let result = try await Scout22VideoComposer.concatenate(clips: clips, progress: { progress in
                 Task { @MainActor in
                     self.processingProgress = progress
                 }
@@ -1748,7 +1748,7 @@ private final class JobTokVideoEditorStore: ObservableObject {
         selectedAudioURL = nil
     }
 
-    func saveSticker(_ sticker: JobTokTextSticker) {
+    func saveSticker(_ sticker: Scout22TextSticker) {
         if let index = stickers.firstIndex(where: { $0.id == sticker.id }) {
             stickers[index] = sticker
         } else {
@@ -1760,13 +1760,13 @@ private final class JobTokVideoEditorStore: ObservableObject {
         stickers.removeAll { $0.id == id }
     }
 
-    func exportFinalVideo() async -> JobTokComposedVideo? {
+    func exportFinalVideo() async -> Scout22ComposedVideo? {
         do {
             processingMessage = "Exporting Post..."
             processingProgress = 0
             isProcessing = true
 
-            let resultURL = try await JobTokVideoComposer.export(
+            let resultURL = try await Scout22VideoComposer.export(
                 clips: clips,
                 audioURL: selectedAudioURL,
                 stickers: stickers,
@@ -1780,12 +1780,12 @@ private final class JobTokVideoEditorStore: ObservableObject {
             let resultAsset = AVURLAsset(url: resultURL)
             let duration = try await resultAsset.load(.duration).seconds
             if let maxDuration = purpose.maxDuration, duration > maxDuration {
-                throw JobTokVideoStudioError.message("Keep this video under \(Int(maxDuration) / 60) minutes.")
+                throw Scout22VideoStudioError.message("Keep this video under \(Int(maxDuration) / 60) minutes.")
             }
 
             isProcessing = false
             processingProgress = 1
-            return JobTokComposedVideo(
+            return Scout22ComposedVideo(
                 url: resultURL,
                 duration: duration,
                 fileName: resultURL.lastPathComponent
@@ -1798,7 +1798,7 @@ private final class JobTokVideoEditorStore: ObservableObject {
     }
 }
 
-private struct JobTokTextSticker: Identifiable, Equatable {
+private struct Scout22TextSticker: Identifiable, Equatable {
     let id: UUID
     var text: String
     var normalizedX: Double
@@ -1808,8 +1808,8 @@ private struct JobTokTextSticker: Identifiable, Equatable {
     var backgroundColor: Color
     var backgroundUIColor: UIColor
     var backgroundOpacity: Double
-    var font: JobTokFontChoice
-    var alignment: JobTokTextAlignment
+    var font: Scout22FontChoice
+    var alignment: Scout22TextAlignment
 
     init(
         id: UUID = UUID(),
@@ -1819,8 +1819,8 @@ private struct JobTokTextSticker: Identifiable, Equatable {
         foregroundUIColor: UIColor = .white,
         backgroundUIColor: UIColor = .black,
         backgroundOpacity: Double = 0.0,
-        font: JobTokFontChoice = .rounded,
-        alignment: JobTokTextAlignment = .center
+        font: Scout22FontChoice = .rounded,
+        alignment: Scout22TextAlignment = .center
     ) {
         self.id = id
         self.text = text
@@ -1836,7 +1836,7 @@ private struct JobTokTextSticker: Identifiable, Equatable {
     }
 }
 
-private enum JobTokTextAlignment: String, CaseIterable, Identifiable {
+private enum Scout22TextAlignment: String, CaseIterable, Identifiable {
     case left
     case center
     case right
@@ -1868,7 +1868,7 @@ private enum JobTokTextAlignment: String, CaseIterable, Identifiable {
     }
 }
 
-private enum JobTokFontChoice: String, CaseIterable, Identifiable {
+private enum Scout22FontChoice: String, CaseIterable, Identifiable {
     case rounded
     case serif
     case mono
@@ -1910,14 +1910,14 @@ private enum JobTokFontChoice: String, CaseIterable, Identifiable {
     }
 }
 
-private struct JobTokTextOverlayEditor: View {
-    let sticker: JobTokTextSticker?
-    let onSave: (JobTokTextSticker) -> Void
+private struct Scout22TextOverlayEditor: View {
+    let sticker: Scout22TextSticker?
+    let onSave: (Scout22TextSticker) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
-    @State private var font: JobTokFontChoice = .rounded
-    @State private var alignment: JobTokTextAlignment = .center
+    @State private var font: Scout22FontChoice = .rounded
+    @State private var alignment: Scout22TextAlignment = .center
     @State private var foreground = UIColor.white
     @State private var background = UIColor.black
     @State private var backgroundOpacity = 0.0
@@ -1947,7 +1947,7 @@ private struct JobTokTextOverlayEditor: View {
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
-                                ForEach(JobTokFontChoice.allCases) { option in
+                                ForEach(Scout22FontChoice.allCases) { option in
                                     Button {
                                         font = option
                                     } label: {
@@ -1966,7 +1966,7 @@ private struct JobTokTextOverlayEditor: View {
                     }
 
                     HStack(spacing: 10) {
-                        ForEach(JobTokTextAlignment.allCases) { option in
+                        ForEach(Scout22TextAlignment.allCases) { option in
                             Button {
                                 alignment = option
                             } label: {
@@ -2006,7 +2006,7 @@ private struct JobTokTextOverlayEditor: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
-                        let updated = JobTokTextSticker(
+                        let updated = Scout22TextSticker(
                             id: sticker?.id ?? UUID(),
                             text: text.trimmingCharacters(in: .whitespacesAndNewlines),
                             normalizedX: sticker?.normalizedX ?? 0.5,
@@ -2063,14 +2063,14 @@ private struct JobTokTextOverlayEditor: View {
     }
 }
 
-private struct JobTokEditableVideoSurface: View {
+private struct Scout22EditableVideoSurface: View {
     let url: URL
 
-    @StateObject private var playerStore = JobTokEditablePlayerStore()
+    @StateObject private var playerStore = Scout22EditablePlayerStore()
 
     var body: some View {
         ZStack {
-            JobTokPlayerLayerView(player: playerStore.player)
+            Scout22PlayerLayerView(player: playerStore.player)
                 .background(Color.black)
 
             Color.clear
@@ -2095,7 +2095,7 @@ private struct JobTokEditableVideoSurface: View {
     }
 }
 
-private final class JobTokEditablePlayerStore: ObservableObject {
+private final class Scout22EditablePlayerStore: ObservableObject {
     let player = AVPlayer()
     @Published var isPlaying = false
     @Published var progress = 0.0
@@ -2171,23 +2171,23 @@ private final class JobTokEditablePlayerStore: ObservableObject {
     }
 }
 
-private struct JobTokPlayerLayerView: UIViewRepresentable {
+private struct Scout22PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
 
-    func makeUIView(context: Context) -> JobTokPlayerContainerView {
-        let view = JobTokPlayerContainerView()
+    func makeUIView(context: Context) -> Scout22PlayerContainerView {
+        let view = Scout22PlayerContainerView()
         view.playerLayer.player = player
         view.playerLayer.videoGravity = .resizeAspectFill
         return view
     }
 
-    func updateUIView(_ uiView: JobTokPlayerContainerView, context: Context) {
+    func updateUIView(_ uiView: Scout22PlayerContainerView, context: Context) {
         uiView.playerLayer.player = player
         uiView.playerLayer.videoGravity = .resizeAspectFill
     }
 }
 
-private final class JobTokPlayerContainerView: UIView {
+private final class Scout22PlayerContainerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
 
     var playerLayer: AVPlayerLayer {
@@ -2195,7 +2195,7 @@ private final class JobTokPlayerContainerView: UIView {
     }
 }
 
-private enum JobTokVideoStudioError: LocalizedError {
+private enum Scout22VideoStudioError: LocalizedError {
     case message(String)
 
     var errorDescription: String? {
@@ -2206,9 +2206,9 @@ private enum JobTokVideoStudioError: LocalizedError {
     }
 }
 
-private enum JobTokVideoComposer {
+private enum Scout22VideoComposer {
     static func concatenate(
-        clips: [JobTokVideoClip],
+        clips: [Scout22VideoClip],
         progress: @escaping (Double) -> Void
     ) async throws -> (url: URL, duration: Double) {
         let result = try buildComposition(for: clips, audioURL: nil, stickers: [])
@@ -2223,9 +2223,9 @@ private enum JobTokVideoComposer {
     }
 
     static func export(
-        clips: [JobTokVideoClip],
+        clips: [Scout22VideoClip],
         audioURL: URL?,
-        stickers: [JobTokTextSticker],
+        stickers: [Scout22TextSticker],
         progress: @escaping (Double) -> Void
     ) async throws -> URL {
         let result = try buildComposition(for: clips, audioURL: audioURL, stickers: stickers)
@@ -2240,9 +2240,9 @@ private enum JobTokVideoComposer {
     }
 
     private static func buildComposition(
-        for clips: [JobTokVideoClip],
+        for clips: [Scout22VideoClip],
         audioURL: URL?,
-        stickers: [JobTokTextSticker]
+        stickers: [Scout22TextSticker]
     ) throws -> (composition: AVMutableComposition, videoComposition: AVMutableVideoComposition, totalDuration: CMTime) {
         let composition = AVMutableComposition()
         let videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
@@ -2352,7 +2352,7 @@ private enum JobTokVideoComposer {
         progress: @escaping (Double) -> Void
     ) async throws {
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720) else {
-            throw JobTokVideoStudioError.message("The selected clips could not be exported.")
+            throw Scout22VideoStudioError.message("The selected clips could not be exported.")
         }
 
         exportSession.outputURL = outputURL
@@ -2380,17 +2380,17 @@ private enum JobTokVideoComposer {
                 case .completed:
                     continuation.resume()
                 case .failed:
-                    continuation.resume(throwing: exportSession.error ?? JobTokVideoStudioError.message("Video export failed."))
+                    continuation.resume(throwing: exportSession.error ?? Scout22VideoStudioError.message("Video export failed."))
                 case .cancelled:
-                    continuation.resume(throwing: JobTokVideoStudioError.message("Video export was cancelled."))
+                    continuation.resume(throwing: Scout22VideoStudioError.message("Video export was cancelled."))
                 default:
-                    continuation.resume(throwing: JobTokVideoStudioError.message("Video export failed."))
+                    continuation.resume(throwing: Scout22VideoStudioError.message("Video export failed."))
                 }
             }
         }
     }
 
-    private static func attributedStickerText(for sticker: JobTokTextSticker) -> NSAttributedString {
+    private static func attributedStickerText(for sticker: Scout22TextSticker) -> NSAttributedString {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = sticker.alignment.nsTextAlignment
         paragraphStyle.lineBreakMode = .byWordWrapping

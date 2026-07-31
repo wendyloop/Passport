@@ -7,7 +7,7 @@ enum SharedConstants {
     static let appGroupID = "group.com.jobtok.shared"
 
     /// Keys in the app-group UserDefaults suite. Written by the app
-    /// (AppSessionStore), read by JobTokShareExtension.
+    /// (AppSessionStore), read by Scout22ShareExtension.
     enum AppGroupKeys {
         static let accessToken = "jobtok.shared.accessToken"
         static let supabaseURL = "jobtok.shared.supabaseURL"

@@ -1,6 +1,6 @@
 import XCTest
 import UIKit
-@testable import JobTok
+@testable import scout22
 
 // The card templates draw with bundled faces; a missing or renamed font
 // file silently falls back to the system font, so assert every PostScript

@@ -1,20 +1,21 @@
 # CLAUDE.md
 
-scout22 (codename **JobTok**) — a TikTok-style recruiting app. Job seekers scroll a
-vertical feed of job videos/carousels and apply with a resume + 60-second pitch video.
-Employers post jobs, review applicants, discover candidates, and send outreach emails.
-Admins bulk-import jobs from social posts and Apify scrape pipelines.
+scout22 (formerly JobTok) — a TikTok-style recruiting app. Job seekers scroll a
+vertical feed of job videos/carousels and apply with a resume + pitch video (up
+to 3 min). Employers post jobs, review applicants, discover candidates, and
+send outreach emails. Admins bulk-import jobs from social posts and Apify
+scrape pipelines.
 
-The product was renamed scout22. As of 2026-07-28 the **bundle IDs and display
-name are scout22** (`com.tryscout22.scout22`, extension `.share`, tests
-`.tests`) — safe because OAuth rides the URL scheme, not the bundle ID. The
-remaining JobTok names are deliberate legacy — code-level names (targets,
-schemes, file/type names), the `jobtok://` deep-link scheme (Supabase OAuth
-redirect + share links depend on it), the App Group
-`group.com.jobtok.shared` (doubles as the Keychain access group), and the
-`com.jobtok.supabase` Keychain service. Do not rename those. App Store
-Connect still needs its record's bundle ID switched by Wendy before the next
-TestFlight upload.
+The JobTok→scout22 rename finished 2026-07-31: bundle IDs + display name
+(2026-07-28, `com.tryscout22.scout22`, extension `.share`, tests `.tests`)
+AND all code-level names (dirs, project, scheme, targets, Swift module,
+`Scout22*` type prefixes). What deliberately KEEPS the legacy jobtok name —
+do not rename: the `jobtok://` deep-link scheme (Supabase OAuth redirect +
+share links depend on it), the App Group `group.com.jobtok.shared` (doubles
+as the Keychain access group; renaming would strand signed-in sessions), the
+`com.jobtok.supabase` / `com.jobtok.connectivity` Keychain services, and the
+`JOBTOK_FROM_EMAIL` edge-secret name. App Store Connect still needs its
+record's bundle ID switched by Wendy before the next TestFlight upload.
 
 ## Architecture
 
@@ -22,10 +23,10 @@ Two halves, no middle tier:
 
 - **iOS client** (`ios-native/`) — SwiftUI, iOS 17+, MVVM-ish. **Zero package
   dependencies**: Supabase access is a hand-rolled URLSession client
-  ([SupabaseTransport.swift](ios-native/JobTok/SupabaseTransport.swift),
-  [SupabaseService.swift](ios-native/JobTok/SupabaseService.swift)). `AppSessionStore`
+  ([SupabaseTransport.swift](ios-native/scout22/SupabaseTransport.swift),
+  [SupabaseService.swift](ios-native/scout22/SupabaseService.swift)). `AppSessionStore`
   is the single `@MainActor ObservableObject` holding session/role state;
-  [NativeRootView.swift](ios-native/JobTok/NativeRootView.swift) routes to
+  [NativeRootView.swift](ios-native/scout22/NativeRootView.swift) routes to
   JobSeeker/Employer/Admin home views by role.
 - **Supabase backend** (`supabase/`) — Postgres 17 with **RLS as the real enforcement
   boundary** (the anon key ships in the IPA by design), timestamped SQL migrations,
@@ -38,13 +39,13 @@ function using the service-role client.
 
 ## Layout
 
-- `ios-native/JobTok/` — all app source, deliberately flat (~26 Swift files, no
+- `ios-native/scout22/` — all app source, deliberately flat (~26 Swift files, no
   subfolders). Largest: `JobSeekerHomeView`, `VideoStudio` (recording/editing),
   `EmployerHomeView`, `Models.swift`, `AppSessionStore`.
-- `ios-native/JobTokShareExtension/` — share-sheet target: share an Instagram/TikTok
+- `ios-native/scout22ShareExtension/` — share-sheet target: share an Instagram/TikTok
   reel into the app; hands off via App Group `group.com.jobtok.shared` to the
   `ingest-shared-reel` function.
-- `ios-native/JobTokTests/` — XCTest unit tests (hosted in the app, no UI tests).
+- `ios-native/scout22Tests/` — XCTest unit tests (hosted in the app, no UI tests).
 - `supabase/migrations/` — append-only timestamped SQL; never edit an applied one.
 - `supabase/functions/` — ~20 edge functions + `_shared/` helpers (`client.ts` user &
   admin clients, `cors.ts`, `email.ts` Resend, `cron_auth.ts`, `openai.ts`).
@@ -61,17 +62,17 @@ function using the service-role client.
 ## Build, run, test
 
 One-time setup: copy the keys from
-[JobTok.xcconfig](ios-native/JobTok/JobTok.xcconfig) into
-`ios-native/JobTok/JobTok.local.xcconfig` (gitignored) with real values from the
+[scout22.xcconfig](ios-native/scout22/scout22.xcconfig) into
+`ios-native/scout22/scout22.local.xcconfig` (gitignored) with real values from the
 Supabase dashboard. The app won't reach the backend without it.
 
-Run: open `ios-native/JobTok.xcodeproj`, `JobTok` scheme, iPhone simulator. CLI:
+Run: open `ios-native/scout22.xcodeproj`, `scout22` scheme, iPhone simulator. CLI:
 
 ```bash
 cd ios-native
-xcodebuild build -project JobTok.xcodeproj -scheme JobTok \
+xcodebuild build -project scout22.xcodeproj -scheme scout22 \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
-xcodebuild test  -project JobTok.xcodeproj -scheme JobTok \
+xcodebuild test  -project scout22.xcodeproj -scheme scout22 \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 50 unit tests
 ```
 
@@ -88,7 +89,7 @@ both must pass before committing.
 Live-backend verification harnesses (self-cleaning: each creates namespaced
 fixture users/rows on the hosted project, asserts over real REST/RPC with
 real user JWTs, and deletes everything on exit — even on failure). They need
-the Supabase CLI keychain token and `JobTok.local.xcconfig`:
+the Supabase CLI keychain token and `scout22.local.xcconfig`:
 
 ```bash
 scripts/verify-rls-item2.sh      # 21 RLS checks: discovery visibility, notes table, essay RPC ACL
@@ -121,11 +122,11 @@ for any new non-JWT function.
 - **project.pbxproj is hand-maintained.** Object IDs are deterministic hex (e.g.
   `A50000010000000000000001`). When adding a Swift file, edit the pbxproj directly —
   file ref, build file, group child, sources phase — instead of relying on Xcode.
-- Shared scheme lives in `xcshareddata/xcschemes/JobTok.xcscheme` and includes the
+- Shared scheme lives in `xcshareddata/xcschemes/scout22.xcscheme` and includes the
   test target; keep it shared so CLI builds/tests work.
 - Deferred work is tracked as `TODO(deferred)` / `FIRST-100-USERS` code markers, each
   matching a row in `docs/DEFERRED_WORK.md`. Keep marker and row in sync; delete both
-  when an item ships. List them: `grep -rn "TODO(deferred)" ios-native/JobTok supabase/functions`.
+  when an item ships. List them: `grep -rn "TODO(deferred)" ios-native/scout22 supabase/functions`.
 - Visibility/permission rules (e.g. candidate discovery) are enforced in SQL/RLS
   first; SwiftUI only mirrors them.
 - New privileged operations get an edge function + audit row, not a client-side

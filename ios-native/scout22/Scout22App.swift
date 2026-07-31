@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct JobTokApp: App {
+struct Scout22App: App {
     @AppStorage("jobtok.themePreference") private var themePreferenceRaw = AppThemePreference.light.rawValue
 
     init() {

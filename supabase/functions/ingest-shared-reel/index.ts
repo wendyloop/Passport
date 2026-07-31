@@ -208,7 +208,7 @@ Deno.serve(async (request) => {
   const { data: existing } = await adminClient
     .from("jobs").select("id").eq("source_url", reel.sourceURL).maybeSingle();
   if (existing) {
-    return new Response(JSON.stringify({ error: "Already in JobTok", id: existing.id }), {
+    return new Response(JSON.stringify({ error: "Already in scout22", id: existing.id }), {
       status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
