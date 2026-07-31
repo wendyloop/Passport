@@ -49,8 +49,8 @@ export type PitchEmailParams = {
   portfolioURL?: string | null;
   instagramUsername?: string | null;
   tiktokUsername?: string | null;
-  // Founder path: pitches are quota-capped (5/week), which is the honest
-  // scarcity line; Easy Apply isn't capped, so it gets the intent line.
+  // Formerly switched the intro line for the founder path; both paths read
+  // the same since copy v6. Accepted for caller compatibility, unused.
   limitedPitches?: boolean;
   videoAttached: boolean;
   resumeAttached: boolean;
@@ -91,22 +91,9 @@ export function educationLine(facts: PitchFacts | null | undefined, fallbackScho
   return clean(fallbackSchool);
 }
 
-// Subject hook: the candidate's strongest one-liner credential.
-export function pitchHook(params: Pick<PitchEmailParams, "headline" | "facts" | "previousEmployers" | "schoolName">): string | null {
-  const headline = clean(params.headline);
-  if (headline) return headline.slice(0, 46);
-  const currentTitle = clean(params.facts?.current_title);
-  const currentCompany = clean(params.facts?.current_company);
-  if (currentTitle && currentCompany) return `${currentTitle} @ ${currentCompany}`.slice(0, 46);
-  const firstEmployer = clean(params.facts?.employers?.[0]?.company) ?? clean(params.previousEmployers?.[0]);
-  if (firstEmployer) return `ex-${firstEmployer}`.slice(0, 46);
-  const school = clean(params.schoolName) ?? clean(params.facts?.education?.[0]?.school);
-  return school ? school.slice(0, 46) : null;
-}
-
-export function pitchSubject(params: Pick<PitchEmailParams, "candidateName" | "jobTitle" | "headline" | "facts" | "previousEmployers" | "schoolName">): string {
-  const hook = pitchHook(params);
-  return `Applicant for your ${params.jobTitle}: ${params.candidateName}${hook ? ` (${hook})` : ""}`;
+// Copy v6 (2026-07-30): name only — no credential hook/bio in the subject.
+export function pitchSubject(params: Pick<PitchEmailParams, "candidateName" | "jobTitle">): string {
+  return `Applicant for your ${params.jobTitle}: ${params.candidateName}`;
 }
 
 export function buildPitchEmailContent(params: PitchEmailParams): {
@@ -114,14 +101,13 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
   text: string;
   html: string;
 } {
-  // Recruiter-submission shape (copy v5, 2026-07-30): present the candidate,
+  // Recruiter-submission shape (copy v6, 2026-07-30): present the candidate,
   // highlights, video as the pre-screen, sign-off explains scout22. No
   // skills list, no quoted note/bio, no reply-to-reach line (Wendy is the
-  // middleman pre-launch).
+  // middleman pre-launch), and one intro line for both paths — the
+  // "who picked out" founder variant read weird.
   const greeting = clean(params.recipientFirstName) ? `Hi ${clean(params.recipientFirstName)},` : "Hi,";
-  const intro = params.limitedPitches
-    ? `I have an applicant who picked out your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`
-    : `I have an applicant for your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`;
+  const intro = `I have an applicant for your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`;
   const headline = clean(params.headline);
 
   const experience = experienceLines(params.facts, params.previousEmployers).slice(0, 1);
@@ -139,7 +125,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ?? (clean(params.tiktokUsername) ? `https://www.tiktok.com/@${clean(params.tiktokUsername)}` : null);
 
   const attachmentLine = params.videoAttached
-    ? `We have a video intro from ${params.candidateName.split(" ")[0]} — it's attached${params.resumeAttached ? " along with their resume" : ""}. A quick watch gives you a read on them before you ever book a call.`
+    ? `We have a video intro from ${params.candidateName.split(" ")[0]} — it's attached${params.resumeAttached ? " along with their resume" : ""}. Two minutes and you'll know if you want to meet them.`
     : params.resumeAttached
       ? "Their resume is attached."
       : null;
@@ -151,7 +137,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     : null;
 
   const footerLine =
-    "scout22 — where startups get to know applicants as people, not PDFs. Every application comes with a video intro.";
+    "scout22 — every application comes with a video intro, so you meet the person, not just the resume.";
 
   const text = [
     greeting,
@@ -173,7 +159,7 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.55; color: #111827; max-width: 540px;">
       <p>${escapeHtml(greeting)}</p>
-      <p>I have an applicant ${params.limitedPitches ? "who picked out" : "for"} your <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)} — <strong>${escapeHtml(params.candidateName)}</strong>.</p>
+      <p>I have an applicant for your <strong>${escapeHtml(params.jobTitle)}</strong> role at ${escapeHtml(params.companyName)} — <strong>${escapeHtml(params.candidateName)}</strong>.</p>
       <p style="margin-bottom: 2px;"><strong>A few highlights:</strong></p>
       <ul style="margin-top: 2px;">
         ${factBullets.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}

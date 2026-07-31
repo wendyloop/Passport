@@ -219,9 +219,6 @@ Deno.serve(async (request) => {
     const subject = pitchSubject({
       candidateName,
       jobTitle: job.title ?? "your open role",
-      headline: profile.headline,
-      facts: latestResume?.parsed_json ?? null,
-      schoolName: seekerProfile?.school_name ?? null,
     });
 
     if (mode === "preview") {

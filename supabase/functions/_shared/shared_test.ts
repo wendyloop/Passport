@@ -186,18 +186,10 @@ Deno.test("mapSimilarityToScore clamps and maps through floor/ceiling", () => {
   assertEquals(mapSimilarityToScore(0.5, 0.75, 0.2), 0);
 });
 
-Deno.test("pitchSubject picks the strongest hook", () => {
+Deno.test("pitchSubject is name-only — no credential hook (copy v6)", () => {
   assertEquals(
-    pitchSubject({ candidateName: "Sam", jobTitle: "iOS Engineer", headline: "CS @ Berkeley" }),
-    "Applicant for your iOS Engineer: Sam (CS @ Berkeley)",
-  );
-  assertEquals(
-    pitchSubject({ candidateName: "Sam", jobTitle: "PM", previousEmployers: ["Stripe"] }),
-    "Applicant for your PM: Sam (ex-Stripe)",
-  );
-  assertEquals(
-    pitchSubject({ candidateName: "Sam", jobTitle: "PM" }),
-    "Applicant for your PM: Sam",
+    pitchSubject({ candidateName: "Sam", jobTitle: "iOS Engineer" }),
+    "Applicant for your iOS Engineer: Sam",
   );
 });
 
@@ -230,6 +222,13 @@ Deno.test("buildPitchEmailContent renders facts, escapes HTML, and reflects atta
   assertEquals(content.text.includes("Skills:"), false);
   assertEquals(content.text.includes("I love your product"), false);
   assertEquals(content.text.includes("Reply to this email"), false);
+  // Copy v6 (2026-07-30): subject is name-only, one intro line for both
+  // paths, new watch line + footer.
+  assertEquals(content.subject, "Applicant for your Founding Engineer: Sam <script>");
+  assertEquals(content.text.includes("I have an applicant for your Founding Engineer role"), true);
+  assertEquals(content.text.includes("who picked out"), false);
+  assertEquals(content.text.includes("Two minutes and you'll know if you want to meet them."), true);
+  assertEquals(content.text.includes("scout22 — every application comes with a video intro, so you meet the person, not just the resume."), true);
   assertEquals(content.html.includes("<script>"), false);
   assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
 });
@@ -295,4 +294,27 @@ Deno.test("classifyTitle v3: program_management and clinical buckets", () => {
   assertEquals(classifyTitle("Contracts Manager"), "legal");
   assertEquals(classifyTitle("Engagement Manager"), "support");
   assertEquals(classifyTitle("AI Deployment Strategist"), "support");
+});
+
+Deno.test("classifyTitle v4: product wins over tech keywords, production is ops", () => {
+  // Product runs first — tech-flavored PM titles no longer leak to engineering.
+  assertEquals(classifyTitle("Product Manager - Software"), "product");
+  assertEquals(classifyTitle("Senior Software Product Manager"), "product");
+  assertEquals(classifyTitle("Staff Product Manager, Infrastructure Platform"), "product");
+  // Senior product-org titles now match.
+  assertEquals(classifyTitle("Director of Product Management, Tableau AI"), "product");
+  assertEquals(classifyTitle("VP of Product"), "product");
+  assertEquals(classifyTitle("Director of Product, AI"), "product");
+  assertEquals(classifyTitle("Chief Product Officer"), "product");
+  assertEquals(classifyTitle("Head of Product, Regulatory Finance"), "product");
+  // PMM/product design stay with their own teams via the exclusion.
+  assertEquals(classifyTitle("Director of Product Marketing"), "marketing");
+  assertEquals(classifyTitle("Product Marketing Manager"), "marketing");
+  assertEquals(classifyTitle("Product Designer"), "design");
+  // "ProductION" is manufacturing ops, not product (the old \b-less bug).
+  assertEquals(classifyTitle("Head of Production, Missiles"), "operations");
+  assertEquals(classifyTitle("2nd Shift Production Lead"), "operations");
+  assertEquals(classifyTitle("Production Program Manager"), "program_management");
+  // No PM-term → the engineering rules still claim these.
+  assertEquals(classifyTitle("Product Security Engineer"), "engineering");
 });

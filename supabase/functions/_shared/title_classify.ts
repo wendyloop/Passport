@@ -2,20 +2,28 @@
 // with no function metadata. Imperfect by design — it exists so the app's
 // function filters match something. v2 (2026-07-30) broadened the rules
 // after 40% of the live catalog matched nothing (bare "Engineer" titles,
-// "Accountant", "Solutions Architect"…). Mirrors the SQL backfills in
-// migrations 20260709120000 and 20260730120000; keep them in sync. The LLM
-// pass in generate-carousel refines from the full JD for whatever the
-// title alone can't place.
+// "Accountant", "Solutions Architect"…); v4 (2026-07-30) fixed the starved
+// product bucket (product now runs first, senior PM titles match, and
+// "Head of ProductION" manufacturing titles land in operations). Mirrors
+// the SQL backfills in migrations 20260709120000, 20260730120000/131000 and
+// 20260730160000; keep them in sync. The LLM pass in generate-carousel
+// refines from the full JD for whatever the title alone can't place.
 
 export type JobFunction =
   | "engineering" | "design" | "product" | "science" | "sales" | "marketing"
   | "support" | "operations" | "hr" | "finance" | "legal"
   | "program_management" | "clinical";
 
-const RULES: Array<[JobFunction, RegExp]> = [
+// Optional third element: an exclusion regex — the rule only fires when the
+// title does NOT match it (expressible in Postgres too, unlike lookaheads).
+const RULES: Array<[JobFunction, RegExp, RegExp?]> = [
+  // v4: product runs FIRST — "Product Manager, Infrastructure" was leaking
+  // to engineering via the tech keywords. \b keeps "Head of ProductION"
+  // (manufacturing) out; the exclusion keeps PMM/product-design out of
+  // product so their own rules below still claim them.
+  ["product", /product manager|product owner|product management|product lead|head of product\b|(director|vp|svp) of product\b|chief product officer/, /product (marketing|design)/],
   ["engineering", /software|backend|frontend|full.?stack|platform engineer|infrastructure|devops|sre|site reliab|mobile engineer|ios |android|embedded|firmware|security engineer|data engineer|ml engineer|machine learning|ai engineer|research engineer|hardware|electrical engineer|mechanical engineer|qa engineer|test engineer/],
   ["science", /data scien|data analy|analytics|research scien|applied scien|quantitative|\bscientist\b/],
-  ["product", /product manager|product owner|head of product|product lead/],
   ["design", /designer|design lead|\bux\b|\bui designer|user experience|user interface|brand design|graphic|illustrator|creative director/],
   // v3: project/program management is its own section (product decision
   // 2026-07-30) — before the team rules below so every PM flavor lands here.
@@ -33,14 +41,16 @@ const RULES: Array<[JobFunction, RegExp]> = [
   // Engineer"/"Solutions Architect" already matched their real teams above;
   // whatever still says engineer/developer is engineering.
   ["engineering", /\bengineer(ing)?\b|\bdeveloper\b|\barchitect\b/],
-  ["operations", /operations|\bops\b|chief of staff|office manager|executive assistant|logistics|supply chain/],
+  // v4: manufacturing/production ops ("Head of Production, Missiles") —
+  // formerly a product false-positive via the missing word boundary.
+  ["operations", /operations|\bops\b|chief of staff|office manager|executive assistant|logistics|supply chain|production\b|manufactur/],
 ];
 
 export function classifyTitle(title: string | null | undefined): JobFunction | null {
   if (!title) return null;
   const lower = title.toLowerCase();
-  for (const [fn, pattern] of RULES) {
-    if (pattern.test(lower)) return fn;
+  for (const [fn, pattern, exclude] of RULES) {
+    if (pattern.test(lower) && !exclude?.test(lower)) return fn;
   }
   return null;
 }
