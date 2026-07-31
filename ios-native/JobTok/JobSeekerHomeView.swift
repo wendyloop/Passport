@@ -59,6 +59,7 @@ struct JobSeekerHomeView: View {
     @State private var selectedPayFilter: JobPayFilter = .all
     @State private var selectedExperienceFilter: ExperienceFilter = .all
     @State private var selectedWorkModeFilter: WorkModeFilter = .all
+    @State private var selectedCompanySizeFilter: CompanySizeFilter = .all
     @State private var founderReachableOnly = false
     @State private var selectedProfileTab: CandidateProfileTab = .video
     @State private var showingStrengthDetail = false
@@ -143,9 +144,8 @@ struct JobSeekerHomeView: View {
         return JobFunctionOption(rawValue: selectedJobFunctionRawValue)
     }
 
-    /// Snapshot of the server-backed filters. Role type and founder-reachable
-    /// stay client-only (jobFunction is classified client-side; stage lives on
-    /// the embedded company row).
+    /// Snapshot of the server-backed filters; changing any of them refetches
+    /// the feed with these applied in the PostgREST query.
     private var currentFilters: FeedFilters {
         FeedFilters(
             location: selectedLocationFilter,
@@ -153,7 +153,8 @@ struct JobSeekerHomeView: View {
             workMode: selectedWorkModeFilter,
             pay: selectedPayFilter,
             jobFunction: selectedJobFunction,
-            founderReachable: founderReachableOnly
+            founderReachable: founderReachableOnly,
+            companySize: selectedCompanySizeFilter
         )
     }
 
@@ -170,13 +171,14 @@ struct JobSeekerHomeView: View {
             let experienceMatches = selectedExperienceFilter.matches(job)
             let workModeMatches = selectedWorkModeFilter.matches(job)
             let stageMatches = !founderReachableOnly || job.founderPitchAllowed
+            let sizeMatches = selectedCompanySizeFilter.matches(job)
             // Carousel-backed rows (ATS + board) need at least one slide this
             // build can draw. No carousel yet (generate-carousel hasn't run) or
             // a carousel made entirely of unknown slide types → nothing to
             // render, so hide it.
             let renderable = !job.sourceKind.rendersCarousel || (job.carousel?.hasRenderableSlides ?? false)
             return renderable && !brokenJobIDs.contains(job.id) && locationMatches && functionMatches && payMatches
-                && experienceMatches && workModeMatches && stageMatches
+                && experienceMatches && workModeMatches && stageMatches && sizeMatches
         }
     }
 
@@ -878,6 +880,16 @@ struct JobSeekerHomeView: View {
                         }
                     } label: {
                         filterPill(title: selectedWorkModeFilter.title)
+                    }
+
+                    Menu {
+                        ForEach(CompanySizeFilter.allCases) { option in
+                            Button(option.menuTitle) {
+                                selectedCompanySizeFilter = option
+                            }
+                        }
+                    } label: {
+                        filterPill(title: selectedCompanySizeFilter.title)
                     }
 
                     // F4: founder-reachable — jobs where the pitch button is
@@ -3826,6 +3838,44 @@ enum LocationFilter: String, CaseIterable, Identifiable {
     }
 }
 
+// Company headcount buckets, backed by companies.size_bucket — a generated
+// column derived from the crawlers' headcount field where it's trustworthy
+// plus stage labels/funding stage (migration 20260730150000). Jobs at
+// unknown-size companies (~38% of the catalog) only appear under "All".
+enum CompanySizeFilter: String, CaseIterable, Identifiable {
+    case all
+    case under10 = "under_10"
+    case from10To100 = "10_100"
+    case from100To1000 = "100_1000"
+    case over1000 = "1000_plus"
+
+    var id: String { rawValue }
+
+    /// The companies.size_bucket value to filter on; nil = no filtering.
+    var bucketValue: String? {
+        self == .all ? nil : rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .all: return "Company Size"
+        case .under10: return "Under 10 people"
+        case .from10To100: return "10–100 people"
+        case .from100To1000: return "100–1,000 people"
+        case .over1000: return "1,000+ people"
+        }
+    }
+
+    var menuTitle: String {
+        self == .all ? "Any size" : title
+    }
+
+    func matches(_ job: JobPostingRecord) -> Bool {
+        guard let bucketValue else { return true }
+        return job.company?.sizeBucket == bucketValue
+    }
+}
+
 // The server-backed filter set. The feed fetch window is capped (200+200
 // rows of a 33k catalog), so filtering client-side alone silently missed
 // almost everything; these translate into PostgREST params so the narrowing
@@ -3843,6 +3893,9 @@ struct FeedFilters: Equatable {
     // founder-reachable = 180 real jobs, ~1 in a typical window).
     var jobFunction: JobFunctionOption? = nil
     var founderReachable: Bool = false
+    // Applied on the embedded company row (companies.size_bucket), so like
+    // founderReachable it's wired up in fetchJobs, not postgrestParams.
+    var companySize: CompanySizeFilter = .all
 
     /// PostgREST conditions, ANDed with the feed query. Multiple `or=`
     /// params are separate top-level conditions (PostgREST ANDs them).

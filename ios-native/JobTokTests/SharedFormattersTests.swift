@@ -87,6 +87,32 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertFalse(bare.founderPitchAllowed)
     }
 
+    func testCompanySizeFilterMatching() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func job(sizeBucket: String?) throws -> JobPostingRecord {
+            let bucketJSON = sizeBucket.map { "\"\($0)\"" } ?? "null"
+            let json = """
+            {"id": "j", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z", "company_id": "co-1",
+             "company": {"id": "co-1", "name": "Acme", "size_bucket": \(bucketJSON)}}
+            """.data(using: .utf8)!
+            return try decoder.decode(JobPostingRecord.self, from: json)
+        }
+
+        XCTAssertTrue(try CompanySizeFilter.all.matches(job(sizeBucket: nil)))
+        XCTAssertTrue(try CompanySizeFilter.under10.matches(job(sizeBucket: "under_10")))
+        XCTAssertTrue(try CompanySizeFilter.over1000.matches(job(sizeBucket: "1000_plus")))
+        XCTAssertFalse(try CompanySizeFilter.under10.matches(job(sizeBucket: "10_100")))
+        // Unknown-size companies only appear under "All".
+        XCTAssertFalse(try CompanySizeFilter.under10.matches(job(sizeBucket: nil)))
+
+        // Raw values ARE the server bucket strings the PostgREST param uses.
+        XCTAssertNil(CompanySizeFilter.all.bucketValue)
+        XCTAssertEqual(CompanySizeFilter.from10To100.bucketValue, "10_100")
+        XCTAssertEqual(CompanySizeFilter.from100To1000.bucketValue, "100_1000")
+    }
+
     func testProfileStrengthWeights() {
         var draft = CandidateProfileDraft()
         XCTAssertEqual(ProfileStrength.score(for: draft), 0)

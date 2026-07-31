@@ -192,14 +192,18 @@ final class SupabaseService {
         // catalog, so client-only filtering would miss nearly all matches.
         if publishedOnly && employerID == nil {
             var filterParams = filters.postgrestParams
-            // Founder-reachable requires filtering on the embedded company —
-            // PostgREST only allows that through an !inner join, so the
-            // company embed flips to inner and gains the flag condition.
-            let companyEmbed = filters.founderReachable
-                ? "company:companies!inner(id,name,domain,logo_url,stage,founder_contactable)"
-                : "company:companies(id,name,domain,logo_url,stage,founder_contactable)"
+            // Founder-reachable and company-size filter on the embedded
+            // company — PostgREST only allows that through an !inner join,
+            // so the company embed flips to inner and gains the conditions.
+            let companyFiltered = filters.founderReachable || filters.companySize != .all
+            let companyEmbed = companyFiltered
+                ? "company:companies!inner(id,name,domain,logo_url,stage,founder_contactable,size_bucket)"
+                : "company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket)"
             if filters.founderReachable {
                 filterParams.append(("company.founder_contactable", "eq.true"))
+            }
+            if let bucket = filters.companySize.bucketValue {
+                filterParams.append(("company.size_bucket", "eq.\(bucket)"))
             }
             async let videos: [JobPostingRecord] = transport.selectArray(
                 path: "jobs",
@@ -249,7 +253,7 @@ final class SupabaseService {
         }
 
         var query: [(String, String)] = [
-            ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels(theme_id,slide_count,content,status)"),
+            ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket),carousel:carousels(theme_id,slide_count,content,status)"),
             ("order", "created_at.desc")
         ]
         if let employerID {
@@ -270,7 +274,7 @@ final class SupabaseService {
             let rows: [JobPostingRecord] = try await transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket),carousel:carousels(theme_id,slide_count,content,status)"),
                     ("id", "in.(\(chunk.joined(separator: ",")))")
                 ],
                 session: session
