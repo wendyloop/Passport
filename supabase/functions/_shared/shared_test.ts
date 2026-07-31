@@ -225,9 +225,11 @@ Deno.test("buildPitchEmailContent renders facts, escapes HTML, and reflects atta
   assertEquals(content.text.includes("Hi Jane,"), true);
   assertEquals(content.text.includes("SWE Intern · Stripe (2025-06 – now)"), true);
   assertEquals(content.text.includes("Education: BS CS UC Berkeley (2026)"), true);
-  assertEquals(content.text.includes("Skills: Swift, Go"), true);
   assertEquals(content.text.includes("along with their resume"), true);
-  assertEquals(content.text.includes("Reply to this email to reach Sam <script>."), true);
+  // Copy v5 (2026-07-30): no skills list, no quoted note, no reply line.
+  assertEquals(content.text.includes("Skills:"), false);
+  assertEquals(content.text.includes("I love your product"), false);
+  assertEquals(content.text.includes("Reply to this email"), false);
   assertEquals(content.html.includes("<script>"), false);
   assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
 });

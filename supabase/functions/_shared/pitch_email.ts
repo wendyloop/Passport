@@ -36,7 +36,8 @@ export type PitchEmailParams = {
   headline?: string | null;
   jobTitle: string;
   companyName: string;
-  // The candidate's own line (founder compose sheet).
+  // The candidate's own line (founder compose sheet). Accepted for caller
+  // compatibility but NOT rendered since copy v5 (2026-07-30).
   note?: string | null;
   // Parsed resume; fall back to profile fields when absent.
   facts?: PitchFacts | null;
@@ -90,11 +91,6 @@ export function educationLine(facts: PitchFacts | null | undefined, fallbackScho
   return clean(fallbackSchool);
 }
 
-export function skillsLine(facts: PitchFacts | null | undefined): string | null {
-  const skills = (facts?.skills ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 10);
-  return skills.length ? skills.join(", ") : null;
-}
-
 // Subject hook: the candidate's strongest one-liner credential.
 export function pitchHook(params: Pick<PitchEmailParams, "headline" | "facts" | "previousEmployers" | "schoolName">): string | null {
   const headline = clean(params.headline);
@@ -118,24 +114,22 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
   text: string;
   html: string;
 } {
-  // Recruiter-submission shape (copy v4): present the candidate first,
-  // product positioning last. Hey, I have an applicant → highlights →
-  // their own words → video as the pre-screen → sign-off explains scout22.
+  // Recruiter-submission shape (copy v5, 2026-07-30): present the candidate,
+  // highlights, video as the pre-screen, sign-off explains scout22. No
+  // skills list, no quoted note/bio, no reply-to-reach line (Wendy is the
+  // middleman pre-launch).
   const greeting = clean(params.recipientFirstName) ? `Hi ${clean(params.recipientFirstName)},` : "Hi,";
   const intro = params.limitedPitches
     ? `I have an applicant who picked out your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`
     : `I have an applicant for your ${params.jobTitle} role at ${params.companyName} — ${params.candidateName}.`;
-  const note = clean(params.note);
   const headline = clean(params.headline);
 
   const experience = experienceLines(params.facts, params.previousEmployers).slice(0, 1);
   const education = educationLine(params.facts, params.schoolName);
-  const skills = (params.facts?.skills ?? []).map((skill) => skill.trim()).filter(Boolean).slice(0, 5).join(", ");
   const factBullets = [
     experience[0] ?? headline,
     education ? `Education: ${education}` : null,
-    skills ? `Skills: ${skills}` : null,
-  ].filter((line): line is string => !!line).slice(0, 3);
+  ].filter((line): line is string => !!line);
 
   // One link only — the strongest available.
   const link = clean(params.linkedInURL)
@@ -156,7 +150,6 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ? `Resume: ${clean(params.resumeSignedURL)}`
     : null;
 
-  const replyLine = `Reply to this email to reach ${params.candidateName}.`;
   const footerLine =
     "scout22 — where startups get to know applicants as people, not PDFs. Every application comes with a video intro.";
 
@@ -168,13 +161,10 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     "A few highlights:",
     ...factBullets.map((line) => `  - ${line}`),
     link ? `  - ${link}` : null,
-    note ? `\nIn their words: "${note}"` : null,
     "",
     attachmentLine,
     videoFallback,
     resumeFallback,
-    "",
-    replyLine,
     "",
     "— Wendy",
     footerLine,
@@ -189,11 +179,9 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
         ${factBullets.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
         ${link ? `<li><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></li>` : ""}
       </ul>
-      ${note ? `<p style="margin-bottom: 2px;">In their words:</p><blockquote style="margin: 4px 0 12px; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">&ldquo;${escapeHtml(note)}&rdquo;</blockquote>` : ""}
       ${attachmentLine ? `<p>${escapeHtml(attachmentLine)}</p>` : ""}
       ${videoFallback ? `<p><a href="${escapeHtml(clean(params.pitchVideoURL)!)}">▶ Watch their video intro</a></p>` : ""}
       ${resumeFallback ? `<p><a href="${escapeHtml(clean(params.resumeSignedURL)!)}">Open their resume</a></p>` : ""}
-      <p>${escapeHtml(replyLine)}</p>
       <p style="margin-bottom: 0;">— Wendy</p>
       <p style="color: #6b7280; font-size: 12px; margin-top: 4px;">${escapeHtml(footerLine)}</p>
     </div>
