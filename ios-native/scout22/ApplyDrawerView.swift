@@ -65,6 +65,45 @@ enum ATSAutofillPolicy {
         return "[\(quoted)]"
     }
 
+    /// Field labels we never fill and never capture: the EEO / protected-class
+    /// block every major ATS appends to its application form. Capturing these
+    /// would put racial, disability and similar answers into
+    /// `application_fields` — GDPR Art. 9 special-category data, and the exact
+    /// segregation EEO reporting depends on. The candidate still answers them
+    /// on the ATS page; scout22 just never reads or stores them.
+    ///
+    /// Word boundaries matter: `\brace\b` must not fire on "embrace", and
+    /// `\bsex\b` must not fire on "Essex" in an address field. Mirrored into
+    /// the injected JS as regex literals.
+    static let sensitiveLabelPatterns: [String] = [
+        "\\brace\\b",
+        "ethnic",
+        "disab",
+        "\\bveteran\\b",
+        "\\bgender\\b",
+        "\\bsex\\b",
+        "sexual",
+        "pregnan",
+        "religio",
+        "politic",
+        "trade union",
+        "genetic",
+        "biometric",
+    ]
+
+    static func isSensitiveLabel(_ label: String?) -> Bool {
+        guard let label, !label.isEmpty else { return false }
+        return sensitiveLabelPatterns.contains {
+            label.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    /// The denylist as JS regex literals. Case-insensitive, never global —
+    /// a /g/ regex would make `.test()` stateful across elements.
+    static var sensitivePatternsJSArray: String {
+        "[\(sensitiveLabelPatterns.map { "/\($0)/i" }.joined(separator: ","))]"
+    }
+
     /// Shared prologue for every injected script: bail out unless the
     /// document's own host is a known ATS. Runs per navigation and per frame.
     static var hostGateJS: String {
@@ -371,11 +410,26 @@ struct ApplyWebView: UIViewRepresentable {
               && parseFloat(style.opacity) > 0;
           }
 
+          // EEO / protected-class questions are neither filled nor captured.
+          // Gating here covers every path at once: the fill pass, the essay
+          // collector, fillEssayMatch, and the submit capture all go through
+          // isFillable.
+          var SENSITIVE_LABEL_PATTERNS = \(ATSAutofillPolicy.sensitivePatternsJSArray);
+
+          function isSensitiveLabel(label) {
+            if (!label) return false;
+            for (var i = 0; i < SENSITIVE_LABEL_PATTERNS.length; i++) {
+              if (SENSITIVE_LABEL_PATTERNS[i].test(label)) return true;
+            }
+            return false;
+          }
+
           function isFillable(el) {
             if (!el) return false;
             if (el.disabled || el.readOnly) return false;
             if (el.type === 'password' || el.type === 'hidden' || el.type === 'file' ||
                 el.type === 'submit' || el.type === 'button') return false;
+            if (isSensitiveLabel(labelFor(el))) return false;
             return isVisible(el);
           }
 

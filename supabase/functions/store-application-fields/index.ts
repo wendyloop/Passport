@@ -16,7 +16,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
-import { canonLabel, matchCanonical } from "../_shared/profile_fields.ts";
+import { canonLabel, isSensitiveLabel, matchCanonical } from "../_shared/profile_fields.ts";
 import { embedText, normalizeQuestion, toPgVector } from "../_shared/openai_embeddings.ts";
 
 const ESSAY_MIN_CHARS = 200;
@@ -64,9 +64,11 @@ Deno.serve(async (request) => {
     const { shortFields, essays } = splitInputs(body);
 
     // ---------- Short fields ----------
+    // EEO / protected-class answers are dropped before any write. The client
+    // already refuses to capture them; this is the backstop.
     const shortClean = shortFields
       .map((f) => ({ label: f.label.trim(), value: f.value.trim() }))
-      .filter((f) => f.label && f.value);
+      .filter((f) => f.label && f.value && !isSensitiveLabel(f.label));
 
     let shortStored = 0;
     let canonicalStored = 0;
@@ -123,7 +125,7 @@ Deno.serve(async (request) => {
     // ---------- Essays ----------
     const essayClean = essays
       .map((e) => ({ question: e.question.trim(), answer: e.answer.trim() }))
-      .filter((e) => e.question && e.answer);
+      .filter((e) => e.question && e.answer && !isSensitiveLabel(e.question));
 
     const essayResults: Array<{ question: string; stored: boolean; error?: string }> = [];
 

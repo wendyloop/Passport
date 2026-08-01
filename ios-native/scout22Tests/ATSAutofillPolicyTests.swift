@@ -62,6 +62,74 @@ final class ATSAutofillPolicyTests: XCTestCase {
         }
     }
 
+    // EEO / protected-class labels are never filled and never captured, so
+    // application_fields can't accumulate GDPR Art. 9 special-category data.
+    func testEEOLabelsAreSensitive() {
+        for label in [
+            "Race", "Race/Ethnicity", "What is your race?", "Ethnicity",
+            "Disability Status", "Do you have a disability?",
+            "Veteran Status", "Protected Veteran Status",
+            "Gender", "Gender Identity", "Sex",
+            "Sexual Orientation", "Religion", "Political affiliation",
+            "Trade union membership", "Genetic information", "Biometric data",
+        ] {
+            XCTAssertTrue(ATSAutofillPolicy.isSensitiveLabel(label), "\(label) must be treated as sensitive")
+        }
+    }
+
+    // Word boundaries keep ordinary fields fillable — a denylist that eats
+    // "Essex" or "Embrace" would silently break autofill.
+    func testOrdinaryLabelsStayFillable() {
+        for label in [
+            "First Name", "Email", "Phone", "City", "County (e.g. Essex)",
+            "Why do you embrace our mission?", "Field of Study",
+            "Work Authorization", "Desired Salary", "LinkedIn", "Pronouns",
+            "Racetrack experience", "",
+        ] {
+            XCTAssertFalse(ATSAutofillPolicy.isSensitiveLabel(label), "\(label) should stay fillable")
+        }
+        XCTAssertFalse(ATSAutofillPolicy.isSensitiveLabel(nil))
+    }
+
+    // The denylist that actually ships is the JS mirror, not the Swift array —
+    // execute it the way WebKit will.
+    private func injectedJSMarksSensitive(_ label: String) -> Bool {
+        let context = JSContext()!
+        let js = """
+        (function() {
+          var SENSITIVE_LABEL_PATTERNS = \(ATSAutofillPolicy.sensitivePatternsJSArray);
+          function isSensitiveLabel(label) {
+            if (!label) return false;
+            for (var i = 0; i < SENSITIVE_LABEL_PATTERNS.length; i++) {
+              if (SENSITIVE_LABEL_PATTERNS[i].test(label)) return true;
+            }
+            return false;
+          }
+          return isSensitiveLabel('\(label)');
+        })()
+        """
+        return context.evaluateScript(js)?.toBool() ?? false
+    }
+
+    func testInjectedJSDenylistMatchesPolicy() {
+        for label in ["Race/Ethnicity", "Disability Status", "Veteran Status", "Gender", "Sexual Orientation"] {
+            XCTAssertTrue(injectedJSMarksSensitive(label), "\(label) should be blocked by the injected denylist")
+            XCTAssertEqual(injectedJSMarksSensitive(label), ATSAutofillPolicy.isSensitiveLabel(label))
+        }
+        for label in ["First Name", "Email", "County (e.g. Essex)", "Pronouns"] {
+            XCTAssertFalse(injectedJSMarksSensitive(label), "\(label) should still autofill")
+            XCTAssertEqual(injectedJSMarksSensitive(label), ATSAutofillPolicy.isSensitiveLabel(label))
+        }
+    }
+
+    // A /g/ regex would make .test() stateful — the same label would flip
+    // between blocked and allowed on alternating calls.
+    func testInjectedDenylistIsStateless() {
+        for _ in 0..<3 {
+            XCTAssertTrue(injectedJSMarksSensitive("Race/Ethnicity"))
+        }
+    }
+
     func testDetectUsesSuffixMatchingNotContains() {
         func platform(_ urlString: String) -> ATSPlatform {
             ATSPlatform.detect(from: URL(string: urlString)!)

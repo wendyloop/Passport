@@ -11,6 +11,7 @@ import { buildPitchEmailContent, pitchSubject } from "./pitch_email.ts";
 import { attachmentFilename } from "./email_attachments.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
+import { isSensitiveLabel, matchCanonical } from "./profile_fields.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -317,4 +318,66 @@ Deno.test("classifyTitle v4: product wins over tech keywords, production is ops"
   assertEquals(classifyTitle("Production Program Manager"), "program_management");
   // No PM-term → the engineering rules still claim these.
   assertEquals(classifyTitle("Product Security Engineer"), "engineering");
+});
+
+// EEO / protected-class answers must never reach application_fields or
+// candidate_field_history: storing them makes those rows GDPR Art. 9
+// special-category data and breaks EEO segregation. The client blocks
+// capture; this is the server-side backstop.
+Deno.test("isSensitiveLabel blocks EEO and protected-class labels", () => {
+  for (
+    const label of [
+      "Race",
+      "Race/Ethnicity",
+      "Ethnicity",
+      "Disability Status",
+      "Do you have a disability?",
+      "Veteran Status",
+      "Protected Veteran Status",
+      "Gender",
+      "Sex",
+      "Sexual Orientation",
+      "Religion",
+      "Political affiliation",
+      "Trade union membership",
+      "Genetic information",
+      "Biometric data",
+    ]
+  ) {
+    assertEquals(isSensitiveLabel(label), true, `${label} must be blocked`);
+  }
+});
+
+// Word boundaries keep ordinary application fields storable — a denylist
+// that ate "Essex" or "embrace" would silently break autofill.
+Deno.test("isSensitiveLabel leaves ordinary labels alone", () => {
+  for (
+    const label of [
+      "First Name",
+      "Email",
+      "Phone",
+      "County (e.g. Essex)",
+      "Why do you embrace our mission?",
+      "Field of Study",
+      "Work Authorization",
+      "Desired Salary",
+      "Pronouns",
+      "",
+      "   ",
+    ]
+  ) {
+    assertEquals(isSensitiveLabel(label), false, `${label} should be storable`);
+  }
+});
+
+// The canonical keys for gender/race/veteran/disability are gone, so a
+// stray EEO label can no longer be promoted into the prefill cache.
+Deno.test("matchCanonical no longer canonicalizes EEO labels", () => {
+  assertEquals(matchCanonical("Gender"), null);
+  assertEquals(matchCanonical("Race/Ethnicity"), null);
+  assertEquals(matchCanonical("Veteran Status"), null);
+  assertEquals(matchCanonical("Disability Status"), null);
+  // Ordinary canonicalization still works.
+  assertEquals(matchCanonical("First Name"), "first_name");
+  assertEquals(matchCanonical("Pronouns"), "pronouns");
 });

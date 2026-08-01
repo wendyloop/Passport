@@ -44,12 +44,37 @@ export type CanonicalKey =
   | "willing_to_relocate"
   | "remote_preference"
   | "pronouns"
-  | "gender"
-  | "race_ethnicity"
-  | "veteran_status"
-  | "disability_status"
   | "referral_source"
   | "how_did_you_hear";
+
+// EEO / protected-class labels are never stored. They used to have canonical
+// keys here (gender, race_ethnicity, veteran_status, disability_status), which
+// meant an answer given once was written to candidate_field_history and then
+// prefilled into every later application. Storing them makes those rows GDPR
+// Art. 9 special-category data and breaks the segregation EEO reporting
+// depends on. The client blocks them at capture (ATSAutofillPolicy); this is
+// the server-side backstop for any client that doesn't.
+const SENSITIVE_LABEL_PATTERNS: RegExp[] = [
+  /\brace\b/i,
+  /ethnic/i,
+  /disab/i,
+  /\bveteran\b/i,
+  /\bgender\b/i,
+  /\bsex\b/i,
+  /sexual/i,
+  /pregnan/i,
+  /religio/i,
+  /politic/i,
+  /trade union/i,
+  /genetic/i,
+  /biometric/i,
+];
+
+export function isSensitiveLabel(rawLabel: string): boolean {
+  const cleaned = rawLabel.trim();
+  if (!cleaned) return false;
+  return SENSITIVE_LABEL_PATTERNS.some((p) => p.test(cleaned));
+}
 
 export type CanonicalLabel = `${typeof CANON_PREFIX}${CanonicalKey}`;
 
@@ -90,10 +115,6 @@ const ALIASES: Record<CanonicalKey, RegExp[]> = {
   willing_to_relocate: [/relocat(e|ion)/i],
   remote_preference:   [/remote/i, /work[\s_-]?from[\s_-]?home/i],
   pronouns:            [/pronouns?/i],
-  gender:              [/^gender$/i],
-  race_ethnicity:      [/(race|ethnicity)/i],
-  veteran_status:      [/veteran/i],
-  disability_status:   [/disab(ility|led)/i],
   referral_source:     [/referr(ed|al)/i, /who referred you/i],
   how_did_you_hear:    [/how (did|do) you hear/i],
 };
