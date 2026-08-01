@@ -465,7 +465,10 @@ struct JobSeekerHomeView: View {
                     safeAreaBottom: safeAreaBottom,
                     isActive: activeJobID == job.id,
                     onApply: { handleApplyTap(for: job) },
-                    onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
+                    // FIRST-100-USERS: founder-pitch button hidden for initial
+                    // release (2026-08-01, Wendy). Restore by swapping back:
+                    // onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
+                    onEmailFounder: nil,
                     onSave: { onToggleSavedJob(job.id) },
                     isSaved: savedJobIDs.contains(job.id)
                 )
@@ -478,7 +481,10 @@ struct JobSeekerHomeView: View {
                     isActive: activeJobID == job.id,
                     onToggleSaved: { onToggleSavedJob(job.id) },
                     onApply: { handleApplyTap(for: job) },
-                    onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
+                    // FIRST-100-USERS: founder-pitch button hidden for initial
+                    // release (2026-08-01, Wendy). Restore by swapping back:
+                    // onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
+                    onEmailFounder: nil,
                     onBroken: { brokenJobIDs.insert(job.id) }
                 )
             }
