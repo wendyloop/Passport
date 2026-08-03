@@ -56,7 +56,8 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
-| X1 | Replace founder-fatigue feed demotion with real ranking (the once-per-founder-ever send rule was already replaced 2026-07-23 by a 7-day per-contact cooldown — migration `20260723120000`) | `FIRST-100-USERS` markers | S | >100 users / real volume |
+| X1 | Replace founder-fatigue feed demotion with real ranking (the once-per-founder-ever send rule was already replaced 2026-07-23 by a 7-day per-contact cooldown — migration `20260723120000`). **Widened 2026-08-01** to company level: a founder pitch stamps `companies.last_founder_touch_at`, demoting *every* role at that company for 7 days, because one founder usually covers several openings. Deliberately founder-pitch-only — ATS-portal applies never reach the founder's inbox. Migration `20260801130000`; markers in `send-founder-email`, `SharedFormatters.founderFatigueBucket`, `CompanyRef` | `FIRST-100-USERS` markers | S | >100 users / real volume |
+| X2 | Feed ranking runs client-side over the 200+200 fetched rows, so founder-fatigue demotion reorders *within* that window rather than pulling untouched older jobs up into it. Company-level demotion (X1) makes this bite sooner. Fix = move ranking server-side (RPC or a ranked view) | noted 2026-08-01 during X1 | M | real volume |
 
 ---
 

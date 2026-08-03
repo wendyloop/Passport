@@ -3193,6 +3193,9 @@ private struct ApplicationTile: View {
 
     private var statusLabel: String {
         if application.emailDeliveryStatus == "failed" { return "RETRYING" }
+        // A pitch that hasn't been followed by a real application reads as its
+        // own thing — it went straight to a founder, not into an ATS.
+        if application.isFounderPitch { return "PITCHED" }
         switch application.status {
         case "submitted": return "SENT"
         case "reviewing": return "REVIEWING"
@@ -3205,6 +3208,7 @@ private struct ApplicationTile: View {
 
     private var statusColor: Color {
         if application.emailDeliveryStatus == "failed" { return .orange }
+        if application.isFounderPitch { return Color(red: 0.65, green: 0.80, blue: 1.00) }
         switch application.status {
         case "contacted", "hired": return Color(red: 0.45, green: 0.85, blue: 0.55)
         case "rejected": return Color.white.opacity(0.35)
@@ -3247,7 +3251,12 @@ private struct ApplicationTile: View {
         var parts = [application.companyName]
         if let comp = job?.compensationSummary { parts.append(comp) }
         if let mode = job?.workMode, !mode.isEmpty { parts.append(mode.capitalized) }
-        parts.append("applied \(SharedFormatters.relativeAge(of: application.appliedAt))")
+        let verb = application.isFounderPitch ? "pitched" : "applied"
+        parts.append("\(verb) \(SharedFormatters.relativeAge(of: application.appliedAt))")
+        // An application that started as a pitch keeps both facts visible.
+        if !application.isFounderPitch, application.didPitchFounder {
+            parts.append("founder pitched")
+        }
         return parts.joined(separator: " · ")
     }
 

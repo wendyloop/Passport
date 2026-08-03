@@ -9,8 +9,16 @@ extension JobPostingRecord {
     /// FIRST-100-USERS founder-fatigue rank: 0 = untouched, 1 = a founder
     /// was reached earlier this week (soft demote), 2 = reached today (hard
     /// demote). Feed sorts ascending bucket, newest-first within a bucket.
+    ///
+    /// Company touch wins over job touch, and that is the point: a company
+    /// usually has one founder but several open roles, so pitching about one
+    /// role cools *every* role there for the week — otherwise the same inbox
+    /// stays reachable through the siblings. Only send-founder-email stamps
+    /// the company; applying through a company's own ATS portal never reaches
+    /// the founder and never demotes anything.
     func founderFatigueBucket(now: Date) -> Int {
-        guard let touched = lastFounderTouchAt else { return 0 }
+        let touches = [company?.lastFounderTouchAt, lastFounderTouchAt].compactMap { $0 }
+        guard let touched = touches.max() else { return 0 }
         if Calendar.current.isDate(touched, inSameDayAs: now) { return 2 }
         if touched > now.addingTimeInterval(-7 * 24 * 3600) { return 1 }
         return 0

@@ -394,6 +394,11 @@ struct CompanyRef: Codable, Equatable {
     // Derived size bucket ("under_10" | "10_100" | "100_1000" | "1000_plus"),
     // generated column on companies; nil = size unknown.
     let sizeBucket: String?
+    // FIRST-100-USERS: when anyone last pitched this company's founder. One
+    // founder usually covers several open roles, so this demotes all of them
+    // together for a week. Set only by send-founder-email — ATS-portal
+    // applies never reach the founder's inbox and never stamp it.
+    let lastFounderTouchAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -403,6 +408,7 @@ struct CompanyRef: Codable, Equatable {
         case stage
         case founderContactable = "founder_contactable"
         case sizeBucket = "size_bucket"
+        case lastFounderTouchAt = "last_founder_touch_at"
     }
 }
 
@@ -723,14 +729,18 @@ extension JobPostingRecord {
 struct JobApplicationRecord: Codable, Identifiable {
     let id: String
     let jobID: String
-    let employerProfileID: String
+    // Null for board/reel jobs (no employer user) and for founder pitches,
+    // which reach a founder's personal inbox rather than an applicant pipeline.
+    let employerProfileID: String?
     let candidateProfileID: String
     let status: String
     let coverNote: String?
     let jobTitle: String
     let companyName: String
     let jobLocation: String?
-    let applicationEmail: String
+    // Null on founder pitches: storing the founder's real address on a row the
+    // candidate can read would leak a contact the pitch path deliberately masks.
+    let applicationEmail: String?
     let candidateName: String
     let candidateHeadline: String?
     let candidateSchoolName: String?
@@ -751,8 +761,22 @@ struct JobApplicationRecord: Codable, Identifiable {
     let emailDeliveryStatus: String
     let emailDeliveryError: String?
     let appliedAt: Date
+    // "ats_apply" | "founder_pitch". Optional so rows cached before the column
+    // existed still decode; absent means an ordinary apply.
+    let applicationKind: String?
+    // Set whenever a founder pitch went out for this job — including on a row
+    // that later became a full application, so the history survives the upgrade.
+    let founderPitchedAt: Date?
 
     var internalNotes: String? { applicationNotes?.notes }
+
+    /// True when this row exists only because the candidate pitched the
+    /// founder; a row upgraded by a later ATS apply reads as a normal apply.
+    var isFounderPitch: Bool { applicationKind == "founder_pitch" }
+
+    /// A pitch went out at some point, whether or not the row was later
+    /// upgraded by an ordinary application.
+    var didPitchFounder: Bool { founderPitchedAt != nil || isFounderPitch }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -782,6 +806,8 @@ struct JobApplicationRecord: Codable, Identifiable {
         case emailDeliveryStatus = "email_delivery_status"
         case emailDeliveryError = "email_delivery_error"
         case appliedAt = "applied_at"
+        case applicationKind = "application_kind"
+        case founderPitchedAt = "founder_pitched_at"
     }
 }
 

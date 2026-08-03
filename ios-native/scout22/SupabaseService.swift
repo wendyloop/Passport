@@ -197,8 +197,8 @@ final class SupabaseService {
             // so the company embed flips to inner and gains the conditions.
             let companyFiltered = filters.founderReachable || filters.companySize != .all
             let companyEmbed = companyFiltered
-                ? "company:companies!inner(id,name,domain,logo_url,stage,founder_contactable,size_bucket)"
-                : "company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket)"
+                ? "company:companies!inner(id,name,domain,logo_url,stage,founder_contactable,size_bucket,last_founder_touch_at)"
+                : "company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket,last_founder_touch_at)"
             if filters.founderReachable {
                 filterParams.append(("company.founder_contactable", "eq.true"))
             }
@@ -253,7 +253,7 @@ final class SupabaseService {
         }
 
         var query: [(String, String)] = [
-            ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket),carousel:carousels(theme_id,slide_count,content,status)"),
+            ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket,last_founder_touch_at),carousel:carousels(theme_id,slide_count,content,status)"),
             ("order", "created_at.desc")
         ]
         if let employerID {
@@ -274,7 +274,7 @@ final class SupabaseService {
             let rows: [JobPostingRecord] = try await transport.selectArray(
                 path: "jobs",
                 query: [
-                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket),carousel:carousels(theme_id,slide_count,content,status)"),
+                    ("select", "*,company:companies(id,name,domain,logo_url,stage,founder_contactable,size_bucket,last_founder_touch_at),carousel:carousels(theme_id,slide_count,content,status)"),
                     ("id", "in.(\(chunk.joined(separator: ",")))")
                 ],
                 session: session

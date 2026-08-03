@@ -250,34 +250,59 @@ Deno.serve(async (request) => {
       if (upsertCandidateProfileError) throw upsertCandidateProfileError;
     }
 
-    const { data: insertedApplication, error: insertError } = await adminClient
+    const applicationRow = {
+      job_id: job.id,
+      employer_profile_id: job.employer_profile_id,
+      candidate_profile_id: user.id,
+      application_kind: "ats_apply",
+      cover_note: null,
+      job_title: job.title,
+      company_name: job.company_name,
+      job_location: job.location,
+      application_email: job.application_email,
+      candidate_name: profile.full_name ?? user.email ?? "Candidate",
+      candidate_headline: profile.headline,
+      candidate_school_name: candidateProfile?.school_name ?? null,
+      candidate_job_function: candidateProfile?.job_function ?? null,
+      candidate_dream_role: candidateProfile?.dream_role ?? null,
+      candidate_previous_employers: previousEmployers,
+      candidate_video_url: resolvedVideoURL,
+      candidate_linkedin_url: resolvedLinkedInURL,
+      candidate_instagram_username: resolvedInstagramUsername,
+      candidate_tiktok_username: resolvedTiktokUsername,
+      candidate_compensation_range: candidateProfile?.desired_compensation_range ?? null,
+      resume_file_path: resumeRecord.file_path,
+      resume_file_name: resumeFileName,
+      email_delivery_status: "pending",
+    };
+
+    let { data: insertedApplication, error: insertError } = await adminClient
       .from("job_applications")
-      .insert({
-        job_id: job.id,
-        employer_profile_id: job.employer_profile_id,
-        candidate_profile_id: user.id,
-        cover_note: null,
-        job_title: job.title,
-        company_name: job.company_name,
-        job_location: job.location,
-        application_email: job.application_email,
-        candidate_name: profile.full_name ?? user.email ?? "Candidate",
-        candidate_headline: profile.headline,
-        candidate_school_name: candidateProfile?.school_name ?? null,
-        candidate_job_function: candidateProfile?.job_function ?? null,
-        candidate_dream_role: candidateProfile?.dream_role ?? null,
-        candidate_previous_employers: previousEmployers,
-        candidate_video_url: resolvedVideoURL,
-        candidate_linkedin_url: resolvedLinkedInURL,
-        candidate_instagram_username: resolvedInstagramUsername,
-        candidate_tiktok_username: resolvedTiktokUsername,
-        candidate_compensation_range: candidateProfile?.desired_compensation_range ?? null,
-        resume_file_path: resumeRecord.file_path,
-        resume_file_name: resumeFileName,
-        email_delivery_status: "pending",
-      })
+      .insert(applicationRow)
       .select("*")
       .single();
+
+    // 23505: a row already exists for this (job, candidate). If it came from
+    // a founder pitch, upgrade it in place to a full application instead of
+    // failing — the candidate pitched first and is now applying properly.
+    // founder_pitched_at is not in the payload, so the pitch history survives.
+    // A row that is already an ats_apply is a genuine duplicate and must keep
+    // hitting the dup guard.
+    if (insertError?.code === "23505") {
+      const { data: upgraded, error: upgradeError } = await adminClient
+        .from("job_applications")
+        .update(applicationRow)
+        .eq("job_id", job.id)
+        .eq("candidate_profile_id", user.id)
+        .eq("application_kind", "founder_pitch")
+        .select("*")
+        .maybeSingle();
+      if (upgradeError) throw upgradeError;
+      if (upgraded) {
+        insertedApplication = upgraded;
+        insertError = null;
+      }
+    }
 
     if (insertError) {
       throw insertError;

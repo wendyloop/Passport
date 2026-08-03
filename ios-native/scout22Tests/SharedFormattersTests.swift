@@ -237,6 +237,105 @@ final class SharedFormattersTests: XCTestCase {
         XCTAssertEqual(try job(touch: "2026-06-20T09:00:00Z").founderFatigueBucket(now: now), 0)
     }
 
+    // FIRST-100-USERS: pitching one role must cool every role at that company
+    // for the week — one founder, several openings, one inbox.
+    func testCompanyFounderTouchDemotesSiblingRoles() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func job(jobTouch: String?, companyTouch: String?) throws -> JobPostingRecord {
+            let j = jobTouch.map { "\"\($0)\"" } ?? "null"
+            let c = companyTouch.map { "\"\($0)\"" } ?? "null"
+            let json = """
+            {"id": "j", "title": "t", "is_published": true,
+             "created_at": "2026-07-01T12:00:00Z",
+             "last_founder_touch_at": \(j),
+             "company_id": "co-1",
+             "company": {"id": "co-1", "name": "Acme", "last_founder_touch_at": \(c)}}
+            """.data(using: .utf8)!
+            return try decoder.decode(JobPostingRecord.self, from: json)
+        }
+        let now = ISO8601DateFormatter().date(from: "2026-07-08T15:00:00Z")!
+
+        // The sibling role itself was never pitched, but its company was.
+        XCTAssertEqual(try job(jobTouch: nil, companyTouch: "2026-07-08T09:00:00Z").founderFatigueBucket(now: now), 2)
+        XCTAssertEqual(try job(jobTouch: nil, companyTouch: "2026-07-05T09:00:00Z").founderFatigueBucket(now: now), 1)
+        // Older than the week: back to full priority.
+        XCTAssertEqual(try job(jobTouch: nil, companyTouch: "2026-06-20T09:00:00Z").founderFatigueBucket(now: now), 0)
+        // Neither touched.
+        XCTAssertEqual(try job(jobTouch: nil, companyTouch: nil).founderFatigueBucket(now: now), 0)
+        // The more recent of the two wins, whichever side it came from.
+        XCTAssertEqual(
+            try job(jobTouch: "2026-07-05T09:00:00Z", companyTouch: "2026-07-08T09:00:00Z").founderFatigueBucket(now: now), 2)
+        XCTAssertEqual(
+            try job(jobTouch: "2026-07-08T09:00:00Z", companyTouch: "2026-07-05T09:00:00Z").founderFatigueBucket(now: now), 2)
+        // Job-level fallback still works when no company is embedded.
+        XCTAssertEqual(try job(jobTouch: "2026-07-05T09:00:00Z", companyTouch: nil).founderFatigueBucket(now: now), 1)
+    }
+
+    // A founder pitch writes a job_applications row with a null employer and
+    // null application_email; both were non-optional until now, so this is the
+    // decode that would have taken down the whole Applications page.
+    func testFounderPitchApplicationDecodes() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let json = """
+        {"id": "a1", "job_id": "j1", "employer_profile_id": null,
+         "candidate_profile_id": "c1", "status": "submitted",
+         "job_title": "Founding Designer", "company_name": "Acme",
+         "application_email": null, "candidate_name": "Wendy",
+         "candidate_previous_employers": [],
+         "email_delivery_status": "sent",
+         "applied_at": "2026-08-01T12:00:00Z",
+         "application_kind": "founder_pitch",
+         "founder_pitched_at": "2026-08-01T12:00:00Z"}
+        """.data(using: .utf8)!
+        let application = try decoder.decode(JobApplicationRecord.self, from: json)
+        XCTAssertNil(application.employerProfileID)
+        XCTAssertNil(application.applicationEmail)
+        XCTAssertTrue(application.isFounderPitch)
+        XCTAssertTrue(application.didPitchFounder)
+    }
+
+    // A pitch upgraded by a later ATS apply reads as a normal application but
+    // keeps the pitch history.
+    func testUpgradedApplicationReadsAsApplyButKeepsPitchHistory() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let json = """
+        {"id": "a2", "job_id": "j1", "employer_profile_id": null,
+         "candidate_profile_id": "c1", "status": "submitted",
+         "job_title": "Founding Designer", "company_name": "Acme",
+         "application_email": "jobs@acme.io", "candidate_name": "Wendy",
+         "candidate_previous_employers": [],
+         "email_delivery_status": "sent",
+         "applied_at": "2026-08-01T12:00:00Z",
+         "application_kind": "ats_apply",
+         "founder_pitched_at": "2026-07-30T12:00:00Z"}
+        """.data(using: .utf8)!
+        let application = try decoder.decode(JobApplicationRecord.self, from: json)
+        XCTAssertFalse(application.isFounderPitch)
+        XCTAssertTrue(application.didPitchFounder)
+    }
+
+    // Rows cached before the columns existed must still decode as ordinary
+    // applications.
+    func testApplicationWithoutKindColumnsDecodes() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let json = """
+        {"id": "a3", "job_id": "j1", "employer_profile_id": "e1",
+         "candidate_profile_id": "c1", "status": "submitted",
+         "job_title": "Designer", "company_name": "Acme",
+         "application_email": "jobs@acme.io", "candidate_name": "Wendy",
+         "candidate_previous_employers": [],
+         "email_delivery_status": "sent",
+         "applied_at": "2026-08-01T12:00:00Z"}
+        """.data(using: .utf8)!
+        let application = try decoder.decode(JobApplicationRecord.self, from: json)
+        XCTAssertFalse(application.isFounderPitch)
+        XCTAssertFalse(application.didPitchFounder)
+    }
+
     func testCompensationSummaryPrefersAnnual() throws {
         let json = """
         {

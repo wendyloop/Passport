@@ -101,7 +101,7 @@ Deno.serve(async (request) => {
       admin.from("job_seeker_profiles")
         .select("profile_id, intro_video_url, school_name, desired_compensation_range, linkedin_url, github_url, portfolio_url, instagram_username, tiktok_username")
         .eq("profile_id", user.id).maybeSingle(),
-      admin.from("jobs").select("id, company_id, title, company_name, is_active").eq("id", jobId).single(),
+      admin.from("jobs").select("id, company_id, title, company_name, location, is_active").eq("id", jobId).single(),
       admin.from("resume_uploads").select("id, file_path, parsed_json")
         .eq("profile_id", user.id).neq("parse_status", "failed")
         .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -357,13 +357,81 @@ Deno.serve(async (request) => {
       console.error(`founder_email_sent notification insert failed: ${notifyError.message}`);
     }
 
+    const touchedAt = new Date().toISOString();
+
     // FIRST-100-USERS: stamp the job so the feed deprioritizes it — spread
     // intros across founders instead of piling onto one job. See
     // 20260708140000_founder_fatigue.sql.
     await admin
       .from("jobs")
-      .update({ last_founder_touch_at: new Date().toISOString() })
+      .update({ last_founder_touch_at: touchedAt })
       .eq("id", job.id);
+
+    // FIRST-100-USERS: and stamp the COMPANY, which demotes every one of its
+    // roles for a week. A company usually has one founder but several open
+    // roles, so demoting only the pitched job left the same inbox reachable
+    // through its siblings. Deliberately founder-pitch-only: applying through
+    // a company's own ATS portal never touches the founder's inbox and must
+    // not cool the company. See 20260801130000_founder_pitch_as_application.sql.
+    if (job.company_id) {
+      const { error: companyTouchError } = await admin
+        .from("companies")
+        .update({ last_founder_touch_at: touchedAt })
+        .eq("id", job.company_id);
+      if (companyTouchError) {
+        console.error(`company founder-touch stamp failed: ${companyTouchError.message}`);
+      }
+    }
+
+    // A pitch is an application: it shows on the candidate's Applications
+    // page and feeds affinity ranking, Saved-tab ordering and the feed's
+    // applied state, exactly like an ordinary apply. Failure-isolated — the
+    // email is already out, so a bookkeeping problem must not 500 the send.
+    try {
+      const { error: appError } = await admin.from("job_applications").insert({
+        job_id: job.id,
+        // Left null on purpose: the pitch reached a founder's personal inbox,
+        // not an employer's applicant pipeline.
+        employer_profile_id: null,
+        candidate_profile_id: user.id,
+        application_kind: "founder_pitch",
+        founder_pitched_at: touchedAt,
+        job_title: job.title ?? "Open role",
+        company_name: job.company_name ?? "the company",
+        job_location: job.location ?? null,
+        // application_email stays null — storing the founder's real address
+        // on a row the candidate can read would leak a masked contact.
+        candidate_name: candidateName,
+        candidate_headline: profile.headline ?? null,
+        candidate_school_name: seekerProfile?.school_name ?? null,
+        candidate_video_url: pitchVideoURL,
+        resume_file_path: latestResume?.file_path ?? null,
+        email_delivery_status: deliveryStatus,
+      });
+      if (appError) {
+        // 23505 = already applied (or pitched) for this job. Keep the existing
+        // row — just record that a founder pitch went out too.
+        if (appError.code === "23505") {
+          await admin
+            .from("job_applications")
+            .update({ founder_pitched_at: touchedAt })
+            .eq("job_id", job.id)
+            .eq("candidate_profile_id", user.id);
+        } else {
+          console.error(JSON.stringify({
+            event: "founder_pitch_application_insert_failed",
+            job_id: job.id,
+            error: appError.message,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "founder_pitch_application_insert_threw",
+        job_id: job.id,
+        error: (error as Error).message,
+      }));
+    }
 
     return jsonResponse({
       outreach: {
