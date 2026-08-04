@@ -56,6 +56,71 @@ Deno.serve(async (request) => {
 
     if (insertError) throw insertError;
 
+    // A submitted event = the candidate finished an application in the ATS
+    // web portal, so record it on the Applications page like any other
+    // apply. Failure-isolated: the funnel event is already stored, and a
+    // bookkeeping problem must not fail this request. If a row already
+    // exists from a founder pitch, upgrade it in place (keeping
+    // founder_pitched_at); a row that is already an ats_apply stays as the
+    // dup guard intends.
+    if (body.eventType === "submitted") {
+      try {
+        const [{ data: job }, { data: profile }] = await Promise.all([
+          adminClient
+            .from("jobs")
+            .select("id, employer_profile_id, title, company_name, location, application_email")
+            .eq("id", body.jobId)
+            .maybeSingle(),
+          adminClient
+            .from("profiles")
+            .select("full_name, headline")
+            .eq("id", user.id)
+            .maybeSingle(),
+        ]);
+
+        if (job) {
+          const applicationRow = {
+            job_id: job.id,
+            employer_profile_id: job.employer_profile_id ?? null,
+            candidate_profile_id: user.id,
+            application_kind: "ats_apply",
+            job_title: job.title ?? "Open role",
+            company_name: job.company_name ?? "the company",
+            job_location: job.location ?? null,
+            application_email: job.application_email ?? null,
+            candidate_name: profile?.full_name ?? "A scout22 candidate",
+            candidate_headline: profile?.headline ?? null,
+            // No application email exists on the portal path — the ATS
+            // received the submission directly.
+            email_delivery_status: "not_applicable",
+          };
+          const { error: appError } = await adminClient
+            .from("job_applications")
+            .insert(applicationRow);
+          if (appError?.code === "23505") {
+            await adminClient
+              .from("job_applications")
+              .update(applicationRow)
+              .eq("job_id", job.id)
+              .eq("candidate_profile_id", user.id)
+              .eq("application_kind", "founder_pitch");
+          } else if (appError) {
+            console.error(JSON.stringify({
+              event: "portal_application_record_failed",
+              job_id: job.id,
+              error: appError.message,
+            }));
+          }
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "portal_application_record_threw",
+          job_id: body.jobId,
+          error: (error as Error).message,
+        }));
+      }
+    }
+
     return new Response(JSON.stringify({ id: event.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

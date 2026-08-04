@@ -190,13 +190,23 @@ Deno.serve(async (request) => {
       return jsonError("This founder has reached their weekly pitch limit", 429);
     }
 
-    // Quota.
+    // Quota. The window starts at whichever is later: 7 days ago, or the
+    // founder_email_quota_epoch config (a one-time "give everyone a fresh 5"
+    // reset — see 20260801131000). MUST stay in lockstep with
+    // reserve_founder_email_send, which applies the same window at insert
+    // time: this gate drives the preview's `remaining` (the number the
+    // compose sheet shows and disables send on), so an epoch honored by the
+    // RPC but not here leaves users looking at 0/5 after a reset.
+    // Deliberately per-candidate only — the per-company cap and per-contact
+    // cooldown above keep their raw 7-day windows, because they protect the
+    // founder's inbox, and a user-quota reset shouldn't re-open those.
     const limit = await weeklyLimit(admin);
+    const windowStart = await quotaWindowStart(admin);
     const { count: usedCount, error: usedError } = await admin
       .from("founder_outreach_messages")
       .select("id", { count: "exact", head: true })
       .eq("candidate_profile_id", user.id)
-      .gt("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .gt("created_at", windowStart)
       .neq("delivery_status", "failed");
     if (usedError) return jsonError(usedError.message);
     const remaining = Math.max(0, limit - (usedCount ?? 0));
@@ -490,6 +500,24 @@ async function weeklyLimit(admin: ReturnType<typeof createAdminClient>): Promise
     .maybeSingle();
   const parsed = Number(data?.value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WEEKLY_LIMIT;
+}
+
+/// Start of the per-candidate quota window: max(7 days ago, quota epoch).
+/// Fail-open to the plain 7-day window if the config row is missing or
+/// unparsable — same behavior as before the epoch existed.
+async function quotaWindowStart(admin: ReturnType<typeof createAdminClient>): Promise<string> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const { data } = await admin
+    .from("app_config")
+    .select("value")
+    .eq("key", "founder_email_quota_epoch")
+    .maybeSingle();
+  const raw = typeof data?.value === "string" ? data.value : null;
+  const epoch = raw ? new Date(raw) : null;
+  if (epoch && !Number.isNaN(epoch.getTime()) && epoch > sevenDaysAgo) {
+    return epoch.toISOString();
+  }
+  return sevenDaysAgo.toISOString();
 }
 
 async function resolveContact(

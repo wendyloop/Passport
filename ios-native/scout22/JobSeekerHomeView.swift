@@ -549,8 +549,20 @@ struct JobSeekerHomeView: View {
 
     // Saved/applied tiles open the real feed experience: same cards, same
     // apply/pitch buttons, paged vertically — just scoped to the tapped set.
+    //
+    // The tapped card becomes page ZERO, with the rest of the set wrapped
+    // behind it (IG-saved style). Feeding the whole array and asking
+    // scrollPosition(id:) to restore a mid-list page misaligns under
+    // .paging — the initial restore lands off by the safe-area inset, so
+    // every card after it bled the next card's top into the bottom of the
+    // screen (page one was fine; deeper start pages weren't). Starting at
+    // offset zero sidesteps the restore entirely.
     private func openFeedViewer(jobs: [JobPostingRecord], startAt job: JobPostingRecord) {
-        savedFeedJobs = jobs
+        if let idx = jobs.firstIndex(where: { $0.id == job.id }) {
+            savedFeedJobs = Array(jobs[idx...]) + Array(jobs[..<idx])
+        } else {
+            savedFeedJobs = jobs
+        }
         savedFeedCurrentJobID = job.id
         withAnimation(.easeInOut(duration: 0.22)) {
             savedFeedStartJob = job
