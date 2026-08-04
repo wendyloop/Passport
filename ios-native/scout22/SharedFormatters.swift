@@ -5,6 +5,19 @@ import Foundation
 // allowed character sets) are intentionally NOT unified here — they differ
 // in behavior per call site.
 
+/// FIRST-100-USERS: master switch for the founder-pitch CTA (feed cards and
+/// the carousel founder slide alike). Flip `isEnabled` to hide or show it
+/// everywhere without touching call sites.
+///
+/// Deliberately separate from `JobPostingRecord.founderPitchAllowed`, which
+/// stays a pure eligibility rule — the founder-reachable filter chip depends
+/// on it and must keep working whichever way this switch is set.
+///
+/// History: hidden 2026-08-01 for the initial release, shown again 2026-08-04.
+enum FounderPitchUI {
+    static let isEnabled = true
+}
+
 extension JobPostingRecord {
     /// FIRST-100-USERS founder-fatigue rank: 0 = untouched, 1 = a founder
     /// was reached earlier this week (soft demote), 2 = reached today (hard

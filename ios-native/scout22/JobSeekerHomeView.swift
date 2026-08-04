@@ -465,10 +465,10 @@ struct JobSeekerHomeView: View {
                     safeAreaBottom: safeAreaBottom,
                     isActive: activeJobID == job.id,
                     onApply: { handleApplyTap(for: job) },
-                    // FIRST-100-USERS: founder-pitch button hidden for initial
-                    // release (2026-08-01, Wendy). Restore by swapping back:
-                    // onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
-                    onEmailFounder: nil,
+                    // FIRST-100-USERS: hide/show the pitch CTA via
+                    // FounderPitchUI.isEnabled (SharedFormatters.swift).
+                    onEmailFounder: (FounderPitchUI.isEnabled && job.founderPitchAllowed)
+                        ? { handleEmailFounderTap(for: job) } : nil,
                     onSave: { onToggleSavedJob(job.id) },
                     isSaved: savedJobIDs.contains(job.id)
                 )
@@ -481,10 +481,10 @@ struct JobSeekerHomeView: View {
                     isActive: activeJobID == job.id,
                     onToggleSaved: { onToggleSavedJob(job.id) },
                     onApply: { handleApplyTap(for: job) },
-                    // FIRST-100-USERS: founder-pitch button hidden for initial
-                    // release (2026-08-01, Wendy). Restore by swapping back:
-                    // onEmailFounder: job.founderPitchAllowed ? { handleEmailFounderTap(for: job) } : nil,
-                    onEmailFounder: nil,
+                    // FIRST-100-USERS: hide/show the pitch CTA via
+                    // FounderPitchUI.isEnabled (SharedFormatters.swift).
+                    onEmailFounder: (FounderPitchUI.isEnabled && job.founderPitchAllowed)
+                        ? { handleEmailFounderTap(for: job) } : nil,
                     onBroken: { brokenJobIDs.insert(job.id) }
                 )
             }
