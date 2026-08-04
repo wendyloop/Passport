@@ -13,9 +13,11 @@ import Foundation
 /// stays a pure eligibility rule — the founder-reachable filter chip depends
 /// on it and must keep working whichever way this switch is set.
 ///
-/// History: hidden 2026-08-01 for the initial release, shown again 2026-08-04.
+/// History: hidden 2026-08-01 for the initial release, shown 2026-08-04,
+/// hidden again 2026-08-04 (frontend-only — the send-founder-email backend
+/// stays deployed and functional; this only removes the CTA).
 enum FounderPitchUI {
-    static let isEnabled = true
+    static let isEnabled = false
 }
 
 extension JobPostingRecord {

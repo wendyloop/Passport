@@ -3965,7 +3965,13 @@ struct FeedFilters: Equatable {
         case .remote:
             params.append(("or", "(work_mode.eq.remote,location.ilike.*remote*)"))
         default:
-            let clauses = location.patterns.map { "location.ilike.*\($0)*" }.joined(separator: ",")
+            // Patterns are double-quoted: PostgREST's or=() splits clauses on
+            // commas, so the unquoted "cambridge, ma" pattern parsed as two
+            // broken conditions and 400'd the ENTIRE feed refetch — picking
+            // Boston killed the query and left the feed stale. Quoted values
+            // are comma- and space-safe (REST-verified against the hosted
+            // project for every metro).
+            let clauses = location.patterns.map { "location.ilike.\"*\($0)*\"" }.joined(separator: ",")
             params.append(("or", "(\(clauses))"))
         }
 
