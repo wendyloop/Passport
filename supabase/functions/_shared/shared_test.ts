@@ -12,6 +12,7 @@ import { attachmentFilename } from "./email_attachments.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 import { isSensitiveLabel, matchCanonical } from "./profile_fields.ts";
+import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -380,4 +381,41 @@ Deno.test("matchCanonical no longer canonicalizes EEO labels", () => {
   // Ordinary canonicalization still works.
   assertEquals(matchCanonical("First Name"), "first_name");
   assertEquals(matchCanonical("Pronouns"), "pronouns");
+});
+
+// ── Work at a Startup adapter parsing ────────────────────────────────
+// Fixtures mirror the real page shape: WaaS renders its server props into
+// a data-page attribute with HTML-escaped JSON.
+
+Deno.test("extractPageProps decodes the WaaS data-page blob", () => {
+  const html = `<div id="app" data-page="{&quot;props&quot;:{&quot;job&quot;:{&quot;id&quot;:72052,` +
+    `&quot;title&quot;:&quot;Senior Engineer, Payments &amp; Risk&quot;,` +
+    `&quot;descriptionHtml&quot;:&quot;&lt;p&gt;Build it&lt;/p&gt;&quot;}}}"></div>`;
+  const props = extractPageProps(html);
+  const job = props?.job as { id: number; title: string; descriptionHtml: string };
+  assertEquals(job.id, 72052);
+  assertEquals(job.title, "Senior Engineer, Payments & Risk");
+  assertEquals(job.descriptionHtml, "<p>Build it</p>");
+});
+
+Deno.test("extractPageProps returns null on missing or malformed blobs", () => {
+  assertEquals(extractPageProps("<html><body>login wall</body></html>"), null);
+  assertEquals(extractPageProps(`<div data-page="{not json}"></div>`), null);
+});
+
+Deno.test("decodeHtmlEntities decodes ampersands last", () => {
+  // &amp;quot; must survive as the literal text &quot;, not become a quote —
+  // decoding & first would corrupt it and break JSON.parse.
+  assertEquals(decodeHtmlEntities("&amp;quot;"), "&quot;");
+  assertEquals(decodeHtmlEntities("R&amp;D &lt;team&gt;"), "R&D <team>");
+});
+
+Deno.test("htmlToText flattens JD markup into embedding-ready text", () => {
+  const html = "<p>We are hiring.</p><ul><li>Rust</li><li>Postgres</li></ul>" +
+    "<p>Comp:&nbsp;$150K&amp;up</p>";
+  assertEquals(
+    htmlToText(html),
+    "We are hiring.\nRust\nPostgres\nComp: $150K&up",
+  );
+  assertEquals(htmlToText("<p></p>"), "");
 });

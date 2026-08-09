@@ -24,6 +24,8 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient } from "../_shared/client.ts";
 import { getBoardAdapter } from "../_shared/boards/index.ts";
 import { upsertCompanyAndLink } from "../_shared/boards/upsert.ts";
+import { insertFounderContacts } from "../_shared/contacts.ts";
+import type { WaaSCompanyFounders } from "../_shared/boards/workatastartup.ts";
 import {
   classifyApplyURL,
   computeDedupKey,
@@ -85,7 +87,7 @@ Deno.serve(async (request) => {
   const fundQuery = admin
     .from("funds")
     .select("id, name, slug, board_url, platform, external_collection_id, crawl_cursor")
-    .in("platform", ["getro", "consider"])
+    .in("platform", ["getro", "consider", "workatastartup"])
     .order("crawl_cursor", { ascending: false, nullsFirst: false });
   if (body.fund_slug) fundQuery.eq("slug", body.fund_slug);
 
@@ -200,6 +202,33 @@ async function ingestFund(
     } catch (error) {
       console.error(JSON.stringify({
         event: "ingest_jobs_company_upsert_failed",
+        fund_slug: fund.slug,
+        company_name: company.name,
+        error: (error as Error).message,
+      }));
+    }
+  }
+
+  // WaaS is the only board that names founders on the company page. Feed
+  // them to the shared contact pipeline so YC jobs are founder-reachable
+  // without waiting on the enrich-company-contacts scrape cron.
+  const founderGroups = (result as { founders?: WaaSCompanyFounders[] }).founders ?? [];
+  for (const group of founderGroups) {
+    const companyId = companyIdByBoardExtId.get(group.company_board_external_id);
+    const company = result.companies.find(
+      (c) => c.board_external_id === group.company_board_external_id,
+    );
+    if (!companyId || !company?.domain) continue;
+    try {
+      await insertFounderContacts(admin, {
+        companyId,
+        domain: company.domain,
+        founders: group.founders.map((f) => ({ ...f, confidence: 0.9 })),
+        source: "yc_directory",
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "ingest_jobs_founder_upsert_failed",
         fund_slug: fund.slug,
         company_name: company.name,
         error: (error as Error).message,
@@ -340,6 +369,10 @@ function buildJobRows(
       ats_token: resolution?.ats_token ?? null,
       ats_external_id: resolution?.ats_external_id ?? null,
       source_url: job.apply_url,
+      // Only WaaS supplies these at ingest; the RPC coalesces so a null
+      // here never clears a description another pass already filled.
+      description: job.description ?? null,
+      description_raw: job.description_raw ?? null,
       now_ts: nowISO,
     });
   }

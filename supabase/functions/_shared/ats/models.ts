@@ -68,7 +68,7 @@ export type FundRow = {
   name: string;
   slug: string;
   board_url: string | null;
-  platform: "getro" | "consider" | "bespoke" | null;
+  platform: "getro" | "consider" | "bespoke" | "workatastartup" | null;
   external_collection_id: string | null; // Getro: collection id, Consider: board slug
 };
 

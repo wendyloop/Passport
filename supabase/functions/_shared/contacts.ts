@@ -12,7 +12,13 @@ export type FounderCandidate = {
   confidence: number | null;
 };
 
-export type ContactSource = "llm_job_listing" | "llm_scrape" | "posting_email" | "manual";
+export type ContactSource =
+  | "llm_job_listing"
+  | "llm_scrape"
+  | "posting_email"
+  | "manual"
+  // Founders named on a YC company page (WaaS ingest, migration 20260801120000).
+  | "yc_directory";
 
 const HONORIFICS = new Set(["dr", "mr", "mrs", "ms", "prof"]);
 

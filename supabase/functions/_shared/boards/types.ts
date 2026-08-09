@@ -39,6 +39,11 @@ export type BoardJob = {
   compensation_text: string | null;
   compensation: ParsedCompensation;
   employment_type: string | null;
+  // Most boards ship listing stubs only and leave the body to
+  // enrich-descriptions. WaaS is the exception — it hands over the full JD
+  // at ingest time, so these are optional and default to null.
+  description?: string | null;
+  description_raw?: string | null;
 };
 
 export type AdapterInput = {

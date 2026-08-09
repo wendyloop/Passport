@@ -2,10 +2,12 @@
 
 import { getroAdapter } from "./getro.ts";
 import { considerAdapter } from "./consider.ts";
+import { workAtAStartupAdapter } from "./workatastartup.ts";
 import type { BoardAdapter } from "./types.ts";
 
 export function getBoardAdapter(platform: string | null): BoardAdapter | null {
   if (platform === "getro") return getroAdapter;
   if (platform === "consider") return considerAdapter;
+  if (platform === "workatastartup") return workAtAStartupAdapter;
   return null;
 }
