@@ -10,6 +10,18 @@
 //      The `description IS NULL` guard makes enrichment write-once at the
 //      column level — once filled, the description text is frozen even if
 //      the ATS edits the JD copy.
+//   4. Soft-close the pending jobs the adapter did NOT return: the ATS is the
+//      system of record, so a posting absent from a successfully-fetched,
+//      non-empty board is closed. See _shared/ats/vanished.ts for why
+//      ingest-jobs' board-driven sweep misses these.
+//
+// Why (4) belongs here: without it the queue is self-perpetuating. A closed
+// posting can never be enriched, but it keeps its company in
+// get_stale_enrichable_companies forever, so every hourly run spends its
+// 30-company budget re-fetching boards for jobs that cannot be filled. As of
+// 2026-08-09 that was ~2.1k un-fillable rows — a 45-company / 1,150-job sweep
+// against the live boards found 91% simply no longer exist upstream — starving
+// the genuinely new postings the feed needs.
 //
 // Per-run budget + oldest-first ordering: 2,400+ companies × per-company HTTP
 // can't finish in 60s. companies.last_synced_at doubles as a queue cursor.
@@ -27,6 +39,7 @@ import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
 import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { insertPostingEmailContact } from "../_shared/contacts.ts";
+import { feedIsAuthoritative, selectVanishedJobIds } from "../_shared/ats/vanished.ts";
 
 const RUN_BUDGET_MS = 50_000;
 // Each company costs one ATS list-fetch (often hundreds of HTML JD bodies in
@@ -34,6 +47,13 @@ const RUN_BUDGET_MS = 50_000;
 // the worker for memory. 30 fits comfortably; the hourly cron drains the
 // backlog over a day.
 const MAX_COMPANIES_PER_RUN = 30;
+// Grace before a job the ATS board doesn't list is soft-closed, matching
+// ingest-jobs' EXPIRY_GRACE_MS. Absorbs the ingest→enrich race where a board
+// surfaces a posting before it appears in a cached ATS response.
+const VANISHED_GRACE_MS = 48 * 60 * 60 * 1000;
+// PostgREST puts `.in()` values in the query string; chunk so a company with
+// hundreds of closed postings can't blow the URL length limit.
+const EXPIRE_CHUNK = 100;
 
 type RequestBody = { company_id?: string };
 
@@ -42,6 +62,7 @@ type EnrichOutcome = {
   company_name: string;
   jobs_pending: number;
   jobs_enriched: number;
+  jobs_expired: number;
   error: string | null;
 };
 
@@ -55,6 +76,7 @@ type CompanyRow = {
 type PendingJob = {
   id: string;
   ats_external_id: string;
+  created_at: string | null;
 };
 
 Deno.serve(async (request) => {
@@ -122,6 +144,7 @@ Deno.serve(async (request) => {
     companies_remaining: budgetHit ? companies.length - outcomes.length : 0,
     budget_hit: budgetHit,
     enriched: sum(outcomes, (o) => o.jobs_enriched),
+    expired: sum(outcomes, (o) => o.jobs_expired),
     errored: outcomes.filter((o) => o.error).length,
     duration_ms: Date.now() - startedAt,
   };
@@ -140,6 +163,7 @@ async function enrichCompany(
     company_name: company.name,
     jobs_pending: 0,
     jobs_enriched: 0,
+    jobs_expired: 0,
     error: null,
   };
 
@@ -149,7 +173,7 @@ async function enrichCompany(
   // ats_external_id, or remain description-less which is acceptable).
   const { data: pendingJobs, error: pendingError } = await admin
     .from("jobs")
-    .select("id, ats_external_id")
+    .select("id, ats_external_id, created_at")
     .eq("company_id", company.id)
     .is("description", null)
     .eq("is_active", true)
@@ -223,7 +247,65 @@ async function enrichCompany(
     }
   }
 
-  return { ...base, jobs_pending: pending.length, jobs_enriched: enriched };
+  // Close the pending jobs the board didn't return. Failure-isolated: a broken
+  // expiry must not discard the enrichment we just did.
+  let expired = 0;
+  if (feedIsAuthoritative(fetched.length)) {
+    const vanishedIds = selectVanishedJobIds(pending, new Set(fetchedById.keys()), {
+      now: Date.now(),
+      graceMs: VANISHED_GRACE_MS,
+    });
+    try {
+      expired = await expireVanishedJobs(admin, company.id, vanishedIds);
+    } catch (expireError) {
+      console.error(JSON.stringify({
+        event: "enrich_descriptions_expire_failed",
+        company_id: company.id,
+        error: (expireError as Error).message,
+      }));
+    }
+  }
+
+  return {
+    ...base,
+    jobs_pending: pending.length,
+    jobs_enriched: enriched,
+    jobs_expired: expired,
+  };
+}
+
+/**
+ * Soft-closes jobs confirmed gone from their ATS. The `is_active` guard keeps
+ * the count honest when a concurrent ingest run closed the same row first.
+ */
+async function expireVanishedJobs(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  jobIds: string[],
+): Promise<number> {
+  let expired = 0;
+  for (let i = 0; i < jobIds.length; i += EXPIRE_CHUNK) {
+    const slice = jobIds.slice(i, i + EXPIRE_CHUNK);
+    const { error, count } = await admin
+      .from("jobs")
+      .update(
+        { is_active: false, closed_at: new Date().toISOString() },
+        { count: "exact" },
+      )
+      .in("id", slice)
+      .eq("is_active", true);
+    if (error) {
+      console.error(JSON.stringify({
+        event: "enrich_descriptions_expire_chunk_failed",
+        company_id: companyId,
+        chunk_start: i,
+        error: error.message,
+      }));
+      continue;
+    }
+    expired += count ?? 0;
+  }
+  return expired;
 }
 
 function sum<T>(items: T[], pick: (item: T) => number): number {

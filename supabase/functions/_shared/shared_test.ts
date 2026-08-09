@@ -12,6 +12,7 @@ import { attachmentFilename } from "./email_attachments.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 import { isSensitiveLabel, matchCanonical } from "./profile_fields.ts";
+import { feedIsAuthoritative, selectVanishedJobIds } from "./ats/vanished.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -380,4 +381,50 @@ Deno.test("matchCanonical no longer canonicalizes EEO labels", () => {
   // Ordinary canonicalization still works.
   assertEquals(matchCanonical("First Name"), "first_name");
   assertEquals(matchCanonical("Pronouns"), "pronouns");
+});
+
+// --- ATS vanished-posting detection (enrich-descriptions expiry) ---
+
+const HOUR = 60 * 60 * 1000;
+const NOW = Date.parse("2026-08-09T12:00:00Z");
+const GRACE = 48 * HOUR;
+const AGED = new Date(NOW - 30 * 24 * HOUR).toISOString();
+
+Deno.test("selectVanishedJobIds picks only aged jobs absent from the board", () => {
+  const ids = selectVanishedJobIds(
+    [
+      { id: "gone", ats_external_id: "111", created_at: AGED },
+      { id: "live", ats_external_id: "222", created_at: AGED },
+    ],
+    new Set(["222", "333"]),
+    { now: NOW, graceMs: GRACE },
+  );
+  assertEquals(ids, ["gone"]);
+});
+
+// The ingest→enrich race: the VC board can surface a posting before it shows
+// up in a cached ATS response, so freshly-created rows are left alone.
+Deno.test("selectVanishedJobIds spares jobs inside the grace window", () => {
+  const jobs = [
+    { id: "fresh", ats_external_id: "111", created_at: new Date(NOW - HOUR).toISOString() },
+    { id: "edge", ats_external_id: "222", created_at: new Date(NOW - GRACE).toISOString() },
+  ];
+  assertEquals(selectVanishedJobIds(jobs, new Set(), { now: NOW, graceMs: GRACE }), ["edge"]);
+});
+
+// Fail safe: an unusable created_at means we cannot prove the grace window has
+// elapsed, so the posting stays active rather than being hidden.
+Deno.test("selectVanishedJobIds keeps jobs with an unusable created_at", () => {
+  const jobs = [
+    { id: "null-ts", ats_external_id: "111", created_at: null },
+    { id: "junk-ts", ats_external_id: "222", created_at: "not a date" },
+  ];
+  assertEquals(selectVanishedJobIds(jobs, new Set(), { now: NOW, graceMs: GRACE }), []);
+});
+
+// A renamed or dead board token returns zero jobs, which must never be read as
+// "every posting closed".
+Deno.test("feedIsAuthoritative rejects an empty adapter result", () => {
+  assertEquals(feedIsAuthoritative(0), false);
+  assertEquals(feedIsAuthoritative(1), true);
 });

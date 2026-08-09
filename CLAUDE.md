@@ -73,14 +73,14 @@ cd ios-native
 xcodebuild build -project scout22.xcodeproj -scheme scout22 \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 xcodebuild test  -project scout22.xcodeproj -scheme scout22 \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 50 unit tests
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 73 unit tests
 ```
 
 Edge-function tests (pure-logic helpers in `_shared/`) — run from the **repo
 root**, not `ios-native/` (the test path is relative):
 
 ```bash
-deno test --allow-env supabase/functions/_shared/shared_test.ts   # 18 tests
+deno test --allow-env supabase/functions/_shared/shared_test.ts   # 36 tests
 ```
 
 **"Full test suite" = both commands above.** Run both after every change;
