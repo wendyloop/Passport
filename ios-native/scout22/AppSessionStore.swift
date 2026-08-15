@@ -1028,7 +1028,10 @@ final class AppSessionStore: ObservableObject {
         )
     }
 
-    private func requireSession() async throws -> AuthSession {
+    /// Internal rather than private: SocialExportStore needs a refreshed
+    /// session for its upload batches, and this is the only accessor that
+    /// renews an expiring token before handing it out.
+    func requireSession() async throws -> AuthSession {
         guard let session else { throw SupabaseServiceError.missingSession }
         let valid = try await sessionValidator.ensureValidSession(session)
         if valid.accessToken != session.accessToken {

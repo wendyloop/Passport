@@ -119,4 +119,13 @@ final class RenderSmokeTests: XCTestCase {
         XCTAssertNotNil(image)
     }
 
+    // The admin Social tab sits behind sign-in, so this is the only
+    // automated check that it draws. An unconfigured store (no session
+    // provider) must render the empty state rather than trap.
+    func testSocialExportViewRendersEmptyState() throws {
+        let image = render(SocialExportView(store: SocialExportStore()))
+        let unwrapped = try XCTUnwrap(image, "social export view failed to render")
+        XCTAssertGreaterThan(unwrapped.size.width, 300)
+    }
+
 }

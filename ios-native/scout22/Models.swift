@@ -586,6 +586,79 @@ struct DetailsSlide: Codable, Equatable {
     }
 }
 
+// MARK: - Social distribution
+
+enum SocialPlatform: String, Codable, CaseIterable, Identifiable {
+    case instagram
+    case tiktok
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .instagram: return "Instagram"
+        case .tiktok:    return "TikTok"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .instagram: return "camera.fill"
+        case .tiktok:    return "music.note"
+        }
+    }
+}
+
+enum SocialPostStatus: String, Codable {
+    /// Images rendered and uploaded; waiting for the publisher.
+    case rendered
+    case posted
+    case failed
+    /// Manual kill switch — never publish this one.
+    case skipped
+}
+
+/// One job's carousel prepared for one platform. Written by the admin
+/// exporter, consumed by the publish-social-post cron.
+struct SocialPostRecord: Codable, Identifiable {
+    let id: String
+    let jobID: String
+    let platform: SocialPlatform
+    let status: SocialPostStatus
+    /// Paths inside the `social-cards` bucket, in slide order.
+    let imagePaths: [String]
+    let caption: String
+    let hashtags: [String]
+    let permalink: String?
+    let postedAt: Date?
+    let error: String?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, platform, status, caption, hashtags, permalink, error
+        case jobID = "job_id"
+        case imagePaths = "image_paths"
+        case postedAt = "posted_at"
+        case createdAt = "created_at"
+    }
+}
+
+/// Insert payload — separate from the read model so server-managed columns
+/// (id, status, timestamps) aren't sent.
+struct SocialPostDraft: Encodable {
+    let jobID: String
+    let platform: String
+    let imagePaths: [String]
+    let caption: String
+    let hashtags: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case platform, caption, hashtags
+        case jobID = "job_id"
+        case imagePaths = "image_paths"
+    }
+}
+
 struct JobPostingRecord: Codable, Identifiable {
     let id: String
     let employerProfileID: String?

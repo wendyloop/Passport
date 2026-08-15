@@ -238,8 +238,10 @@ struct NativeRootView: View {
             )
             */
         case .admin:
-            jobSeekerHome()
-            /*
+            // Restored 2026-08-15 (employer stays hidden): the social-card
+            // exporter lives in this view's Social tab, and admin is an
+            // internal-only role, so the pre-launch reason for hiding it —
+            // don't show half-built surfaces to real users — doesn't apply.
             AdminHomeView(
                 jobs: store.adminJobs,
                 employers: store.employerDirectoryItems,
@@ -254,9 +256,9 @@ struct NativeRootView: View {
                 },
                 onRefresh: { Task { await store.refreshCurrentRoleData() } },
                 onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } }
+                onSignOut: { Task { await store.signOut() } },
+                socialSession: { try await store.requireSession() }
             )
-            */
         case .none:
             // Role not yet chosen — default to the candidate experience.
             jobSeekerHome()

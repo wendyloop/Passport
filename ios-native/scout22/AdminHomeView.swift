@@ -13,6 +13,8 @@ struct AdminHomeView: View {
     let onRefresh: () -> Void
     let onShowNotifications: () -> Void
     let onSignOut: () -> Void
+    /// Supplies a token-refreshed session to the social exporter.
+    let socialSession: () async throws -> AuthSession
 
     @State private var showingCreateSheet = false
     @State private var showingVideoStudio = false
@@ -20,6 +22,7 @@ struct AdminHomeView: View {
     @State private var selectedVideoName = ""
     @State private var selectedTab: AdminHomeTab = .manage
     @State private var currentPreviewJobID: String?
+    @StateObject private var socialExport = SocialExportStore()
 
     var body: some View {
         NavigationStack {
@@ -29,9 +32,15 @@ struct AdminHomeView: View {
                     manageView
                 case .feedPreview:
                     feedPreviewView
+                case .social:
+                    SocialExportView(store: socialExport)
                 }
             }
             .background(PassportTheme.background)
+            .task {
+                socialExport.sessionProvider = socialSession
+                await socialExport.loadQueue()
+            }
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
             Scout22VideoStudio(
@@ -281,6 +290,7 @@ struct AdminHomeView: View {
 private enum AdminHomeTab: String, CaseIterable, Identifiable {
     case manage
     case feedPreview
+    case social
 
     var id: String { rawValue }
 
@@ -290,6 +300,8 @@ private enum AdminHomeTab: String, CaseIterable, Identifiable {
             return "Manage"
         case .feedPreview:
             return "Feed Preview"
+        case .social:
+            return "Social"
         }
     }
 }

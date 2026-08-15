@@ -426,3 +426,7 @@ verify_jwt = false
 # Cron-invoked (x-pitch-cron-secret); pg_net calls carry no JWT.
 [functions.embed-jobs]
 verify_jwt = false
+
+# Publishes queued carousel cards to Instagram; cron-invoked.
+[functions.publish-social-post]
+verify_jwt = false

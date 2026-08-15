@@ -541,11 +541,106 @@ final class SupabaseService {
         return storageBase.appendingPathComponent(normalized)
     }
 
+    // MARK: - Social distribution (admin only; RLS + the queue RPC enforce it)
+
+    /// Job ids eligible for a social post on this platform. The RPC is the
+    /// quality gate — see 20260815110000_social_posts.sql for what it filters
+    /// and why. It self-guards on the admin role, so a non-admin caller gets
+    /// an empty list rather than an error.
+    func fetchJobIDsNeedingSocialPost(
+        limit: Int,
+        platform: SocialPlatform,
+        session: AuthSession
+    ) async throws -> [String] {
+        let rows: [RowIdentifier] = try await transport.rpc(
+            function: "get_jobs_needing_social_post",
+            parameters: [
+                "p_limit": AnyEncodable(limit),
+                "p_platform": AnyEncodable(platform.rawValue)
+            ],
+            session: session
+        )
+        return rows.map(\.id)
+    }
+
+    /// Uploads one rendered slide to the public `social-cards` bucket.
+    /// Public by necessity: Meta's and TikTok's media fetchers pull the URL
+    /// unauthenticated at publish time.
+    func uploadSocialCard(
+        path: String,
+        jpeg: Data,
+        session: AuthSession
+    ) async throws -> StorageUploadResult {
+        try await uploadFile(
+            bucket: "social-cards",
+            path: path,
+            data: jpeg,
+            contentType: "image/jpeg",
+            session: session,
+            upsert: true
+        )
+    }
+
+    /// Upsert on (job_id, platform) so re-running a batch after a partial
+    /// failure refreshes the row instead of tripping the unique constraint.
+    /// Unauthenticated URL for an object in a public bucket. Mirrors the URL
+    /// `uploadFile` returns, for callers that hold only a stored path.
+    func publicStorageURL(bucket: String, path: String) -> URL? {
+        guard let base = try? transport.storageBaseURL() else { return nil }
+        return base.appendingPathComponent("object/public/\(bucket)/\(transport.encodeStoragePath(path))")
+    }
+
+    func createSocialPost(_ draft: SocialPostDraft, session: AuthSession) async throws {
+        let _: EmptyPayload = try await transport.postgrestWrite(
+            path: "social_posts",
+            method: "POST",
+            body: [draft],
+            session: session,
+            prefer: "return=minimal,resolution=merge-duplicates"
+        )
+    }
+
+    func fetchSocialPosts(
+        platform: SocialPlatform? = nil,
+        limit: Int = 100,
+        session: AuthSession
+    ) async throws -> [SocialPostRecord] {
+        var query: [(String, String)] = [
+            ("select", "*"),
+            ("order", "created_at.desc"),
+            ("limit", "\(limit)")
+        ]
+        if let platform {
+            query.append(("platform", "eq.\(platform.rawValue)"))
+        }
+        return try await transport.selectArray(path: "social_posts", query: query, session: session)
+    }
+
+    /// Manual override — mark a queued post as never-publish, or resurrect a
+    /// skipped one.
+    func updateSocialPostStatus(
+        id: String,
+        status: SocialPostStatus,
+        session: AuthSession
+    ) async throws {
+        let _: EmptyPayload = try await transport.patchSingle(
+            path: "social_posts",
+            query: [("id", "eq.\(id)")],
+            body: ["status": AnyEncodable(status.rawValue)],
+            session: session
+        )
+    }
+
     // MARK: - Generic
 
     func delete(path: String, query: [(String, String)], session: AuthSession) async throws {
         try await transport.delete(path: path, query: query, session: session)
     }
+}
+
+/// PostgREST returns `[{"id": "..."}]` from queue RPCs.
+private struct RowIdentifier: Decodable {
+    let id: String
 }
 
 private struct CandidateOutreachEnvelope: Codable {

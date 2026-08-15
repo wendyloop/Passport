@@ -39,7 +39,7 @@ function using the service-role client.
 
 ## Layout
 
-- `ios-native/scout22/` — all app source, deliberately flat (~31 Swift files, no
+- `ios-native/scout22/` — all app source, deliberately flat (~34 Swift files, no
   subfolders). Largest: `JobSeekerHomeView`, `VideoStudio` (recording/editing),
   `EmployerHomeView`, `Models.swift`, `AppSessionStore`.
 - `ios-native/scout22ShareExtension/` — share-sheet target: share an Instagram/TikTok
@@ -53,7 +53,9 @@ function using the service-role client.
   `send-founder-email`, `resend-webhook`), ingestion (`ingest-jobs`,
   `trigger-apify-scrape`, `process-apify-results`, `ingest-shared-reel`), enrichment
   (`enrich-descriptions`, `enrich-company-contacts`, `generate-carousel`,
-  `parse-resume`), sharing (`job-share` public OG landing page).
+  `parse-resume`), sharing (`job-share` public OG landing page), social
+  distribution (`publish-social-post` posts rendered carousel cards to
+  Instagram; the cards themselves are rendered on-device — see below).
 - `scripts/drain-carousels.sh` — manually drain the carousel-generation backlog.
 - `docs/DEFERRED_WORK.md` — **the** planning doc: consolidated backlog + build order.
 - `services/` — empty; the legacy Node carousel service was folded into the
@@ -73,14 +75,14 @@ cd ios-native
 xcodebuild build -project scout22.xcodeproj -scheme scout22 \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 xcodebuild test  -project scout22.xcodeproj -scheme scout22 \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 76 unit tests
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 87 unit tests
 ```
 
 Edge-function tests (pure-logic helpers in `_shared/`) — run from the **repo
 root**, not `ios-native/` (the test path is relative):
 
 ```bash
-deno test --allow-env supabase/functions/_shared/shared_test.ts   # 18 tests
+deno test --allow-env supabase/functions/_shared/shared_test.ts   # 36 tests
 ```
 
 **"Full test suite" = both commands above.** Run both after every change;
@@ -109,7 +111,7 @@ points the simulator at the hosted project through the local xcconfig.
 ## Deploy pitfall: verify_jwt
 
 Cron-invoked functions (`ingest-jobs`, `enrich-descriptions`, `generate-carousel`,
-`enrich-company-contacts`) authenticate with an `x-pitch-cron-secret` header
+`enrich-company-contacts`, `publish-social-post`) authenticate with an `x-pitch-cron-secret` header
 (fail-closed in `_shared/cron_auth.ts`) — pg_net cron calls carry no JWT. Same for
 `resend-webhook` (signature auth) and `job-share` (public). Their
 `[functions.<name>] verify_jwt = false` entries in `supabase/config.toml` keep a

@@ -20,6 +20,9 @@
 		A10000010000000000000012 /* AppSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* AppSessionStore.swift */; };
 		A10000010000000000000013 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* LaunchScreen.storyboard */; };
 		A10000010000000000000015 /* AdminHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* AdminHomeView.swift */; };
+		A10000010000000000000042 /* SocialCardExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* SocialCardExporter.swift */; };
+		A10000010000000000000043 /* SocialExportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000043 /* SocialExportStore.swift */; };
+		A10000010000000000000044 /* SocialExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000044 /* SocialExportView.swift */; };
 		A10000010000000000000016 /* SharedUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* SharedUI.swift */; };
 		A10000010000000000000017 /* VideoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* VideoComponents.swift */; };
 		A10000010000000000000018 /* VideoStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* VideoStudio.swift */; };
@@ -45,6 +48,7 @@
 		A100000100000000000E0031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
 		A100000100000000000E0032 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* KeychainStore.swift */; };
 		A2D918232FD8BC580087EF97 /* scout22ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* scout22ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AB0000010000000000000009 /* SocialCardExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000009 /* SocialCardExporterTests.swift */; };
 		AB0000010000000000000001 /* ModelsDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000001 /* ModelsDecodingTests.swift */; };
 		AB0000010000000000000002 /* SharedFormattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000002 /* SharedFormattersTests.swift */; };
 		AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */; };
@@ -101,6 +105,9 @@
 		A20000010000000000000013 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A20000010000000000000014 /* scout22.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = scout22.xcconfig; sourceTree = "<group>"; };
 		A20000010000000000000015 /* AdminHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminHomeView.swift; sourceTree = "<group>"; };
+		A20000010000000000000042 /* SocialCardExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporter.swift; sourceTree = "<group>"; };
+		A20000010000000000000043 /* SocialExportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportStore.swift; sourceTree = "<group>"; };
+		A20000010000000000000044 /* SocialExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportView.swift; sourceTree = "<group>"; };
 		A20000010000000000000016 /* SharedUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUI.swift; sourceTree = "<group>"; };
 		A20000010000000000000017 /* VideoComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoComponents.swift; sourceTree = "<group>"; };
 		A20000010000000000000018 /* VideoStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStudio.swift; sourceTree = "<group>"; };
@@ -125,6 +132,7 @@
 		A20000010000000000000037 /* CarouselCardTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselCardTemplates.swift; sourceTree = "<group>"; };
 		A20000010000000000000041 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		A2D918192FD8BC580087EF97 /* scout22ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = scout22ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0000010000000000000009 /* SocialCardExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporterTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000001 /* ModelsDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsDecodingTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000002 /* SharedFormattersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedFormattersTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseErrorMappingTests.swift; sourceTree = "<group>"; };
@@ -202,6 +210,9 @@
 				A20000010000000000000011 /* SupabaseService.swift */,
 				A20000010000000000000012 /* AppSessionStore.swift */,
 				A20000010000000000000015 /* AdminHomeView.swift */,
+				A20000010000000000000042 /* SocialCardExporter.swift */,
+				A20000010000000000000043 /* SocialExportStore.swift */,
+				A20000010000000000000044 /* SocialExportView.swift */,
 				A20000010000000000000016 /* SharedUI.swift */,
 				A20000010000000000000017 /* VideoComponents.swift */,
 				A20000010000000000000018 /* VideoStudio.swift */,
@@ -241,6 +252,7 @@
 		AD00000100000000000000B1 /* scout22Tests */ = {
 			isa = PBXGroup;
 			children = (
+				AC0000010000000000000009 /* SocialCardExporterTests.swift */,
 				AC0000010000000000000001 /* ModelsDecodingTests.swift */,
 				AC0000010000000000000002 /* SharedFormattersTests.swift */,
 				AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */,
@@ -399,6 +411,9 @@
 				A10000010000000000000006 /* Models.swift in Sources */,
 				A10000010000000000000002 /* NativeRootView.swift in Sources */,
 				A10000010000000000000001 /* Scout22App.swift in Sources */,
+				A10000010000000000000042 /* SocialCardExporter.swift in Sources */,
+				A10000010000000000000043 /* SocialExportStore.swift in Sources */,
+				A10000010000000000000044 /* SocialExportView.swift in Sources */,
 				A10000010000000000000016 /* SharedUI.swift in Sources */,
 				A10000010000000000000005 /* Theme.swift in Sources */,
 				A10000010000000000000017 /* VideoComponents.swift in Sources */,
@@ -428,6 +443,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB0000010000000000000009 /* SocialCardExporterTests.swift in Sources */,
 				AB0000010000000000000001 /* ModelsDecodingTests.swift in Sources */,
 				AB0000010000000000000002 /* SharedFormattersTests.swift in Sources */,
 				AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */,
