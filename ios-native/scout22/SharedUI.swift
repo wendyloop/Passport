@@ -305,6 +305,29 @@ struct SocialLinksRow: View {
     }
 }
 
+/// Single-letter company badge used by the saved/applied grid tiles.
+struct CompanyMonogram: View {
+    let name: String
+    let background: Color
+    let foreground: Color
+    var size: CGFloat = 44
+    /// nil renders a circle; a value renders a rounded square.
+    var cornerRadius: CGFloat? = nil
+
+    private var letter: String {
+        name.first.map { String($0).uppercased() } ?? "•"
+    }
+
+    var body: some View {
+        Text(letter)
+            .font(.system(size: size * 0.48, weight: .black, design: .rounded))
+            .foregroundStyle(foreground)
+            .frame(width: size, height: size)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? size / 2, style: .continuous))
+    }
+}
+
 // Vertical clearances for the feed, derived from the overlaid TikTok-style
 // tab bar (content ~52pt + margins) so cards render correctly on every
 // device size — the safe-area inset supplies the per-device remainder.

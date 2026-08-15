@@ -27,7 +27,7 @@ Effort: S ≈ hours · M ≈ a day-ish · L ≈ multi-day.
 
 | ID | Item | Source | Effort | Depends on |
 |---|---|---|---|---|
-| F9 | Throttle `pitch-generate-carousel` back from `*/30` to hourly/daily **after** the backlog drains (the backfill itself is already running; this is the cost-hygiene step at the end, not the backfill) | rescue migration comment | S | carousel backlog drained |
+| ~~F9~~ | ~~Throttle `pitch-generate-carousel` back after the backlog drains~~ — ✅ **done 2026-08-15** (`20260815100000_carousel_cron_restore.sql`). Backlog hit 0; schedule restored `*/2` → `*/30`. The `*/2` had been set live via `cron.alter_job` on 07-31, so the repo read `*/30` for two weeks while production ran `*/2` — the restore is a migration specifically so that can't recur | rescue migration comment | S | — |
 | F10 | Share-a-job loop. **F10a ShareLink + F10c landing page shipped 2026-07-11** (links point at the Supabase-hosted `job-share` function for now; deep link via `jobtok://job/{id}`). Remaining: **F10b** universal links once tryscout22.com hosts the page + AASA, **F10d** rendered share image. `APP_STORE_URL` secret is the fill-in for the get-the-app CTA | user request | M (remaining) | ⚠ open questions below |
 
 ### Platform / tech debt
@@ -69,8 +69,8 @@ impact → quick wins early.
 ### Milestone 1 — "The feed doesn't lie" — ✅ SHIPPED 2026-07-11 (PR #15)
 F5 aggregator blocklist · F3 comp-first ranking · F8 big-co demotion +
 apply-only gating · F2 experience/work-mode filter chips · T4 board retry ·
-T2 carousel-service deleted. **F9 still pending**: throttle the carousel
-cron back from `*/30` once the backlog drains (96/32k done at ship time).
+T2 carousel-service deleted. **F9 closed 2026-08-15**: backlog fully drained
+(0 jobs without a carousel), cron restored to `*/30`.
 
 ### Milestone 2 — "First-session wow + the share loop" — ✅ SHIPPED 2026-07-11 (PR #16)
 F10a share buttons + F10c landing page (Supabase-hosted until the domain

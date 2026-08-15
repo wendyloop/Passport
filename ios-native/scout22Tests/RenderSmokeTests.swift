@@ -56,9 +56,19 @@ final class RenderSmokeTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
 
         for archetype in CarouselArchetype.active {
+            // Selection is family-scoped, so drive each archetype through a
+            // family whose pool actually contains it — the card resolves its
+            // own style internally from the theme id in this fixture.
+            let family = try XCTUnwrap(
+                CarouselPaletteFamily.allCases.first {
+                    CarouselArchetype.pool(for: $0).contains(archetype)
+                },
+                "\(archetype) is in no family pool"
+            )
+            let themeID = try XCTUnwrap(CarouselStyleTests.themeIDPerFamily[family])
             let jobID = try XCTUnwrap(
                 (0..<400).map({ "smoke-job-\($0)" }).first {
-                    CarouselStyle.resolve(jobID: $0, themeID: "sunset-paper").archetype == archetype
+                    CarouselStyle.resolve(jobID: $0, themeID: themeID).archetype == archetype
                 },
                 "no synthetic job id resolves to \(archetype)"
             )
@@ -68,7 +78,7 @@ final class RenderSmokeTests: XCTestCase {
              "is_published": true, "created_at": "2026-07-01T12:00:00Z",
              "source_kind": "board", "company_id": "co-1",
              "company": {"id": "co-1", "name": "Ramp", "stage": "seed"},
-             "carousel": {"theme_id": "sunset-paper", "slide_count": 7, "status": "generated",
+             "carousel": {"theme_id": "\(themeID)", "slide_count": 7, "status": "generated",
                "content": [
                  {"type": "cover", "order": 1, "role": "Senior Product Designer", "company": "Ramp",
                   "hook": "design money software people love", "location": "NYC",
@@ -81,7 +91,7 @@ final class RenderSmokeTests: XCTestCase {
                  {"type": "requirements", "order": 4, "bullets": ["5+ years design", "systems thinking"]},
                  {"type": "perks", "order": 5, "bullets": ["equity", "health cover"]},
                  {"type": "founder", "order": 6, "name": "Jane Doe", "role_title": "CEO"},
-                 {"type": "details", "order": 7, "location": "NYC", "employment": "Full-time",
+                 {"type": "details", "order": 7, "location": "NYC", "employment_type": "Full-time",
                   "compensation": "$150k+"}
                ]}}
             """.data(using: .utf8)!

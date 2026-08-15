@@ -100,7 +100,6 @@ struct CardTemplateSlideView: View {
         case .quietLuxury:      QuietLuxuryCard.cover(s, job)
         case .warmMinimal:      WarmMinimalCard.cover(s, job)
         case .afterHours:       AfterHoursCard.cover(s, job)
-        default:                EmptyView()
         }
     }
 
@@ -116,7 +115,6 @@ struct CardTemplateSlideView: View {
         case .quietLuxury:      QuietLuxuryCard.interior(c)
         case .warmMinimal:      WarmMinimalCard.interior(c)
         case .afterHours:       AfterHoursCard.interior(c)
-        default:                EmptyView()
         }
     }
 
@@ -142,8 +140,7 @@ struct CardTemplateSlideView: View {
         if let loc = s.location ?? job.location { rows.append(CardRow(loc, sub: "location")) }
         if let emp = s.employment ?? job.employmentType?.title { rows.append(CardRow(emp, sub: "type")) }
         if let comp = s.compensation ?? job.compensationText { rows.append(CardRow(comp, sub: "compensation")) }
-        for perk in (s.perks ?? []).prefix(max(0, 4 - rows.count)) { rows.append(CardRow(perk, sub: "perk")) }
-        return Array(rows.prefix(4))
+        return rows
     }
 }
 
@@ -1377,56 +1374,27 @@ enum AfterHoursCard {
 }
 
 // Mini first-slide preview for grid tiles (Saved / Applications) — the
-// job's actual cover instead of a placeholder. Card-template styles render
-// through CardCanvas (self-scales to tile width); legacy full-bleed
-// archetypes render their real cover view, which is adaptive and fills the
-// tile directly. Hit-testing off so the tile's button wins.
+// job's actual cover instead of a placeholder. Renders through CardCanvas,
+// which self-scales to the tile width. Hit-testing off so the tile's button
+// wins.
 struct JobCardPreview: View {
     let job: JobPostingRecord
     let carousel: Carousel
 
     static func canPreview(job: JobPostingRecord, carousel: Carousel) -> Bool {
-        guard let first = carousel.renderableSlides.first else { return false }
-        let style = CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId ?? "slate-gradient")
-        if style.archetype.isCardTemplate { return true }
-        if case .cover = first { return true }
-        return false
+        !carousel.renderableSlides.isEmpty
     }
 
     var body: some View {
-        let style = CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId ?? "slate-gradient")
-        if style.archetype.isCardTemplate, let slide = carousel.renderableSlides.first {
+        if let slide = carousel.renderableSlides.first {
             CardTemplateSlideView(
                 slide: slide,
-                style: style,
+                style: CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId),
                 job: job,
                 onEmailFounder: nil,
                 previewMode: true
             )
             .allowsHitTesting(false)
-        } else if case .cover(let coverSlide) = carousel.renderableSlides.first {
-            // Legacy covers are full-screen designs — render at design size
-            // and scale to the tile, cropping the bottom (where the feed's
-            // apply controls live) instead of squashing the layout.
-            GeometryReader { proxy in
-                let scale = proxy.size.width / 390
-                legacyCover(coverSlide, style: style)
-                    .frame(width: 390, height: 640)
-                    .scaleEffect(scale, anchor: .topLeading)
-            }
-            .clipped()
-            .allowsHitTesting(false)
-        }
-    }
-
-    @ViewBuilder
-    private func legacyCover(_ slide: CoverSlide, style: CarouselStyle) -> some View {
-        switch style.archetype {
-        case .notification: NotificationCoverView(slide: slide, style: style, job: job)
-        case .glitchWindow: GlitchWindowCoverView(slide: slide, style: style, job: job)
-        case .chromeStar: ChromeStarCoverView(slide: slide, style: style, job: job)
-        case .liquidChrome: LiquidChromeCoverView(slide: slide, style: style, job: job)
-        default: EmptyView()
         }
     }
 }

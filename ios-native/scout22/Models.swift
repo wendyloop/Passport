@@ -574,7 +574,16 @@ struct DetailsSlide: Codable, Equatable {
     let location: String?
     let employment: String?
     let compensation: String?
-    let perks: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case order, location, compensation
+        // The backend writes `employment_type`. Without this mapping the
+        // field silently decoded as nil and every render path fell through
+        // to the job row's own employment type — same data, different
+        // formatting. There is no global keyDecodingStrategy on the
+        // transport decoder, so snake_case keys must be spelled out.
+        case employment = "employment_type"
+    }
 }
 
 struct JobPostingRecord: Codable, Identifiable {

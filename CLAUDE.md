@@ -39,7 +39,7 @@ function using the service-role client.
 
 ## Layout
 
-- `ios-native/scout22/` — all app source, deliberately flat (~26 Swift files, no
+- `ios-native/scout22/` — all app source, deliberately flat (~31 Swift files, no
   subfolders). Largest: `JobSeekerHomeView`, `VideoStudio` (recording/editing),
   `EmployerHomeView`, `Models.swift`, `AppSessionStore`.
 - `ios-native/scout22ShareExtension/` — share-sheet target: share an Instagram/TikTok
@@ -73,7 +73,7 @@ cd ios-native
 xcodebuild build -project scout22.xcodeproj -scheme scout22 \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 xcodebuild test  -project scout22.xcodeproj -scheme scout22 \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 50 unit tests
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # 76 unit tests
 ```
 
 Edge-function tests (pure-logic helpers in `_shared/`) — run from the **repo
