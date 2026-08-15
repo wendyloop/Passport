@@ -13,6 +13,9 @@ import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 import { isSensitiveLabel, matchCanonical } from "./profile_fields.ts";
 import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
+import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
+import { buildMatchIndex, groupPendingJobs } from "./ats/enrich_targets.ts";
+import type { NormalizedJob } from "./ats/models.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -418,4 +421,130 @@ Deno.test("htmlToText flattens JD markup into embedding-ready text", () => {
     "We are hiring.\nRust\nPostgres\nComp: $150K&up",
   );
   assertEquals(htmlToText("<p></p>"), "");
+});
+
+// --- ATS classification + enrichment targeting -----------------------------
+
+Deno.test("classifyApplyURL: EU-resident Greenhouse and Lever boards", () => {
+  // Before: the `.greenhouse.io` subdomain branch read the token as
+  // "job-boards.eu" and missed the id entirely.
+  assertEquals(
+    classifyApplyURL("https://job-boards.eu.greenhouse.io/audiomob/jobs/4928163101"),
+    { ats_type: "greenhouse", ats_token: "audiomob", ats_external_id: "4928163101" },
+  );
+  // Before: unmatched host → ats_type null → never enrichable.
+  assertEquals(
+    classifyApplyURL("https://jobs.eu.lever.co/markt-pilot/4bbf64f9-20fd"),
+    { ats_type: "lever", ats_token: "markt-pilot", ats_external_id: "4bbf64f9-20fd" },
+  );
+});
+
+Deno.test("classifyApplyURL: percent-encoded board token is decoded once", () => {
+  // Adapters encodeURIComponent the token; storing the raw segment yielded
+  // "Hippocratic%2520AI" and a 404 from every ATS.
+  const url = "https://jobs.ashbyhq.com/Hippocratic%20AI/99b1c932-91cf-445b-b37e-c21e14b41bb5";
+  const resolved = classifyApplyURL(url);
+  assertEquals(resolved?.ats_token, "Hippocratic AI");
+  // The id is passed through untouched — it feeds dedup_key, and rewriting it
+  // would strand every already-ingested row.
+  assertEquals(resolved?.ats_external_id, "99b1c932-91cf-445b-b37e-c21e14b41bb5");
+  assertEquals(
+    computeDedupKey(url, resolved),
+    "ashby:99b1c932-91cf-445b-b37e-c21e14b41bb5",
+  );
+});
+
+function pending(id: string, ats_type: NormalizedJob["source_ats"], apply_url: string | null) {
+  return { id, ats_type, ats_external_id: `ext-${id}`, apply_url };
+}
+
+Deno.test("groupPendingJobs: job coordinates beat a stale company row", () => {
+  // Applied Intuition: company row still says greenhouse, every live job is
+  // on ashby. The old company-driven filter dropped all 239.
+  const { groups, unresolved } = groupPendingJobs(
+    [
+      pending("a", "ashby", "https://jobs.ashbyhq.com/applied/01e37ae0"),
+      pending("b", "ashby", "https://jobs.ashbyhq.com/applied/b0f5bc4d"),
+    ],
+    { ats_type: "greenhouse", ats_token: "appliedintuition" },
+  );
+  assertEquals(unresolved.length, 0);
+  assertEquals(groups.length, 1);
+  assertEquals(groups[0].ats_type, "ashby");
+  assertEquals(groups[0].ats_token, "applied");
+  assertEquals(groups[0].jobs.length, 2);
+});
+
+Deno.test("groupPendingJobs: splits boards, largest first, null company row ok", () => {
+  const { groups } = groupPendingJobs(
+    [
+      pending("a", "lever", "https://jobs.lever.co/small/1"),
+      pending("b", "greenhouse", "https://boards.greenhouse.io/big/jobs/2"),
+      pending("c", "greenhouse", "https://boards.greenhouse.io/big/jobs/3"),
+    ],
+    { ats_type: null, ats_token: null },
+  );
+  assertEquals(groups.map((g) => [g.ats_token, g.jobs.length]), [["big", 2], ["small", 1]]);
+});
+
+Deno.test("groupPendingJobs: falls back to the company token, decoding it", () => {
+  // apply_url no longer classifies (company moved to a custom careers page),
+  // but the company row still names the right board.
+  const { groups, unresolved } = groupPendingJobs(
+    [pending("a", "ashby", "https://careers.example.com/roles/42")],
+    { ats_type: "ashby", ats_token: "Redesign%20Health" },
+  );
+  assertEquals(unresolved.length, 0);
+  assertEquals(groups[0].ats_token, "Redesign Health");
+});
+
+Deno.test("groupPendingJobs: unresolvable when both sources disagree or are empty", () => {
+  const { groups, unresolved } = groupPendingJobs(
+    [pending("a", "lever", "https://careers.example.com/roles/42"), pending("b", "lever", null)],
+    { ats_type: "greenhouse", ats_token: "somewhere" },
+  );
+  assertEquals(groups.length, 0);
+  assertEquals(unresolved.map((j) => j.id), ["a", "b"]);
+});
+
+function normalized(external_id: string, listing_url: string | null): NormalizedJob {
+  return {
+    source_ats: "recruitee",
+    external_id,
+    title: "Engineer",
+    listing_url,
+    apply_url: listing_url,
+    apply_flow: "ats_form",
+    compensation_text: null,
+    compensation: { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+    location: null,
+    category: null,
+    employment_type: null,
+    posted_at: null,
+    description: "JD body",
+    description_raw: null,
+    contact_email_on_posting: null,
+    content_hash: "hash",
+  };
+}
+
+Deno.test("buildMatchIndex: Recruitee slug aliases the numeric offer id", () => {
+  // The URL exposes /o/{slug} (which is what ats_external_id stores) while the
+  // API returns a numeric id — every live Recruitee job missed on this.
+  const index = buildMatchIndex([
+    normalized("2145678", "https://matera.recruitee.com/o/senior-backend-engineer"),
+  ]);
+  assertEquals(index.get("2145678")?.description, "JD body");
+  assertEquals(index.get("senior-backend-engineer")?.description, "JD body");
+  assertEquals(index.get("unknown-slug"), undefined);
+});
+
+Deno.test("buildMatchIndex: a real API id is never displaced by an alias", () => {
+  // Job two's slug collides with job one's API id; the API id must win.
+  const index = buildMatchIndex([
+    normalized("shared", "https://acme.recruitee.com/o/first"),
+    normalized("second", "https://acme.recruitee.com/o/shared"),
+  ]);
+  assertEquals(index.get("shared")?.external_id, "shared");
+  assertEquals(index.get("first")?.external_id, "shared");
 });

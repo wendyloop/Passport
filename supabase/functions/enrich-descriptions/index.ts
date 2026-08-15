@@ -4,8 +4,10 @@
 //
 //   1. Find companies that have at least one active board job with
 //      description IS NULL and a resolved ats_type.
-//   2. Per company: call the matching ATS adapter, build {external_id →
-//      NormalizedJob} map.
+//   2. Per company: group its pending jobs by the ATS coordinates carried in
+//      their own apply_url (see _shared/ats/enrich_targets.ts — the company
+//      row goes stale when a company migrates ATS), call the adapter for each
+//      board, and build an {external_id → NormalizedJob} map.
 //   3. UPDATE jobs SET description = ... WHERE id = ? AND description IS NULL.
 //      The `description IS NULL` guard makes enrichment write-once at the
 //      column level — once filled, the description text is frozen even if
@@ -22,6 +24,8 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient } from "../_shared/client.ts";
 import { getAdapter } from "../_shared/ats/adapters/index.ts";
+import { buildMatchIndex, groupPendingJobs } from "../_shared/ats/enrich_targets.ts";
+import type { PendingJob } from "../_shared/ats/enrich_targets.ts";
 import type { ATSType, NormalizedJob } from "../_shared/ats/models.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
@@ -34,6 +38,10 @@ const RUN_BUDGET_MS = 50_000;
 // the worker for memory. 30 fits comfortably; the hourly cron drains the
 // backlog over a day.
 const MAX_COMPANIES_PER_RUN = 30;
+// A company's jobs can span several boards (an ATS migration leaves live jobs
+// on both). Each board is its own list-fetch, so cap the fan-out — groups are
+// ordered largest-first, and the tail gets picked up on the next pass.
+const MAX_BOARDS_PER_COMPANY = 3;
 
 type RequestBody = { company_id?: string };
 
@@ -48,13 +56,11 @@ type EnrichOutcome = {
 type CompanyRow = {
   id: string;
   name: string;
-  ats_type: ATSType;
-  ats_token: string;
-};
-
-type PendingJob = {
-  id: string;
-  ats_external_id: string;
+  // Advisory only: a company that migrated ATS keeps the old provider here,
+  // and rows that never classified leave both null. Used as a fallback token
+  // source for jobs whose apply_url no longer classifies.
+  ats_type: ATSType | null;
+  ats_token: string | null;
 };
 
 Deno.serve(async (request) => {
@@ -74,12 +80,12 @@ Deno.serve(async (request) => {
   // starved by the UUID-order scan that returns only big-fund job rows.
   let companies: CompanyRow[];
   if (body.company_id) {
+    // No ats_type filter: the jobs carry their own coordinates, so a company
+    // row with a null or stale provider is still enrichable.
     const { data, error } = await admin
       .from("companies")
       .select("id, name, ats_type, ats_token")
-      .eq("id", body.company_id)
-      .not("ats_type", "is", null)
-      .not("ats_token", "is", null);
+      .eq("id", body.company_id);
     if (error) return jsonError(`Failed to load company: ${error.message}`);
     companies = (data ?? []) as CompanyRow[];
   } else {
@@ -147,13 +153,15 @@ async function enrichCompany(
   // output. Jobs ingested before classify could extract an id will be null
   // here and skipped (they'll still be enriched if a later re-classify fills
   // ats_external_id, or remain description-less which is acceptable).
+  //
+  // Filtered on the job's own ats_type, not the company's: see enrich_targets.
   const { data: pendingJobs, error: pendingError } = await admin
     .from("jobs")
-    .select("id, ats_external_id")
+    .select("id, ats_type, ats_external_id, apply_url")
     .eq("company_id", company.id)
     .is("description", null)
     .eq("is_active", true)
-    .eq("ats_type", company.ats_type)
+    .not("ats_type", "is", null)
     .not("ats_external_id", "is", null);
 
   if (pendingError) {
@@ -163,19 +171,39 @@ async function enrichCompany(
   const pending = (pendingJobs ?? []) as PendingJob[];
   if (pending.length === 0) return base;
 
-  let fetched: NormalizedJob[];
-  try {
-    const adapter = getAdapter(company.ats_type);
-    const result = await adapter({ ats_token: company.ats_token, company_name: company.name });
-    fetched = result.jobs;
-  } catch (error) {
-    return { ...base, jobs_pending: pending.length, error: (error as Error).message };
-  }
-
-  const fetchedById = new Map(fetched.map((j) => [j.external_id, j]));
+  const { groups } = groupPendingJobs(pending, company);
+  const errors: string[] = [];
   let enriched = 0;
 
-  for (const job of pending) {
+  // Largest board first, so the cap sheds only the long tail.
+  for (const group of groups.slice(0, MAX_BOARDS_PER_COMPANY)) {
+    try {
+      const adapter = getAdapter(group.ats_type);
+      const result = await adapter({ ats_token: group.ats_token, company_name: company.name });
+      enriched += await applyDescriptions(admin, company, group.jobs, buildMatchIndex(result.jobs));
+    } catch (error) {
+      // One dead board must not cost this company its other boards.
+      errors.push(`${group.ats_type}/${group.ats_token}: ${(error as Error).message}`);
+    }
+  }
+
+  return {
+    ...base,
+    jobs_pending: pending.length,
+    jobs_enriched: enriched,
+    error: errors.length > 0 ? errors.join("; ") : null,
+  };
+}
+
+async function applyDescriptions(
+  admin: ReturnType<typeof createAdminClient>,
+  company: CompanyRow,
+  jobs: PendingJob[],
+  fetchedById: Map<string, NormalizedJob>,
+): Promise<number> {
+  let enriched = 0;
+
+  for (const job of jobs) {
     const match = fetchedById.get(job.ats_external_id);
     if (!match || (!match.description && !match.description_raw)) continue;
 
@@ -223,7 +251,7 @@ async function enrichCompany(
     }
   }
 
-  return { ...base, jobs_pending: pending.length, jobs_enriched: enriched };
+  return enriched;
 }
 
 function sum<T>(items: T[], pick: (item: T) => number): number {
