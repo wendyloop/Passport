@@ -35,6 +35,22 @@ enum CarouselArchetype: String, CaseIterable {
     /// Dark lounge: blurred amber shapes, thin gold type, mono captions.
     case afterHours
 
+    // Added 2026-08-16 from a second reference pass. Style only — palette,
+    // face and layout; the copy is the job's own fields, never the reference's.
+
+    /// Blush ground, maroon Didone, facts in a filled capsule.
+    case boutiqueSerif
+    /// Newsprint, typewriter mono, red condensed display, boxed facts.
+    case pressClipping
+    /// Translucent plate over a city ground, wide-tracked light caps.
+    case panelPlate
+    /// Oxblood poster, gold heavy caps, powder-blue marquee strips.
+    case marqueePoster
+    /// Cream filing drawer: one fact per pink folder tab, stamp cutout.
+    case folderTabs
+    /// Pale concrete wall, airy light caps, dark ink facts.
+    case motionSplit
+
     // Cut by product decision (restore from git history if wanted):
     // `editorial` newspaper (2026-07-18); `scrapbook` and `giantType`
     // (2026-07-22, superseded by stickerScrapbook / motionEditorial);
@@ -52,6 +68,8 @@ enum CarouselArchetype: String, CaseIterable {
         .boldDrop, .sundayEdit, .motionEditorial, .stickerScrapbook,
         .daydreamY2K, .handPainted, .quietLuxury,
         .warmMinimal, .afterHours,
+        .boutiqueSerif, .pressClipping, .panelPlate,
+        .marqueePoster, .folderTabs, .motionSplit,
     ]
 
     /// Selection pool for a palette family. Card templates hardcode their own
@@ -63,18 +81,23 @@ enum CarouselArchetype: String, CaseIterable {
     ///
     /// Pools overlap deliberately, and every archetype in `active` appears in
     /// at least one (asserted by CarouselStyleTests). Selection within a pool
-    /// is hash(job.id) mod count, so editing a pool reshuffles which job gets
-    /// which look — safe, since the choice is never persisted anywhere.
+    /// is hash(company) mod count, so editing a pool reshuffles which company
+    /// gets which look — safe, since the choice is never persisted anywhere.
     static func pool(for family: CarouselPaletteFamily) -> [CarouselArchetype] {
         switch family {
         // fintech, dev tools, infra, AI — restrained and typographic.
-        case .cool:    return [.quietLuxury, .afterHours, .motionEditorial, .boldDrop]
+        case .cool:    return [.quietLuxury, .afterHours, .motionEditorial, .boldDrop,
+                               .pressClipping, .panelPlate]
         // consumer, marketplace, healthcare — sunlit and human.
-        case .warm:    return [.warmMinimal, .sundayEdit, .handPainted]
+        case .warm:    return [.warmMinimal, .sundayEdit, .handPainted, .motionSplit]
         // climate, agtech, biotech — natural and unhurried.
-        case .earthy:  return [.warmMinimal, .sundayEdit, .quietLuxury]
+        // boutiqueSerif is earthy-only on purpose: in warm as well it would
+        // land in both of warmMinimal's pools, and the two are the closest
+        // pair on the roster (centred serif, warm light ground).
+        case .earthy:  return [.warmMinimal, .sundayEdit, .quietLuxury, .boutiqueSerif]
         // gaming, social, creator tools — loud and playful.
-        case .playful: return [.daydreamY2K, .handPainted, .stickerScrapbook]
+        case .playful: return [.daydreamY2K, .handPainted, .stickerScrapbook,
+                               .marqueePoster, .folderTabs]
         }
     }
 }
@@ -171,6 +194,12 @@ extension CarouselArchetype {
         case .quietLuxury:      return CarouselArchetype.cardGround("card-quiet-luxury", accent: Color(red: 0.89, green: 0.85, blue: 0.80))
         case .warmMinimal:      return CarouselArchetype.cardGround("card-warm-minimal", accent: Color(red: 0.91, green: 0.84, blue: 0.72))
         case .afterHours:       return CarouselArchetype.cardGround("card-after-hours", accent: Color(red: 0.94, green: 0.85, blue: 0.54))
+        case .boutiqueSerif:    return CarouselArchetype.cardGround("card-boutique-serif", accent: Color(red: 0.42, green: 0.07, blue: 0.13))
+        case .pressClipping:    return CarouselArchetype.cardGround("card-press-clipping", accent: Color(red: 0.90, green: 0.14, blue: 0.11))
+        case .panelPlate:       return CarouselArchetype.cardGround("card-panel-plate", accent: Color(red: 0.31, green: 0.55, blue: 0.77))
+        case .marqueePoster:    return CarouselArchetype.cardGround("card-marquee-poster", accent: Color(red: 0.71, green: 0.64, blue: 0.29))
+        case .folderTabs:       return CarouselArchetype.cardGround("card-folder-tabs", accent: Color(red: 0.94, green: 0.21, blue: 0.50))
+        case .motionSplit:      return CarouselArchetype.cardGround("card-motion-split", accent: Color(red: 0.64, green: 0.62, blue: 0.57))
         }
     }
 
