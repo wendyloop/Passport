@@ -74,7 +74,7 @@ enum SocialCardExporter {
             throw ExportError.tooFewSlides(slides.count)
         }
 
-        let style = CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId)
+        let style = CarouselStyle.resolve(companyKey: job.carouselCompanyKey, themeID: carousel.themeId)
         var output: [Data] = []
         output.reserveCapacity(slides.count)
 

@@ -33,12 +33,34 @@ final class CarouselStyleTests: XCTestCase {
         XCTAssertEqual(Set(Self.themeIDPerFamily.keys), Set(CarouselPaletteFamily.allCases))
     }
 
-    // Same job + theme must always land on the same look — carousels
+    // Same company + theme must always land on the same look — carousels
     // shouldn't reshuffle between scrolls or app launches.
     func testResolveIsDeterministic() {
-        let a = CarouselStyle.resolve(jobID: "job-abc", themeID: "sunset-paper")
-        let b = CarouselStyle.resolve(jobID: "job-abc", themeID: "sunset-paper")
+        let a = CarouselStyle.resolve(companyKey: "co-abc", themeID: "sunset-paper")
+        let b = CarouselStyle.resolve(companyKey: "co-abc", themeID: "sunset-paper")
         XCTAssertEqual(a, b)
+    }
+
+    // The point of keying on the company: every open role at one employer
+    // renders as the same template, so their posts read as one account.
+    func testEveryRoleAtOneCompanyResolvesIdentically() {
+        let first = CarouselStyle.resolve(companyKey: "co-lumen", themeID: "slate-gradient")
+        for _ in 0..<50 {
+            XCTAssertEqual(
+                CarouselStyle.resolve(companyKey: "co-lumen", themeID: "slate-gradient"),
+                first
+            )
+        }
+    }
+
+    // ...and different companies must still spread, or the feed becomes one
+    // template. Guards against a key that collapses (e.g. an empty string).
+    func testDifferentCompaniesSpreadAcrossThePool() {
+        var seen = Set<CarouselArchetype>()
+        for i in 0..<200 {
+            seen.insert(CarouselStyle.resolve(companyKey: "co-\(i)", themeID: "slate-gradient").archetype)
+        }
+        XCTAssertEqual(seen, Set(CarouselArchetype.pool(for: .cool)))
     }
 
     // Every archetype must be reachable by some company. Selection is
@@ -48,7 +70,7 @@ final class CarouselStyleTests: XCTestCase {
         var seen = Set<CarouselArchetype>()
         for themeID in Self.themeIDPerFamily.values {
             for i in 0..<200 {
-                seen.insert(CarouselStyle.resolve(jobID: "job-\(i)", themeID: themeID).archetype)
+                seen.insert(CarouselStyle.resolve(companyKey: "co-\(i)", themeID: themeID).archetype)
             }
         }
         XCTAssertEqual(seen, Set(CarouselArchetype.active))
@@ -67,7 +89,7 @@ final class CarouselStyleTests: XCTestCase {
         for (family, themeID) in Self.themeIDPerFamily {
             let allowed = Set(CarouselArchetype.pool(for: family))
             for i in 0..<200 {
-                let archetype = CarouselStyle.resolve(jobID: "job-\(i)", themeID: themeID).archetype
+                let archetype = CarouselStyle.resolve(companyKey: "co-\(i)", themeID: themeID).archetype
                 XCTAssertTrue(allowed.contains(archetype), "\(archetype) escaped the \(family) pool")
             }
         }
@@ -79,7 +101,7 @@ final class CarouselStyleTests: XCTestCase {
         for (family, themeID) in Self.themeIDPerFamily {
             var seen = Set<CarouselArchetype>()
             for i in 0..<200 {
-                seen.insert(CarouselStyle.resolve(jobID: "job-\(i)", themeID: themeID).archetype)
+                seen.insert(CarouselStyle.resolve(companyKey: "co-\(i)", themeID: themeID).archetype)
             }
             XCTAssertEqual(seen, Set(CarouselArchetype.pool(for: family)), "\(family) pool underused")
         }
@@ -90,14 +112,14 @@ final class CarouselStyleTests: XCTestCase {
     func testDroppedArchetypeIsNeverSelected() {
         let pool = CarouselArchetype.active.filter { $0 != .handPainted }
         for i in 0..<300 {
-            let style = CarouselStyle.resolve(jobID: "job-\(i)", themeID: "slate-gradient", pool: pool)
+            let style = CarouselStyle.resolve(companyKey: "co-\(i)", themeID: "slate-gradient", pool: pool)
             XCTAssertNotEqual(style.archetype, .handPainted)
         }
     }
 
     // An empty pool (bad edit) must fail safe to a real archetype.
     func testEmptyPoolFallsBackToFirstTemplate() {
-        let style = CarouselStyle.resolve(jobID: "job-1", themeID: "slate-gradient", pool: [])
+        let style = CarouselStyle.resolve(companyKey: "co-1", themeID: "slate-gradient", pool: [])
         XCTAssertEqual(style.archetype, .boldDrop)
     }
 
@@ -172,7 +194,94 @@ final class CarouselStyleTests: XCTestCase {
         XCTAssertEqual(slide.compensation, "$150k+")
     }
 
+    // MARK: - Company key
+
+    // The FK is preferred, then the embedded company row, then the
+    // denormalised name — so rows carrying no company_id (reels, employer
+    // posts) still group by employer instead of scattering per job.
+    func testCompanyKeyPrefersTheForeignKey() throws {
+        let job = try minimalJob(extra: """
+        , "company_id": "co-1", "company": {"id": "co-2", "name": "Embedded"}
+        """)
+        XCTAssertEqual(job.carouselCompanyKey, "co-1")
+    }
+
+    func testCompanyKeyFallsBackToEmbeddedCompanyThenName() throws {
+        let embedded = try minimalJob(extra: """
+        , "company": {"id": "co-2", "name": "Embedded"}
+        """)
+        XCTAssertEqual(embedded.carouselCompanyKey, "co-2")
+
+        // company_name only — the fixture's own fallback.
+        let bare = try minimalJob()
+        XCTAssertEqual(bare.carouselCompanyKey, "Acme")
+    }
+
+    // MARK: - Fact rail
+
+    // Priority order is the contract every template renders against: the
+    // fourth cell is always the level, whichever cover a job lands on.
+    func testRailOrdersFactsByPriority() throws {
+        let job = try minimalJob(extra: """
+        , "location": "San Francisco, CA", "employment_type": "full_time"
+        """)
+        let cover = try coverSlide("""
+        {"type": "cover", "order": 1, "compensation": "$165k-195k",
+         "work_mode": "Hybrid", "experience": "senior"}
+        """)
+        let facts = CoverFacts.rail(cover, job)
+        XCTAssertEqual(facts.map(\.label), ["comp", "location", "setup", "level", "type"])
+        XCTAssertEqual(facts.first?.value, "$165k-195k")
+    }
+
+    // The whole point of the rail: a long location can't shrink the type, so
+    // the region is dropped rather than scaled away.
+    func testRailTrimsLocationToCity() throws {
+        let job = try minimalJob()
+        let cover = try coverSlide("""
+        {"type": "cover", "order": 1, "location": "San Francisco, CA, United States"}
+        """)
+        let facts = CoverFacts.rail(cover, job)
+        XCTAssertEqual(facts.first(where: { $0.label == "location" })?.value, "San Francisco")
+    }
+
+    // Missing and whitespace-only fields must vanish, not render as an empty
+    // labelled cell with a hairline next to it.
+    func testRailOmitsEmptyAndBlankFacts() throws {
+        let job = try minimalJob()
+        let cover = try coverSlide("""
+        {"type": "cover", "order": 1, "compensation": "  ", "location": "",
+         "work_mode": "Remote"}
+        """)
+        let facts = CoverFacts.rail(cover, job)
+        XCTAssertEqual(facts.map(\.label), ["setup"])
+    }
+
+    // Experience is surfaced through the same label map the old pill used;
+    // before the rail only one template of nine drew it at all.
+    func testRailLabelsExperienceForHumans() throws {
+        let job = try minimalJob()
+        let cover = try coverSlide("""
+        {"type": "cover", "order": 1, "experience": "entry"}
+        """)
+        XCTAssertEqual(CoverFacts.rail(cover, job).first?.value, "0-2 yrs")
+    }
+
+    // A job with nothing but a title yields an empty rail — templates must
+    // draw no cells rather than a bare row of hairlines.
+    func testRailIsEmptyWhenNothingIsKnown() throws {
+        let job = try minimalJob()
+        let cover = try coverSlide("""
+        {"type": "cover", "order": 1}
+        """)
+        XCTAssertTrue(CoverFacts.rail(cover, job).isEmpty)
+    }
+
     // MARK: - Helpers
+
+    private func coverSlide(_ json: String) throws -> CoverSlide {
+        try JSONDecoder().decode(CoverSlide.self, from: Data(json.utf8))
+    }
 
     /// Bare job record with no location/type/comp; `extra` splices extra
     /// top-level JSON fields into the fixture.

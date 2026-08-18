@@ -3200,7 +3200,13 @@ private struct ApplicationTile: View {
     let onOpen: () -> Void
 
     private var style: CarouselStyle {
-        CarouselStyle.resolve(jobID: application.jobID, themeID: job?.carousel?.themeId ?? "slate-gradient")
+        // Falls back to the denormalised company name when the job row hasn't
+        // loaded — same value displayCompanyName yields for a company-less row,
+        // so the tile keeps matching the feed in the common case.
+        CarouselStyle.resolve(
+            companyKey: job?.carouselCompanyKey ?? application.companyName,
+            themeID: job?.carousel?.themeId ?? "slate-gradient"
+        )
     }
 
     private var statusLabel: String {
@@ -3296,7 +3302,7 @@ private struct SavedJobTile: View {
     let onUnsave: () -> Void
 
     private var style: CarouselStyle {
-        CarouselStyle.resolve(jobID: job.id, themeID: job.carousel?.themeId ?? "slate-gradient")
+        CarouselStyle.resolve(companyKey: job.carouselCompanyKey, themeID: job.carousel?.themeId ?? "slate-gradient")
     }
 
     var body: some View {

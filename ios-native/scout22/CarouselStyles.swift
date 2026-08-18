@@ -105,12 +105,18 @@ struct CarouselStyle: Equatable {
     let family: CarouselPaletteFamily
     let theme: CarouselTheme
 
-    /// Deterministic per (job, company-theme): the backend theme id picks the
-    /// palette family, the family picks the candidate pool, and the job id
-    /// picks within it. `pool` is injectable so tests can pin a selection or
-    /// prove dropped archetypes are never chosen.
+    /// Deterministic per company: the backend theme id picks the palette
+    /// family, the family picks the candidate pool, and the company key picks
+    /// within it. `pool` is injectable so tests can pin a selection or prove
+    /// dropped archetypes are never chosen.
+    ///
+    /// Keyed on the company rather than the job (changed 2026-08-15) so every
+    /// role at one employer renders as a single identity — the theme id was
+    /// already per-company, so this was the last per-job step. The trade is
+    /// feed variety: a company with eight open roles now draws one template
+    /// for all eight instead of spreading across its pool.
     static func resolve(
-        jobID: String,
+        companyKey: String,
         themeID: String,
         pool: [CarouselArchetype]? = nil
     ) -> CarouselStyle {
@@ -124,7 +130,7 @@ struct CarouselStyle: Equatable {
                 theme: CarouselArchetype.boldDrop.palette(for: family, themeID: themeID)
             )
         }
-        let archetype = pool[Int(hash32(jobID) % UInt32(pool.count))]
+        let archetype = pool[Int(hash32(companyKey) % UInt32(pool.count))]
         return CarouselStyle(archetype: archetype, family: family, theme: archetype.palette(for: family, themeID: themeID))
     }
 
@@ -183,6 +189,12 @@ extension CarouselArchetype {
 
 // MARK: - Cover fact helpers
 
+/// One labelled cell in a cover's fact rail.
+struct CardFact: Equatable {
+    let label: String
+    let value: String
+}
+
 enum CoverFacts {
     /// Human label for the LLM's experience_level enum, used by the card
     /// templates that surface seniority as a pill.
@@ -196,5 +208,34 @@ enum CoverFacts {
         case "exec": return "leadership"
         default: return raw
         }
+    }
+
+    /// City only. ATS locations arrive as "San Francisco, CA" or
+    /// "San Francisco, CA, United States"; in a rail cell the region never
+    /// earns its width, and it was the main thing dragging the old single
+    /// meta line down to a 0.5 scale factor.
+    static func city(_ raw: String) -> String {
+        let head = raw.split(separator: ",").first.map(String.init) ?? raw
+        return head.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Cover facts in priority order: comp, location, setup, level, type.
+    /// Templates take a prefix — cells drop from the right rather than
+    /// shrinking, so a long location can never squeeze the type again.
+    /// Empty and whitespace-only values are omitted entirely.
+    static func rail(_ s: CoverSlide, _ job: JobPostingRecord) -> [CardFact] {
+        var facts: [CardFact] = []
+        func add(_ label: String, _ value: String?, transform: (String) -> String = { $0 }) {
+            guard let raw = value?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return }
+            let out = transform(raw).trimmingCharacters(in: .whitespaces)
+            guard !out.isEmpty else { return }
+            facts.append(CardFact(label: label, value: out))
+        }
+        add("comp", s.compensation ?? job.compensationSummary ?? job.compensationText)
+        add("location", s.location ?? job.location, transform: city)
+        add("setup", s.workMode)
+        add("level", s.experience, transform: experienceLabel)
+        add("type", job.employmentType?.title)
+        return facts
     }
 }

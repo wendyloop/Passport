@@ -31,7 +31,7 @@ struct CarouselFeedCard: View {
     @State private var autoAdvanceTask: Task<Void, Never>?
 
     private var style: CarouselStyle {
-        CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId)
+        CarouselStyle.resolve(companyKey: job.carouselCompanyKey, themeID: carousel.themeId)
     }
 
     private var theme: CarouselTheme { style.theme }
@@ -195,6 +195,16 @@ extension DetailsSlide {
 // MARK: - JobPostingRecord helpers
 
 extension JobPostingRecord {
+    /// Key the carousel template is chosen from — every role at one employer
+    /// resolves to the same look. Prefers the FK, then the embedded company
+    /// row, then the denormalised name so reel/employer rows (which carry no
+    /// company_id) still group instead of scattering per job.
+    var carouselCompanyKey: String {
+        if let id = companyID, !id.isEmpty { return id }
+        if let id = company?.id, !id.isEmpty { return id }
+        return displayCompanyName
+    }
+
     var canApplyViaDrawer: Bool {
         applyUrl != nil && !(applyUrl?.isEmpty ?? true)
     }

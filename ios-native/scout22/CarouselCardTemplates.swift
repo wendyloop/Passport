@@ -270,13 +270,77 @@ private func titleLines(_ s: CoverSlide, _ job: JobPostingRecord, cap: Int = 3) 
     return lines
 }
 
-private func coverComp(_ s: CoverSlide, _ job: JobPostingRecord) -> String? {
-    s.compensation ?? job.compensationSummary ?? job.compensationText
-}
+// `coverComp` and `coverMeta` retired 2026-08-15. It joined comp/location/work-mode into one
+// string that every cover drew with .lineLimit(1) and a .minimumScaleFactor
+// as low as 0.5, so type size became a function of how long the location
+// happened to be. Replaced by FactRail below, which drops cells instead.
 
-private func coverMeta(_ s: CoverSlide, _ job: JobPostingRecord) -> String {
-    [coverComp(s, job), s.location ?? job.location, s.workMode]
-        .compactMap { $0 }.prefix(3).joined(separator: " · ")
+/// Horizontal rail of labelled facts, in the template's own palette and face.
+///
+/// The contract every cover shares: cells are equal width, divided by a
+/// hairline rather than a middot, ordered by `CoverFacts.rail`, and the value
+/// clamps at 0.85 — past that the lowest-priority cell is dropped by `max`
+/// instead of shrinking. So the fourth cell is always the level, whichever
+/// cover a job lands on.
+struct FactRail: View {
+    let facts: [CardFact]
+    let labelFont: Font
+    let valueFont: Font
+    let ink: Color
+    /// Busy-art templates pass 3; the rest take the default 4.
+    var maxCells: Int = 4
+    var width: CGFloat = 354
+    /// Templates whose label ink needs to differ from a dimmed value ink.
+    var labelInk: Color? = nil
+    var ruleOpacity: Double = 0.25
+
+    private var topCount: Int { min(maxCells, facts.count) }
+
+    /// Cells are sized to their content, never to equal fractions of the
+    /// width: "San Francisco" needs more room than "Hybrid", and equal
+    /// quarters truncated the long one to "San Franc…" while the short one
+    /// sat in empty space.
+    private func row(_ count: Int, compressible: Bool = false) -> some View {
+        let shown = Array(facts.prefix(count))
+        return HStack(spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { index, fact in
+                if index > 0 {
+                    Rectangle()
+                        .fill(ink.opacity(ruleOpacity))
+                        .frame(width: 1, height: 32)
+                        .padding(.trailing, 11)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(fact.label.uppercased())
+                        .font(labelFont)
+                        .tracking(1.1)
+                        .foregroundStyle(labelInk ?? ink.opacity(0.62))
+                    Text(fact.value)
+                        .font(valueFont)
+                        .foregroundStyle(ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(compressible ? 0.7 : 1)
+                }
+                .fixedSize(horizontal: !compressible, vertical: false)
+                .padding(.trailing, index == shown.count - 1 ? 0 : 11)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    var body: some View {
+        // Drop from the right until the row fits, rather than scaling the
+        // type down — the ladder is why a long location can never shrink the
+        // facts again. The final rung is allowed to compress, so a single
+        // very long value still renders instead of overflowing the card.
+        ViewThatFits(in: .horizontal) {
+            row(topCount)
+            row(max(topCount - 1, 1))
+            row(max(topCount - 2, 1))
+            row(1, compressible: true)
+        }
+        .frame(width: width, alignment: .leading)
+    }
 }
 
 // MARK: - 00 · Bold drop (after @rishabh_job)
@@ -311,11 +375,17 @@ enum BoldDropCard {
                 }
             }
             .frame(width: 354, alignment: .leading).at(18, 100)
-            Text("at \(job.displayCompanyName) · \(coverMeta(s, job))")
-                .font(CarouselFonts.archivoBold(12.5))
-                .foregroundStyle(navy)
+            Text("at \(job.displayCompanyName)")
+                .font(CarouselFonts.archivoBold(15))
+                .foregroundStyle(teal)
                 .lineLimit(1).minimumScaleFactor(0.7)
                 .frame(width: 354, alignment: .leading).at(18, 296)
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.dmMono(7.5),
+                valueFont: CarouselFonts.archivoBold(14),
+                ink: navy
+            ).at(18, 340)
             Text("⟶  SWIPE TO EXPLORE")
                 .font(CarouselFonts.archivoBold(11)).tracking(2)
                 .foregroundStyle(red).at(18, 436)
@@ -404,26 +474,24 @@ enum SundayEditCard {
                             .lineLimit(1).minimumScaleFactor(0.5)
                     }
                 }
-                Text("at \(job.displayCompanyName) — \(s.location ?? job.location ?? "remote")")
+                // Location moved to the rail, trimmed to the city; leaving it
+                // here as well printed the raw "San Francisco, CA, United
+                // States" twice on one card.
+                Text("at \(job.displayCompanyName)")
                     .font(CarouselFonts.playfairItalic(14))
                     .foregroundStyle(plum)
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.top, 9)
             }
             .frame(width: designW).at(0, 186)
-            photoBlock(95, 75, -2, [Color(red: 0.85, green: 0.80, blue: 0.75), Color(red: 0.56, green: 0.59, blue: 0.66)]).at(35, 352)
-            if let comp = coverComp(s, job) {
-                VStack(spacing: 0) {
-                    Text(comp).font(CarouselFonts.playfairBoldItalic(16)).foregroundStyle(plum)
-                        .lineLimit(1).minimumScaleFactor(0.6)
-                    Text("/yr!").font(CarouselFonts.playfairItalic(12)).foregroundStyle(plum)
-                }
-                .frame(width: 94, height: 94)
-                .background(Circle().fill(chartreuse))
-                .overlay(Circle().stroke(plum, lineWidth: 2))
-                .rotationEffect(.degrees(-8))
-                .at(242, 338)
-            }
+            // The pay circle and the third photo block both lived where the
+            // rail now sits; comp moved into the rail, so both are gone.
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.dmMono(7.5),
+                valueFont: CarouselFonts.archivoExtraBoldItalic(13.5),
+                ink: plum
+            ).at(18, 404)
         }
     }
 
@@ -533,11 +601,19 @@ enum MotionEditorialCard {
                 }
             }
             .frame(width: 310, alignment: .leading).at(22, 248)
-            Text(coverMeta(s, job).uppercased())
-                .font(CarouselFonts.dmMono(10.5)).tracking(4)
+            // The company name never appeared on this cover at all; the rail
+            // freed the room the old meta line was using.
+            Text(job.displayCompanyName.uppercased())
+                .font(CarouselFonts.dmMono(11)).tracking(3)
                 .foregroundStyle(ink)
                 .lineLimit(1).minimumScaleFactor(0.6)
-                .frame(width: 330, alignment: .leading).at(22, 410)
+                .frame(width: 300, alignment: .leading).at(22, 214)
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.dmMono(7.5),
+                valueFont: CarouselFonts.archivoBlack(13),
+                ink: ink
+            ).at(22, 398)
             vertical(season(job.createdAt), size: 24).at(300, 210)
         }
     }
@@ -632,11 +708,6 @@ enum StickerScrapbookCard {
                     bubble(line.lowercased(), size: i == 0 ? 37 : 36)
                         .lineLimit(1).minimumScaleFactor(0.5)
                 }
-                Text(coverMeta(s, job).uppercased())
-                    .font(CarouselFonts.balooSemiBold(10.5)).tracking(2.5)
-                    .foregroundStyle(olive)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .padding(.top, 6)
             }
             .frame(width: 334, height: 246)
             .background(RoundedRectangle(cornerRadius: 7).fill(paper).shadow(color: .black.opacity(0.38), radius: 14, y: 7))
@@ -645,6 +716,17 @@ enum StickerScrapbookCard {
             StickerStar(size: 52, fill: blue, rotation: -12).at(6, 62)
             StickerStar(size: 38, fill: pink, rotation: 14).at(52, 22)
             StickerStar(size: 46, fill: blue, rotation: 8).at(318, 308)
+            // Three cells: the stars and the swipe pill leave less clear width
+            // here than the flatter templates have.
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.balooSemiBold(8),
+                valueFont: CarouselFonts.balooExtraBold(14),
+                ink: paper,
+                maxCells: 3,
+                width: 330,
+                ruleOpacity: 0.35
+            ).at(30, 352)
             Text("swipe!").font(CarouselFonts.balooExtraBold(15)).foregroundStyle(brown)
                 .padding(.horizontal, 17).padding(.vertical, 2)
                 .background(Capsule().fill(blue))
@@ -726,16 +808,6 @@ enum DaydreamY2KCard {
         Ellipse().fill(.white).frame(width: w, height: h).blur(radius: 16).opacity(o)
     }
 
-    static func pill(_ text: String, dark: Bool, rot: Double) -> some View {
-        Text(text)
-            .font(CarouselFonts.archivoBoldItalic(13))
-            .foregroundStyle(dark ? .white : pillBlue)
-            .lineLimit(1)
-            .padding(.horizontal, 13).padding(.vertical, 4)
-            .background(Capsule().fill(dark ? pinkPill : creamPill).shadow(color: pillBlue.opacity(0.35), radius: 6, y: 3))
-            .rotationEffect(.degrees(rot))
-    }
-
     static func pixel(_ text: String, size: CGFloat, rot: Double) -> some View {
         ZStack {
             ForEach(0..<4, id: \.self) { i in
@@ -774,10 +846,22 @@ enum DaydreamY2KCard {
                 }
             }
             .frame(width: designW).at(0, 132)
-            if let comp = coverComp(s, job) { pill(comp, dark: true, rot: -7).at(24, 82) }
-            if let loc = s.location ?? job.location { pill(loc.lowercased(), dark: false, rot: 5).at(252, 108) }
-            if let exp = s.experience { pill(CoverFacts.experienceLabel(exp), dark: false, rot: 4).at(32, 328) }
-            pill("at \(job.displayCompanyName.lowercased())", dark: true, rot: -4).at(212, 362)
+            // The four scattered rotated pills carried these same facts at
+            // four different angles; the rail sets them on one baseline.
+            Text("at \(job.displayCompanyName.lowercased())")
+                .font(CarouselFonts.archivoBoldItalic(15))
+                .foregroundStyle(.white)
+                .shadow(color: pillBlue.opacity(0.6), radius: 6, y: 2)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(width: designW).at(0, 302)
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.archivoBold(7.5),
+                valueFont: CarouselFonts.archivoBoldItalic(14),
+                ink: .white,
+                labelInk: .white.opacity(0.85),
+                ruleOpacity: 0.45
+            ).at(18, 346)
             pixel("i <3 startups", size: 14, rot: 4).at(212, 60)
             pixel("s22", size: 17, rot: -6).at(326, 298)
         }
@@ -903,16 +987,26 @@ enum HandPaintedCard {
                 ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
                     painted(line, size: 42, offset: i * 2)
                 }
-                Text("at \(job.displayCompanyName.lowercased()) · \(coverMeta(s, job).lowercased())")
+                Text("at \(job.displayCompanyName.lowercased())")
                     .font(CarouselFonts.balooSemiBold(12.5))
                     .foregroundStyle(Color(red: 0.42, green: 0.36, blue: 0.14))
                     .lineLimit(1).minimumScaleFactor(0.6)
                     .padding(.top, 6)
             }
-            .frame(width: designW).at(0, 158)
-            cherries.at(46, 362)
-            spark(24, palette[3], 0).at(176, 368)
-            flower.at(272, 356)
+            // Chewy sets on a tall line box, so the three title lines plus the
+            // company line run to ~370 — the block starts higher to clear the
+            // rail rather than the rail moving down onto the doodles.
+            .frame(width: designW).at(0, 128)
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.balooSemiBold(7.5),
+                valueFont: CarouselFonts.chewy(15),
+                ink: Color(red: 0.72, green: 0.26, blue: 0.18),
+                labelInk: Color(red: 0.42, green: 0.36, blue: 0.14)
+            ).at(18, 350)
+            cherries.at(46, 396)
+            spark(24, palette[3], 0).at(176, 402)
+            flower.at(272, 394)
         }
     }
 
@@ -1010,24 +1104,24 @@ enum QuietLuxuryCard {
             figure.at(118, 34)
             Text("s22").font(CarouselFonts.italianno(30)).foregroundStyle(creamInk)
                 .frame(width: designW).at(0, 12)
-            VStack(spacing: -2) {
-                Text(job.displayCompanyName.uppercased())
-                    .font(CarouselFonts.playfairBold(42)).tracking(1)
-                    .foregroundStyle(creamInk)
-                    .shadow(color: darkInk.opacity(0.25), radius: 6, y: 2)
-                    .lineLimit(1).minimumScaleFactor(0.4)
-                Text("is hiring.")
-                    .font(CarouselFonts.playfairItalic(32))
-                    .foregroundStyle(creamInk)
-                    .shadow(color: darkInk.opacity(0.25), radius: 6, y: 2)
-            }
-            .frame(width: 360).at(15, 150)
-            capsule((s.role ?? job.title).uppercased(), color: creamInk).at(65, 308)
-            Text(coverMeta(s, job).uppercased())
-                .font(CarouselFonts.dmMono(9)).tracking(2.5)
+            // "is hiring." dropped 2026-08-15 — filler. The company stays the
+            // headline and the role stays in the capsule, which keeps this
+            // template company-forward and distinct from warmMinimal, the
+            // other centred-serif card it shares the earthy pool with.
+            Text(job.displayCompanyName.uppercased())
+                .font(CarouselFonts.playfairBold(42)).tracking(1)
                 .foregroundStyle(creamInk)
-                .lineLimit(1).minimumScaleFactor(0.7)
-                .frame(width: designW).at(0, 362)
+                .shadow(color: darkInk.opacity(0.25), radius: 6, y: 2)
+                .lineLimit(1).minimumScaleFactor(0.4)
+                .frame(width: 360).at(15, 150)
+            capsule((s.role ?? job.title).uppercased(), color: creamInk).at(65, 308)
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.dmMono(7.5),
+                valueFont: CarouselFonts.playfairBold(14),
+                ink: creamInk,
+                ruleOpacity: 0.4
+            ).at(18, 376)
         }
     }
 
@@ -1163,11 +1257,23 @@ enum WarmMinimalCard {
                     .padding(.top, 8)
             }
             .frame(width: designW - 40).at(20, 78)
-            Text(coverMeta(s, job).uppercased())
-                .font(CarouselFonts.dmMono(9.5)).tracking(3)
-                .foregroundStyle(softInk)
-                .lineLimit(1).minimumScaleFactor(0.6)
-                .frame(width: designW).at(0, 450)
+            // The still life runs under the rail here, so it sits on a cream
+            // plate — the same treatment this template's interior slides use.
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.dmMono(7.5),
+                valueFont: CarouselFonts.playfair(15),
+                ink: ink,
+                width: 314,
+                labelInk: softInk
+            )
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(
+                Rectangle()
+                    .fill(card.opacity(0.92))
+                    .shadow(color: Color(red: 0.35, green: 0.27, blue: 0.16).opacity(0.16), radius: 14, y: 4)
+            )
+            .at(26, 412)
         }
     }
 
@@ -1306,17 +1412,24 @@ enum AfterHoursCard {
                 }
             }
             .frame(width: designW - 40).at(20, 178)
-            VStack(alignment: .trailing, spacing: 6) {
-                arrow(width: 70)
+            // Was a right-aligned stack 152pt wide, which forced the meta line
+            // down to a 0.5 scale factor — the worst offender of the nine.
+            HStack(spacing: 8) {
+                arrow(width: 54)
                 Text(job.displayCompanyName.uppercased())
                     .font(CarouselFonts.dmMono(9.7)).tracking(1.4)
                     .lineLimit(1).minimumScaleFactor(0.6)
-                Text(coverMeta(s, job).uppercased())
-                    .font(CarouselFonts.dmMono(9.7)).tracking(1.4)
-                    .lineLimit(1).minimumScaleFactor(0.5)
             }
             .foregroundStyle(gold)
-            .frame(width: 152, alignment: .trailing).at(217, 388)
+            .frame(width: 325, alignment: .leading).at(32, 352)
+            FactRail(
+                facts: CoverFacts.rail(s, job),
+                labelFont: CarouselFonts.dmMono(7.5),
+                valueFont: .system(size: 17, weight: .light),
+                ink: gold,
+                labelInk: dimText,
+                ruleOpacity: 0.35
+            ).at(18, 398)
         }
     }
 
@@ -1389,7 +1502,7 @@ struct JobCardPreview: View {
         if let slide = carousel.renderableSlides.first {
             CardTemplateSlideView(
                 slide: slide,
-                style: CarouselStyle.resolve(jobID: job.id, themeID: carousel.themeId),
+                style: CarouselStyle.resolve(companyKey: job.carouselCompanyKey, themeID: carousel.themeId),
                 job: job,
                 onEmailFounder: nil,
                 previewMode: true

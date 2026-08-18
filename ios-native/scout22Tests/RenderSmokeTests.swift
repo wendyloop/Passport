@@ -66,18 +66,21 @@ final class RenderSmokeTests: XCTestCase {
                 "\(archetype) is in no family pool"
             )
             let themeID = try XCTUnwrap(CarouselStyleTests.themeIDPerFamily[family])
-            let jobID = try XCTUnwrap(
-                (0..<400).map({ "smoke-job-\($0)" }).first {
-                    CarouselStyle.resolve(jobID: $0, themeID: themeID).archetype == archetype
+            // Selection keys on the company, not the job, so the company id is
+            // what has to be brute-forced to steer the card onto an archetype.
+            let companyID = try XCTUnwrap(
+                (0..<400).map({ "smoke-co-\($0)" }).first {
+                    CarouselStyle.resolve(companyKey: $0, themeID: themeID).archetype == archetype
                 },
-                "no synthetic job id resolves to \(archetype)"
+                "no synthetic company id resolves to \(archetype)"
             )
 
             let json = """
-            {"id": "\(jobID)", "title": "Senior Product Designer", "company_name": "Ramp",
+            {"id": "smoke-job-\(archetype.rawValue)", "title": "Senior Product Designer",
+             "company_name": "Ramp",
              "is_published": true, "created_at": "2026-07-01T12:00:00Z",
-             "source_kind": "board", "company_id": "co-1",
-             "company": {"id": "co-1", "name": "Ramp", "stage": "seed"},
+             "source_kind": "board", "company_id": "\(companyID)",
+             "company": {"id": "\(companyID)", "name": "Ramp", "stage": "seed"},
              "carousel": {"theme_id": "\(themeID)", "slide_count": 7, "status": "generated",
                "content": [
                  {"type": "cover", "order": 1, "role": "Senior Product Designer", "company": "Ramp",
