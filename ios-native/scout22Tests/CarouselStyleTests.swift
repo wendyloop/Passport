@@ -277,6 +277,43 @@ final class CarouselStyleTests: XCTestCase {
         XCTAssertTrue(CoverFacts.rail(cover, job).isEmpty)
     }
 
+    // MARK: - Title line balancing
+
+    // The old split put the first two words on their own lines and joined the
+    // whole remainder onto the third, so a long role rendered as two huge
+    // words above one crammed line that shrank to a fraction of the size.
+    func testLongTitleDoesNotDumpTheTailOnOneLine() {
+        let words = ["SENIOR", "MANAGER", "DATA", "SCIENCE", "ANALYTICS"]
+        let lines = balancedLines(words, into: 3)
+        XCTAssertEqual(lines.count, 3)
+        // The old behaviour produced "DATA SCIENCE ANALYTICS" — 22 chars.
+        let longest = lines.map(\.count).max() ?? 0
+        XCTAssertLessThanOrEqual(longest, 16, "tail line still crammed: \(lines)")
+    }
+
+    // Balancing must not lose or reorder words.
+    func testBalancingPreservesEveryWordInOrder() {
+        let words = ["STAFF", "SOFTWARE", "ENGINEER", "PLATFORM", "INFRA", "TEAM"]
+        for count in 1...4 {
+            let joined = balancedLines(words, into: count).joined(separator: " ")
+            XCTAssertEqual(joined, words.joined(separator: " "), "count \(count) altered the title")
+        }
+    }
+
+    // Fewer words than lines, or a single line, must pass straight through.
+    func testBalancingHandlesShortTitles() {
+        XCTAssertEqual(balancedLines(["IOS", "ENGINEER"], into: 3), ["IOS", "ENGINEER"])
+        XCTAssertEqual(balancedLines(["DESIGNER"], into: 3), ["DESIGNER"])
+        XCTAssertEqual(balancedLines(["HEAD", "OF", "DESIGN"], into: 1), ["HEAD OF DESIGN"])
+    }
+
+    // The split is the minimum-longest-line one, not merely "not the worst".
+    func testBalancingMinimisesTheLongestLine() {
+        // Optimal here is 14 ("PRODUCT DESIGN"); the naive split would be 23.
+        let lines = balancedLines(["SENIOR", "PRODUCT", "DESIGN", "ENGINEER"], into: 3)
+        XCTAssertEqual(lines.map(\.count).max(), 14, "expected an even split, got \(lines)")
+    }
+
     // MARK: - Helpers
 
     private func coverSlide(_ json: String) throws -> CoverSlide {

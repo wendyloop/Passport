@@ -277,13 +277,58 @@ struct StrokedText: View {
     }
 }
 
-/// Cover title split into stacked uppercase words, capped at three lines.
+/// Cover title split into stacked uppercase lines, capped at three.
+///
+/// Until 2026-08-16 this put the first `cap - 1` words on their own lines and
+/// joined the entire remainder onto the last one, so "Senior Manager, Data
+/// Science & Analytics" rendered as two huge words above one crammed line
+/// that then shrank to a fraction of the display size. Lines are balanced now.
 private func titleLines(_ s: CoverSlide, _ job: JobPostingRecord, cap: Int = 3) -> [String] {
-    let words = (s.role ?? job.title).uppercased().split(separator: " ").map(String.init)
+    let words = (s.role ?? job.title).uppercased()
+        .split(separator: " ").map(String.init)
     guard words.count > cap else { return words }
-    var lines = Array(words.prefix(cap - 1))
-    lines.append(words.dropFirst(cap - 1).joined(separator: " "))
-    return lines
+    return balancedLines(words, into: cap)
+}
+
+/// Break `words` into exactly `count` contiguous lines, minimising the longest
+/// line so no single line carries the tail. Brute-forced over the break
+/// positions — role titles are a handful of words, and a greedy pass still
+/// left a visibly long last line on common four- and five-word titles.
+func balancedLines(_ words: [String], into count: Int) -> [String] {
+    guard count > 1 else { return [words.joined(separator: " ")] }
+    guard words.count > count else { return words }
+
+    func lines(for breaks: [Int]) -> [String] {
+        var out: [String] = []
+        var start = 0
+        for end in breaks + [words.count] {
+            out.append(words[start..<end].joined(separator: " "))
+            start = end
+        }
+        return out
+    }
+
+    var best = lines(for: Array(1..<count))
+    var bestLongest = best.map(\.count).max() ?? 0
+
+    func search(from gap: Int, breaks: [Int]) {
+        if breaks.count == count - 1 {
+            let candidate = lines(for: breaks)
+            let longest = candidate.map(\.count).max() ?? 0
+            if longest < bestLongest {
+                bestLongest = longest
+                best = candidate
+            }
+            return
+        }
+        let reserved = count - 1 - breaks.count
+        guard gap <= words.count - reserved else { return }
+        for next in gap...(words.count - reserved) {
+            search(from: next + 1, breaks: breaks + [next])
+        }
+    }
+    search(from: 1, breaks: [])
+    return best
 }
 
 // `coverComp` and `coverMeta` retired 2026-08-15. It joined comp/location/work-mode into one
@@ -390,7 +435,7 @@ enum BoldDropCard {
                         .lineLimit(1).minimumScaleFactor(0.4)
                 }
             }
-            .frame(width: 354, alignment: .leading).at(18, 100)
+            .frame(width: 354, height: 188, alignment: .bottomLeading).at(18, 100)
             Text("at \(job.displayCompanyName)")
                 .font(CarouselFonts.archivoBold(15))
                 .foregroundStyle(teal)
@@ -616,7 +661,7 @@ enum MotionEditorialCard {
                         .lineLimit(1).minimumScaleFactor(0.4)
                 }
             }
-            .frame(width: 310, alignment: .leading).at(22, 248)
+            .frame(width: 310, height: 150, alignment: .bottomLeading).at(22, 232)
             // The company name never appeared on this cover at all; the rail
             // freed the room the old meta line was using.
             Text(job.displayCompanyName.uppercased())
@@ -1120,17 +1165,27 @@ enum QuietLuxuryCard {
             figure.at(118, 34)
             Text("s22").font(CarouselFonts.italianno(30)).foregroundStyle(creamInk)
                 .frame(width: designW).at(0, 12)
-            // "is hiring." dropped 2026-08-15 — filler. The company stays the
-            // headline and the role stays in the capsule, which keeps this
-            // template company-forward and distinct from warmMinimal, the
-            // other centred-serif card it shares the earthy pool with.
+            // Role is the headline, company sits in the capsule beneath it
+            // (swapped 2026-08-16). The advertised thing should be the biggest
+            // type on the card, which is now true on all fifteen templates.
             Text(job.displayCompanyName.uppercased())
-                .font(CarouselFonts.playfairBold(42)).tracking(1)
+                .font(CarouselFonts.dmMono(10)).tracking(3.2)
                 .foregroundStyle(creamInk)
-                .shadow(color: darkInk.opacity(0.25), radius: 6, y: 2)
-                .lineLimit(1).minimumScaleFactor(0.4)
-                .frame(width: 360).at(15, 150)
-            capsule((s.role ?? job.title).uppercased(), color: creamInk).at(65, 308)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: designW).at(0, 136)
+            VStack(spacing: -4) {
+                ForEach(titleLines(s, job), id: \.self) { line in
+                    Text(line)
+                        .font(CarouselFonts.playfairBold(38)).tracking(0.5)
+                        .foregroundStyle(creamInk)
+                        .shadow(color: darkInk.opacity(0.25), radius: 6, y: 2)
+                        .lineLimit(1).minimumScaleFactor(0.4)
+                }
+            }
+            // Bottom-anchored so a one-, two- or three-line role always ends
+            // on the same baseline and never grows down into the capsule.
+            .frame(width: 360, height: 148, alignment: .bottom).at(15, 162)
+            capsule("AT \(job.displayCompanyName.uppercased())", color: creamInk).at(65, 326)
             FactRail(
                 facts: CoverFacts.rail(s, job),
                 labelFont: CarouselFonts.dmMono(7.5),
@@ -1655,7 +1710,7 @@ enum PressClippingCard {
                         .scaleEffect(x: 0.88, anchor: .leading)
                 }
             }
-            .frame(width: 352, alignment: .leading).at(20, 100)
+            .frame(width: 352, height: 132, alignment: .bottomLeading).at(20, 96)
             HStack(spacing: 7) {
                 ForEach(Array(facts.enumerated()), id: \.offset) { _, f in
                     VStack(alignment: .leading, spacing: 3) {
@@ -2034,7 +2089,9 @@ enum FolderTabsCard {
                         .lineLimit(1).minimumScaleFactor(0.4)
                 }
             }
-            .frame(width: 338, alignment: .leading).at(26, 280)
+            // Bottom-anchored: three lines of 38pt used to run to y414 and
+            // collide with the company line, clipping the last line.
+            .frame(width: 338, height: 140, alignment: .bottomLeading).at(26, 264)
             Text("at \(job.displayCompanyName)")
                 .font(CarouselFonts.playfairItalic(17))
                 .foregroundStyle(plum)
