@@ -15,24 +15,6 @@ final class FontRegistrationTests: XCTestCase {
 }
 
 final class CarouselStyleTests: XCTestCase {
-    /// One representative backend theme id per palette family. Selection is
-    /// family-scoped, so any test needing a specific family goes through this.
-    static let themeIDPerFamily: [CarouselPaletteFamily: String] = [
-        .cool: "slate-gradient",
-        .warm: "sunset-paper",
-        .earthy: "moss-grain",
-        .playful: "neon-pop",
-    ]
-
-    // Guards the fixture above: if a theme id were regrouped backend-side,
-    // every family-scoped test would silently exercise the wrong pool.
-    func testThemeIDFixtureMapsToItsFamily() {
-        for (family, themeID) in Self.themeIDPerFamily {
-            XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: themeID), family)
-        }
-        XCTAssertEqual(Set(Self.themeIDPerFamily.keys), Set(CarouselPaletteFamily.allCases))
-    }
-
     // Same company + theme must always land on the same look — carousels
     // shouldn't reshuffle between scrolls or app launches.
     func testResolveIsDeterministic() {
@@ -60,51 +42,8 @@ final class CarouselStyleTests: XCTestCase {
         for i in 0..<200 {
             seen.insert(CarouselStyle.resolve(companyKey: "co-\(i)", themeID: "slate-gradient").archetype)
         }
-        XCTAssertEqual(seen, Set(CarouselArchetype.pool(for: .cool)))
-    }
-
-    // Every archetype must be reachable by some company. Selection is
-    // per-family now, so no single theme id covers the whole roster — the
-    // union across families must.
-    func testEveryArchetypeIsReachableAcrossFamilies() {
-        var seen = Set<CarouselArchetype>()
-        for themeID in Self.themeIDPerFamily.values {
-            for i in 0..<200 {
-                seen.insert(CarouselStyle.resolve(companyKey: "co-\(i)", themeID: themeID).archetype)
-            }
-        }
-        XCTAssertEqual(seen, Set(CarouselArchetype.active))
-    }
-
-    // The structural version of the above: an archetype missing from every
-    // pool would be dead code no company could ever surface.
-    func testFamilyPoolsUnionToActive() {
-        let union = Set(CarouselPaletteFamily.allCases.flatMap { CarouselArchetype.pool(for: $0) })
-        XCTAssertEqual(union, Set(CarouselArchetype.active))
-    }
-
-    // The industry bias only holds if selection stays inside the family's
-    // pool — a fintech job must never land on a bubblegum template.
-    func testResolveStaysWithinItsFamilyPool() {
-        for (family, themeID) in Self.themeIDPerFamily {
-            let allowed = Set(CarouselArchetype.pool(for: family))
-            for i in 0..<200 {
-                let archetype = CarouselStyle.resolve(companyKey: "co-\(i)", themeID: themeID).archetype
-                XCTAssertTrue(allowed.contains(archetype), "\(archetype) escaped the \(family) pool")
-            }
-        }
-    }
-
-    // The hash must spread jobs across a family's whole pool — a feed of
-    // same-industry jobs should still mix templates.
-    func testFamilyPoolIsFullyCovered() {
-        for (family, themeID) in Self.themeIDPerFamily {
-            var seen = Set<CarouselArchetype>()
-            for i in 0..<200 {
-                seen.insert(CarouselStyle.resolve(companyKey: "co-\(i)", themeID: themeID).archetype)
-            }
-            XCTAssertEqual(seen, Set(CarouselArchetype.pool(for: family)), "\(family) pool underused")
-        }
+        XCTAssertEqual(seen, Set(CarouselArchetype.active),
+                       "every template must be reachable by some company")
     }
 
     // Dropping an archetype = removing it from the pool; it must never be
@@ -123,34 +62,23 @@ final class CarouselStyleTests: XCTestCase {
         XCTAssertEqual(style.archetype, .boldDrop)
     }
 
-    // Palette family mirrors the backend's industry-biased theme groups, and
-    // unknown/future theme ids fall into the same family as the theme
-    // resolver's slateGradient fallback.
-    func testPaletteFamilyMapping() {
-        for id in ["indigo-grid", "slate-gradient", "midnight-mono"] {
-            XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: id), .cool)
+    // Every archetype must define a palette — a gap would surface as a
+    // crash the first time a company hashed onto it.
+    func testEveryArchetypeHasAPalette() {
+        for archetype in CarouselArchetype.allCases {
+            XCTAssertFalse(archetype.palette().id.isEmpty, "\(archetype) has no palette")
         }
-        for id in ["sunset-paper", "coral-soft", "amber-glow"] {
-            XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: id), .warm)
-        }
-        for id in ["moss-grain", "clay-edge"] {
-            XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: id), .earthy)
-        }
-        for id in ["neon-pop", "bubble-pastel"] {
-            XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: id), .playful)
-        }
-        XCTAssertEqual(CarouselPaletteFamily.family(forThemeID: "theme-from-the-future"), .cool)
     }
 
-    // Every archetype must define a palette for every family — a gap here
-    // would surface as a crash the first time a job hashes into the
-    // missing combination.
-    func testEveryArchetypeHasAPaletteForEveryFamily() {
-        for archetype in CarouselArchetype.allCases {
-            for family in CarouselPaletteFamily.allCases {
-                let theme = archetype.palette(for: family, themeID: "slate-gradient")
-                XCTAssertFalse(theme.id.isEmpty, "\(archetype) has no palette for \(family)")
-            }
+    // The backend still sends a theme_id and still varies it by industry;
+    // template choice deliberately ignores it (product call 2026-08-16).
+    func testThemeIDDoesNotAffectTemplateChoice() {
+        for id in ["slate-gradient", "neon-pop", "moss-grain", "sunset-paper", "theme-from-the-future"] {
+            XCTAssertEqual(
+                CarouselStyle.resolve(companyKey: "co-lumen", themeID: id).archetype,
+                CarouselStyle.resolve(companyKey: "co-lumen").archetype,
+                "theme id \(id) changed the template"
+            )
         }
     }
 

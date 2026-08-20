@@ -56,21 +56,13 @@ final class RenderSmokeTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
 
         for archetype in CarouselArchetype.active {
-            // Selection is family-scoped, so drive each archetype through a
-            // family whose pool actually contains it — the card resolves its
-            // own style internally from the theme id in this fixture.
-            let family = try XCTUnwrap(
-                CarouselPaletteFamily.allCases.first {
-                    CarouselArchetype.pool(for: $0).contains(archetype)
-                },
-                "\(archetype) is in no family pool"
-            )
-            let themeID = try XCTUnwrap(CarouselStyleTests.themeIDPerFamily[family])
-            // Selection keys on the company, not the job, so the company id is
-            // what has to be brute-forced to steer the card onto an archetype.
+            // Selection keys on the company, so the company id is what has
+            // to be brute-forced to steer the card onto an archetype. The
+            // theme id no longer influences the choice.
+            let themeID = "slate-gradient"
             let companyID = try XCTUnwrap(
                 (0..<400).map({ "smoke-co-\($0)" }).first {
-                    CarouselStyle.resolve(companyKey: $0, themeID: themeID).archetype == archetype
+                    CarouselStyle.resolve(companyKey: $0).archetype == archetype
                 },
                 "no synthetic company id resolves to \(archetype)"
             )
