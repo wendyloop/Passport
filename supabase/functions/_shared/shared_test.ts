@@ -17,6 +17,7 @@ import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
 import { buildMatchIndex, groupPendingJobs } from "./ats/enrich_targets.ts";
 import type { NormalizedJob } from "./ats/models.ts";
 import { feedIsAuthoritative, selectVanishedJobIds } from "./ats/vanished.ts";
+import { classifyGetroDetail, getroJobDetailURL } from "./boards/getro_detail.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -594,4 +595,55 @@ Deno.test("selectVanishedJobIds keeps jobs with an unusable created_at", () => {
 Deno.test("feedIsAuthoritative rejects an empty adapter result", () => {
   assertEquals(feedIsAuthoritative(0), false);
   assertEquals(feedIsAuthoritative(1), true);
+});
+
+// --- Getro per-job detail (board-sourced descriptions + liveness) ---------
+
+const LONG_JD = "<p>" + "We are hiring a senior engineer to build things. ".repeat(4) + "</p>";
+
+Deno.test("classifyGetroDetail: an open posting with a real JD is written", () => {
+  const outcome = classifyGetroDetail({ status: "active", visibility: "visible", description: LONG_JD });
+  assertEquals(outcome.kind, "describe");
+  if (outcome.kind !== "describe") throw new Error("unreachable");
+  assertEquals(outcome.description_raw, LONG_JD);
+  // Stored text is stripped of markup, like every other description source.
+  assertEquals(outcome.description.includes("<p>"), false);
+  assertEquals(outcome.description.startsWith("We are hiring"), true);
+});
+
+Deno.test("classifyGetroDetail: closed postings expire and are never described", () => {
+  // Each signal alone is enough — a JD present alongside it must not win,
+  // or we would make a dead posting visible in the feed.
+  for (
+    const detail of [
+      { status: "active", closed_at: "2026-08-01T00:00:00Z", description: LONG_JD },
+      { status: "active", deactivated_at: "2026-08-01T00:00:00Z", description: LONG_JD },
+      { status: "active", visibility: "not_visible", description: LONG_JD },
+      { status: "deactivated", visibility: "visible", description: LONG_JD },
+    ]
+  ) {
+    assertEquals(classifyGetroDetail(detail).kind, "expire");
+  }
+});
+
+Deno.test("classifyGetroDetail: a stub description is not a JD", () => {
+  assertEquals(
+    classifyGetroDetail({ status: "active", description: "<p>Apply on our website.</p>" }).kind,
+    "skip",
+  );
+  assertEquals(classifyGetroDetail({ status: "active", description: null }).kind, "skip");
+});
+
+Deno.test("classifyGetroDetail: an unrecognised payload skips rather than expires", () => {
+  // If Getro changes its schema, degrade to doing nothing — never to closing
+  // jobs we cannot prove are closed.
+  assertEquals(classifyGetroDetail({}).kind, "skip");
+  assertEquals(classifyGetroDetail({ description: LONG_JD }).kind, "skip");
+});
+
+Deno.test("getroJobDetailURL encodes both ids", () => {
+  assertEquals(
+    getroJobDetailURL("90361272", "8672"),
+    "https://api.getro.com/api/v1/jobs/90361272?collection_id=8672",
+  );
 });

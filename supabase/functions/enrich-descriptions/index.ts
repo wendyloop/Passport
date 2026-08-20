@@ -43,9 +43,23 @@ import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { requireCronSecret } from "../_shared/cron_auth.ts";
 import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { insertPostingEmailContact } from "../_shared/contacts.ts";
+import { classifyGetroDetail, fetchGetroJobDetail } from "../_shared/boards/getro_detail.ts";
+import { pMap } from "../_shared/ats/http.ts";
 import { feedIsAuthoritative, selectVanishedJobIds } from "../_shared/ats/vanished.ts";
 
 const RUN_BUDGET_MS = 50_000;
+// The two phases draw on one 50s budget, so the ATS phase is capped rather
+// than allowed to consume everything: one slow company used to leave nothing
+// for anything else. Getro gets the remainder — it is the higher-yield of the
+// two (~15.7k of the ~16.2k blank jobs sit on Getro funds), so it must never
+// be the phase that gets starved.
+const ATS_BUDGET_MS = 25_000;
+// One request per job, so this is the real throughput knob. 6 in flight is
+// roughly 10 jobs/sec against api.getro.com — enough to drain the backlog in
+// a few days of hourly runs without hammering a third party we don't own.
+const GETRO_CONCURRENCY = 6;
+// Upper bound on rows pulled per run; the deadline usually bites first.
+const GETRO_JOBS_PER_RUN = 400;
 // Each company costs one ATS list-fetch (often hundreds of HTML JD bodies in
 // memory at once for Greenhouse/Lever). 200 was too many — Supabase killed
 // the worker for memory. 30 fits comfortably; the hourly cron drains the
@@ -121,16 +135,14 @@ Deno.serve(async (request) => {
     companies = (data ?? []) as CompanyRow[];
   }
 
-  if (companies.length === 0) {
-    return jsonResponse({ summary: { event: "enrich_descriptions_run", company_count: 0 }, outcomes: [] });
-  }
-
   const outcomes: EnrichOutcome[] = [];
   const startedAt = Date.now();
   let budgetHit = false;
 
+  // An empty company list is not an empty run: the Getro phase below works
+  // from jobs, not companies, and used to be skipped by an early return here.
   for (const company of companies) {
-    if (!body.company_id && Date.now() - startedAt > RUN_BUDGET_MS) {
+    if (!body.company_id && Date.now() - startedAt > ATS_BUDGET_MS) {
       budgetHit = true;
       break;
     }
@@ -147,6 +159,12 @@ Deno.serve(async (request) => {
     console.log(JSON.stringify({ event: "enrich_descriptions_company", ...outcome }));
   }
 
+  // Board phase. Failure-isolated from the ATS phase above: whatever that
+  // already wrote stands even if Getro is unreachable.
+  const getro = body.company_id
+    ? null
+    : await runGetroPass(admin, Math.max(0, RUN_BUDGET_MS - (Date.now() - startedAt)));
+
   const summary = {
     event: "enrich_descriptions_run",
     company_count: outcomes.length,
@@ -155,6 +173,10 @@ Deno.serve(async (request) => {
     enriched: sum(outcomes, (o) => o.jobs_enriched),
     expired: sum(outcomes, (o) => o.jobs_expired),
     errored: outcomes.filter((o) => o.error).length,
+    getro_examined: getro?.examined ?? 0,
+    getro_enriched: getro?.enriched ?? 0,
+    getro_expired: getro?.expired ?? 0,
+    getro_errors: getro?.errors ?? 0,
     duration_ms: Date.now() - startedAt,
   };
   console.log(JSON.stringify(summary));
@@ -349,3 +371,126 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((acc, item) => acc + pick(item), 0);
 }
 
+
+type GetroPassResult = {
+  examined: number;
+  enriched: number;
+  expired: number;
+  errors: number;
+};
+
+/**
+ * Board phase: fill descriptions (and close dead postings) from Getro's
+ * per-job endpoint. Job-driven rather than company-driven — the ATS phase
+ * above can only reach the five providers we have adapters for, while Getro
+ * answers for every posting on its boards regardless of where it's hosted.
+ */
+async function runGetroPass(
+  admin: ReturnType<typeof createAdminClient>,
+  budgetMs: number,
+): Promise<GetroPassResult> {
+  const result: GetroPassResult = { examined: 0, enriched: 0, expired: 0, errors: 0 };
+  if (budgetMs <= 0) return result;
+  const deadline = Date.now() + budgetMs;
+
+  // source_board is the fund slug; the collection id it maps to lives on the
+  // fund row, so nothing here hardcodes a fund.
+  const { data: fundRows, error: fundError } = await admin
+    .from("funds")
+    .select("slug, external_collection_id")
+    .eq("platform", "getro")
+    .not("external_collection_id", "is", null);
+  if (fundError || !fundRows || fundRows.length === 0) {
+    if (fundError) console.error(JSON.stringify({ event: "getro_pass_funds_failed", error: fundError.message }));
+    return result;
+  }
+  const collectionBySlug = new Map(
+    (fundRows as Array<{ slug: string; external_collection_id: string }>)
+      .map((f) => [f.slug, f.external_collection_id]),
+  );
+
+  // Most-recently-seen first: those are the likeliest to still be open, so
+  // the feed gains real postings early instead of after a long tail of
+  // closures. The closures still happen — just later in the drain.
+  const { data: jobRows, error: jobError } = await admin
+    .from("jobs")
+    .select("id, external_id, source_board")
+    .is("description", null)
+    .eq("is_active", true)
+    .in("source_board", [...collectionBySlug.keys()])
+    .not("external_id", "is", null)
+    .order("last_seen_at", { ascending: false })
+    .limit(GETRO_JOBS_PER_RUN);
+  if (jobError) {
+    console.error(JSON.stringify({ event: "getro_pass_jobs_failed", error: jobError.message }));
+    return result;
+  }
+
+  const jobs = (jobRows ?? []) as Array<{ id: string; external_id: string; source_board: string }>;
+  if (jobs.length === 0) return result;
+
+  const toExpire: string[] = [];
+
+  await pMap(jobs, GETRO_CONCURRENCY, async (job) => {
+    if (Date.now() > deadline) return;
+    const collectionId = collectionBySlug.get(job.source_board);
+    if (!collectionId) return;
+
+    let detail;
+    try {
+      detail = await fetchGetroJobDetail(job.external_id, collectionId);
+    } catch (error) {
+      // A job we couldn't reach proves nothing about whether it still exists,
+      // so it is never expired on a fetch failure — it stays queued.
+      result.errors += 1;
+      console.error(JSON.stringify({
+        event: "getro_pass_fetch_failed",
+        job_id: job.id,
+        external_id: job.external_id,
+        error: (error as Error).message.slice(0, 160),
+      }));
+      return;
+    }
+    result.examined += 1;
+
+    const outcome = classifyGetroDetail(detail);
+    if (outcome.kind === "expire") {
+      toExpire.push(job.id);
+      return;
+    }
+    if (outcome.kind === "skip") return;
+
+    // Same write-once guard as the ATS path: never overwrite a description
+    // another pass already filled.
+    const { error, count } = await admin
+      .from("jobs")
+      .update(
+        { description: outcome.description, description_raw: outcome.description_raw },
+        { count: "exact" },
+      )
+      .eq("id", job.id)
+      .is("description", null);
+    if (error) {
+      result.errors += 1;
+      console.error(JSON.stringify({
+        event: "getro_pass_update_failed",
+        job_id: job.id,
+        error: error.message,
+      }));
+      return;
+    }
+    if ((count ?? 0) > 0) result.enriched += 1;
+  });
+
+  try {
+    result.expired = await expireVanishedJobs(admin, "getro-pass", toExpire);
+  } catch (expireError) {
+    console.error(JSON.stringify({
+      event: "getro_pass_expire_failed",
+      error: (expireError as Error).message,
+    }));
+  }
+
+  console.log(JSON.stringify({ event: "enrich_descriptions_getro_pass", ...result }));
+  return result;
+}
