@@ -60,6 +60,13 @@ const ATS_BUDGET_MS = 25_000;
 const GETRO_CONCURRENCY = 6;
 // Upper bound on rows pulled per run; the deadline usually bites first.
 const GETRO_JOBS_PER_RUN = 400;
+// Jobs that already have a description still need their liveness re-checked —
+// nothing else does it. ingest-jobs' sweep sees ~333 jobs/day against 30k
+// active rows (a ~3-month cycle) and is gated on a full drain the big funds
+// have never achieved, so `jobs_expired` is 0 on every run. Blank jobs keep
+// priority (they gain a description AND a liveness check); whatever budget is
+// left rotates over described ones, oldest-check first.
+const GETRO_MIN_LIVENESS_SLOTS = 120;
 // Each company costs one ATS list-fetch (often hundreds of HTML JD bodies in
 // memory at once for Greenhouse/Lever). 200 was too many — Supabase killed
 // the worker for memory. 30 fits comfortably; the hourly cron drains the
@@ -177,6 +184,7 @@ Deno.serve(async (request) => {
     getro_enriched: getro?.enriched ?? 0,
     getro_expired: getro?.expired ?? 0,
     getro_errors: getro?.errors ?? 0,
+    getro_liveness_checked: getro?.liveness_checked ?? 0,
     duration_ms: Date.now() - startedAt,
   };
   console.log(JSON.stringify(summary));
@@ -377,6 +385,8 @@ type GetroPassResult = {
   enriched: number;
   expired: number;
   errors: number;
+  // Re-verified rows that already had a description: liveness only, no write.
+  liveness_checked: number;
 };
 
 /**
@@ -389,7 +399,9 @@ async function runGetroPass(
   admin: ReturnType<typeof createAdminClient>,
   budgetMs: number,
 ): Promise<GetroPassResult> {
-  const result: GetroPassResult = { examined: 0, enriched: 0, expired: 0, errors: 0 };
+  const result: GetroPassResult = {
+    examined: 0, enriched: 0, expired: 0, errors: 0, liveness_checked: 0,
+  };
   if (budgetMs <= 0) return result;
   const deadline = Date.now() + budgetMs;
 
@@ -409,27 +421,56 @@ async function runGetroPass(
       .map((f) => [f.slug, f.external_collection_id]),
   );
 
+  const slugs = [...collectionBySlug.keys()];
+
   // Most-recently-seen first: those are the likeliest to still be open, so
   // the feed gains real postings early instead of after a long tail of
   // closures. The closures still happen — just later in the drain.
-  const { data: jobRows, error: jobError } = await admin
+  const blankBudget = Math.max(0, GETRO_JOBS_PER_RUN - GETRO_MIN_LIVENESS_SLOTS);
+  const { data: blankRows, error: jobError } = await admin
     .from("jobs")
     .select("id, external_id, source_board")
     .is("description", null)
     .eq("is_active", true)
-    .in("source_board", [...collectionBySlug.keys()])
+    .in("source_board", slugs)
     .not("external_id", "is", null)
     .order("last_seen_at", { ascending: false })
-    .limit(GETRO_JOBS_PER_RUN);
+    .limit(blankBudget);
   if (jobError) {
     console.error(JSON.stringify({ event: "getro_pass_jobs_failed", error: jobError.message }));
     return result;
   }
 
-  const jobs = (jobRows ?? []) as Array<{ id: string; external_id: string; source_board: string }>;
+  const jobs = (blankRows ?? []) as Array<{ id: string; external_id: string; source_board: string }>;
+  const blankIds = new Set(jobs.map((j) => j.id));
+
+  // Fill the rest of the run with liveness re-checks. Least-recently-verified
+  // first (NULL = never), so the whole population rotates instead of the same
+  // rows being re-checked every hour.
+  if (jobs.length < GETRO_JOBS_PER_RUN) {
+    const { data: liveRows, error: liveError } = await admin
+      .from("jobs")
+      .select("id, external_id, source_board")
+      .not("description", "is", null)
+      .eq("is_active", true)
+      .in("source_board", slugs)
+      .not("external_id", "is", null)
+      .order("liveness_checked_at", { ascending: true, nullsFirst: true })
+      .limit(GETRO_JOBS_PER_RUN - jobs.length);
+    if (liveError) {
+      console.error(JSON.stringify({ event: "getro_pass_liveness_query_failed", error: liveError.message }));
+    } else {
+      jobs.push(...((liveRows ?? []) as typeof jobs));
+    }
+  }
   if (jobs.length === 0) return result;
 
   const toExpire: string[] = [];
+  // Rows whose cursor to stamp. A failed fetch counts as an attempt: the
+  // liveness queue is ordered by this column, so a row that errors every time
+  // would otherwise sit at the head of the rotation forever and starve the
+  // rest of the population.
+  const checked: string[] = [];
 
   await pMap(jobs, GETRO_CONCURRENCY, async (job) => {
     if (Date.now() > deadline) return;
@@ -443,6 +484,7 @@ async function runGetroPass(
       // A job we couldn't reach proves nothing about whether it still exists,
       // so it is never expired on a fetch failure — it stays queued.
       result.errors += 1;
+      checked.push(job.id);
       console.error(JSON.stringify({
         event: "getro_pass_fetch_failed",
         job_id: job.id,
@@ -457,6 +499,13 @@ async function runGetroPass(
     if (outcome.kind === "expire") {
       toExpire.push(job.id);
       return;
+    }
+    // Getro says it's open: stamp the rotation cursor whether or not there is
+    // a description to write, so a job with no JD text can't pin the queue.
+    checked.push(job.id);
+    if (!blankIds.has(job.id)) {
+      result.liveness_checked += 1;
+      return; // already described — this row was queued for liveness only
     }
     if (outcome.kind === "skip") return;
 
@@ -481,6 +530,19 @@ async function runGetroPass(
     }
     if ((count ?? 0) > 0) result.enriched += 1;
   });
+
+  // Cursor stamping is best-effort: a failure here costs a re-check next run,
+  // never a wrong expiry.
+  for (let i = 0; i < checked.length; i += EXPIRE_CHUNK) {
+    const { error } = await admin
+      .from("jobs")
+      .update({ liveness_checked_at: new Date().toISOString() })
+      .in("id", checked.slice(i, i + EXPIRE_CHUNK));
+    if (error) {
+      console.error(JSON.stringify({ event: "getro_pass_cursor_failed", error: error.message }));
+      break;
+    }
+  }
 
   try {
     result.expired = await expireVanishedJobs(admin, "getro-pass", toExpire);
