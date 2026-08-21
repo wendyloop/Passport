@@ -18,10 +18,18 @@ struct NativeRootView: View {
     @State private var lastHandledAuthRedirect: String?
 
     @State private var showingNotifications = false
+    @State private var showingAdminTools = false
     @FocusState private var focusedField: Field?
 
     private var authRedirectURL: URL {
         URL(string: "\(config.redirectScheme)://auth-callback")!
+    }
+
+    private var phaseUsesKeyboardAvoidance: Bool {
+        switch store.phase {
+        case .signedOut, .onboarding: return true
+        case .launching, .offline, .signedIn: return false
+        }
     }
 
     var body: some View {
@@ -35,8 +43,31 @@ struct NativeRootView: View {
 
                 content
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            // The feed and the signed-in chrome are full-bleed and must not
+            // shift for the keyboard. The auth and onboarding forms must —
+            // ignoring it here is what buried the email/password fields
+            // under the keyboard.
+            .keyboardAvoidance(enabled: phaseUsesKeyboardAvoidance)
             .toolbar(.hidden, for: .navigationBar)
+            .fullScreenCover(isPresented: $showingAdminTools) {
+                AdminHomeView(
+                    jobs: store.adminJobs,
+                    employers: store.employerDirectoryItems,
+                    onCreateJob: { draft, videoURL in
+                        await store.createJob(draft: draft, localVideoURL: videoURL)
+                    },
+                    onImportSharedPost: { sourceURL in
+                        try await store.parseSharedJobPosting(sourceURL: sourceURL)
+                    },
+                    onToggleJobPublishState: { jobID, isPublished in
+                        Task { await store.toggleJobPublishState(jobID: jobID, isPublished: isPublished) }
+                    },
+                    onRefresh: { Task { await store.refreshCurrentRoleData() } },
+                    onShowNotifications: { showingNotifications = true },
+                    onSignOut: { showingAdminTools = false },
+                    socialSession: { try await store.requireSession() }
+                )
+            }
             .sheet(isPresented: $showingNotifications, onDismiss: {
                 Task { await store.markNotificationsRead() }
             }) {
@@ -56,12 +87,13 @@ struct NativeRootView: View {
             Text(store.errorMessage ?? "")
         }
         .onOpenURL { url in
-            // F10: share deep link jobtok://job/{id} → queue for the feed.
-            if url.host == "job" {
-                let jobID = url.lastPathComponent
-                if !jobID.isEmpty && jobID != "job" {
-                    store.pendingSharedJobID = jobID
-                }
+            // Share links arrive two ways: the legacy jobtok://job/{id}
+            // scheme, and https://tryscout22.com/j/{id} universal links,
+            // which are what actually work from Instagram, Safari and link
+            // previews — custom schemes only fire where the scheme is
+            // already known. Both land on the same pending-job handoff.
+            if let jobID = ShareConfig.jobID(fromDeepLink: url) {
+                store.pendingSharedJobID = jobID
                 return
             }
             Task {
@@ -153,39 +185,59 @@ struct NativeRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// True while the email form is being typed into. The header collapses
+    /// so the fields clear the keyboard on small devices.
+    private var isTypingCredentials: Bool { focusedField != nil }
+
     private var authView: some View {
         GeometryReader { proxy in
-            ScrollView(showsIndicators: false) {
-                VStack {
-                    Spacer(minLength: 0)
+            ScrollViewReader { scroller in
+                ScrollView(showsIndicators: false) {
+                    VStack {
+                        Spacer(minLength: 0)
 
-                    VStack(spacing: 30) {
-                        VStack(spacing: 16) {
-                            Text("scout22")
-                                .font(.system(size: 68, weight: .black, design: .rounded))
-                                .foregroundStyle(Color.black)
-                                .multilineTextAlignment(.center)
-
-                            Text(selectedLoginMethod.subtitle)
-                                .font(.system(size: 17, weight: .medium, design: .rounded))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(PassportTheme.textSecondary)
+                        VStack(spacing: isTypingCredentials ? 22 : 30) {
+                            authHeader
+                            loginMethodSelector
+                            authCard
+                                .id(AuthAnchor.card)
                         }
+                        .frame(maxWidth: 360)
 
-                        loginMethodSelector
-                        authCard
+                        Spacer(minLength: 0)
                     }
-                    .frame(maxWidth: 360)
-
-                    Spacer(minLength: 0)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, isTypingCredentials ? 16 : 28)
+                    .frame(maxWidth: .infinity)
+                    // proxy.size.height already excludes the keyboard now
+                    // that this phase honours the keyboard safe area, so the
+                    // card stays centred in whatever space is left.
+                    .frame(minHeight: max(proxy.size.height, 0))
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 28)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: max(proxy.size.height, 0))
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedField) { _, newValue in
+                    guard newValue != nil else { return }
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        scroller.scrollTo(AuthAnchor.card, anchor: .center)
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
         }
+    }
+
+    private var authHeader: some View {
+        VStack(spacing: isTypingCredentials ? 6 : 16) {
+            Text("scout22")
+                .font(.system(size: isTypingCredentials ? 38 : 68, weight: .black, design: .rounded))
+                .foregroundStyle(Color.black)
+                .multilineTextAlignment(.center)
+
+            Text(selectedLoginMethod.subtitle)
+                .font(.system(size: isTypingCredentials ? 14 : 17, weight: .medium, design: .rounded))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(PassportTheme.textSecondary)
+        }
+        .animation(.easeInOut(duration: 0.22), value: isTypingCredentials)
     }
 
     @ViewBuilder
@@ -238,34 +290,19 @@ struct NativeRootView: View {
             )
             */
         case .admin:
-            // Restored 2026-08-15 (employer stays hidden): the social-card
-            // exporter lives in this view's Social tab, and admin is an
-            // internal-only role, so the pre-launch reason for hiding it —
-            // don't show half-built surfaces to real users — doesn't apply.
-            AdminHomeView(
-                jobs: store.adminJobs,
-                employers: store.employerDirectoryItems,
-                onCreateJob: { draft, videoURL in
-                    await store.createJob(draft: draft, localVideoURL: videoURL)
-                },
-                onImportSharedPost: { sourceURL in
-                    try await store.parseSharedJobPosting(sourceURL: sourceURL)
-                },
-                onToggleJobPublishState: { jobID, isPublished in
-                    Task { await store.toggleJobPublishState(jobID: jobID, isPublished: isPublished) }
-                },
-                onRefresh: { Task { await store.refreshCurrentRoleData() } },
-                onShowNotifications: { showingNotifications = true },
-                onSignOut: { Task { await store.signOut() } },
-                socialSession: { try await store.requireSession() }
-            )
+            // Admins get the real candidate feed as home (restored
+            // 2026-08-21): the admin screen has no carousel surface of its
+            // own — its Feed Preview only renders video cards — so routing
+            // here was hiding the feed where cards actually get saved. The
+            // admin tools live behind the wrench in the header instead.
+            jobSeekerHome(showAdminTools: { showingAdminTools = true })
         case .none:
             // Role not yet chosen — default to the candidate experience.
             jobSeekerHome()
         }
     }
 
-    private func jobSeekerHome() -> some View {
+    private func jobSeekerHome(showAdminTools: (() -> Void)? = nil) -> some View {
         JobSeekerHomeView(
             profile: store.candidateDraft,
             jobs: store.jobFeed,
@@ -288,6 +325,7 @@ struct NativeRootView: View {
             onToggleSavedJob: { jobID in Task { await store.toggleSavedJob(jobID: jobID) } },
             onRefresh: { Task { await store.refreshCurrentRoleData() } },
             onShowNotifications: { showingNotifications = true },
+            onShowAdminTools: showAdminTools,
             onSignOut: { Task { await store.signOut() } },
             onDeleteAccount: { Task { await store.deleteAccount() } },
             onFiltersChanged: { filters in Task { await store.applyFeedFilters(filters) } }
@@ -350,15 +388,23 @@ struct NativeRootView: View {
                 VStack(spacing: 14) {
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
+                        .textContentType(.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($focusedField, equals: .email)
-                        .textFieldStyle(AuthTextFieldStyle())
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .password }
+                        .textFieldStyle(AuthTextFieldStyle(isFocused: focusedField == .email))
 
                     SecureField("Password", text: $password)
-                        .textContentType(.password)
+                        .textContentType(emailAuthMode == .signIn ? .password : .newPassword)
                         .focused($focusedField, equals: .password)
-                        .textFieldStyle(AuthTextFieldStyle())
+                        .submitLabel(emailAuthMode == .signIn ? .go : .join)
+                        .onSubmit {
+                            guard !trimmedEmail.isEmpty, !password.isEmpty else { return }
+                            handleEmailPasswordAuth()
+                        }
+                        .textFieldStyle(AuthTextFieldStyle(isFocused: focusedField == .password))
 
                     Button(action: handleEmailPasswordAuth) {
                         primaryAuthButtonLabel(
@@ -482,6 +528,10 @@ struct NativeRootView: View {
 }
 
 struct AuthTextFieldStyle: TextFieldStyle {
+    /// Draws the accent ring so the active field is obvious once the
+    /// header collapses and both fields sit close together.
+    var isFocused: Bool = false
+
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .padding(.horizontal, 16)
@@ -491,8 +541,25 @@ struct AuthTextFieldStyle: TextFieldStyle {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(PassportTheme.border.opacity(0.7), lineWidth: 1)
+                    .stroke(
+                        isFocused ? PassportTheme.accentSoft : PassportTheme.border.opacity(0.7),
+                        lineWidth: isFocused ? 2 : 1
+                    )
             )
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
+    }
+}
+
+extension View {
+    /// `enabled: false` opts the subtree out of keyboard safe-area insets
+    /// (full-bleed surfaces); `true` lets SwiftUI lift content clear of it.
+    @ViewBuilder
+    func keyboardAvoidance(enabled: Bool) -> some View {
+        if enabled {
+            self
+        } else {
+            ignoresSafeArea(.keyboard, edges: .bottom)
+        }
     }
 }
 
@@ -520,6 +587,11 @@ private struct NotificationsSheet: View {
 private enum Field {
     case email
     case password
+}
+
+/// Scroll target for the auth card, so focusing a field brings it into view.
+private enum AuthAnchor: Hashable {
+    case card
 }
 
 private enum LoginMethod: String, CaseIterable, Identifiable {

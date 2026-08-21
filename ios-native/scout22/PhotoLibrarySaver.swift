@@ -30,6 +30,18 @@ enum PhotoLibrarySaver {
         }
     }
 
+    /// Writes already-rendered cards straight to the library. Used by the
+    /// feed's save action, which renders on the spot and never uploads —
+    /// there is no reason to round-trip through storage just to reach Photos.
+    static func save(jpegs: [Data]) async throws {
+        try await requestAddOnlyAccess()
+        for data in jpegs {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+            }
+        }
+    }
+
     /// Downloads each card and writes it to the library. Ordering matters —
     /// Instagram's picker follows the order photos were added, so saving
     /// sequentially (not concurrently) is what keeps cover-first intact.

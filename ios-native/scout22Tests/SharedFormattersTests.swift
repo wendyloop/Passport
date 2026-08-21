@@ -350,4 +350,48 @@ final class SharedFormattersTests: XCTestCase {
         let job = try decoder.decode(JobPostingRecord.self, from: json)
         XCTAssertEqual(job.compensationSummary, "From $100,000")
     }
+
+    // MARK: - Share deep links
+
+    // Universal links are the only shape that opens the app from Instagram,
+    // Safari or a link preview, so this is the path that matters most.
+    func testUniversalLinkYieldsJobID() throws {
+        let url = try XCTUnwrap(URL(string: "https://tryscout22.com/j/abc-123"))
+        XCTAssertEqual(ShareConfig.jobID(fromDeepLink: url), "abc-123")
+    }
+
+    // Links shared before universal links shipped must keep working.
+    func testLegacySchemeStillYieldsJobID() throws {
+        let url = try XCTUnwrap(URL(string: "jobtok://job/abc-123"))
+        XCTAssertEqual(ShareConfig.jobID(fromDeepLink: url), "abc-123")
+    }
+
+    // Regression guard: the OAuth redirect shares the jobtok:// scheme and
+    // must fall through to the auth handler, never be read as a job id.
+    func testAuthCallbackIsNotAJobLink() throws {
+        let url = try XCTUnwrap(URL(string: "jobtok://auth-callback#access_token=x"))
+        XCTAssertNil(ShareConfig.jobID(fromDeepLink: url))
+    }
+
+    // Anything else on the domain is not a job link — the marketing pages
+    // and legal pages live on the same host.
+    func testOtherPathsOnTheDomainAreRejected() throws {
+        for path in ["https://tryscout22.com/", "https://tryscout22.com/privacy.html",
+                     "https://tryscout22.com/j/", "https://tryscout22.com/j/a/b"] {
+            let url = try XCTUnwrap(URL(string: path))
+            XCTAssertNil(ShareConfig.jobID(fromDeepLink: url), "\(path) should not parse")
+        }
+    }
+
+    func testOtherHostsAreRejected() throws {
+        let url = try XCTUnwrap(URL(string: "https://evil.example.com/j/abc-123"))
+        XCTAssertNil(ShareConfig.jobID(fromDeepLink: url))
+    }
+
+    // The share button and the parser must agree, or shared links would not
+    // reopen in the app that produced them.
+    func testShareURLRoundTrips() throws {
+        let url = try XCTUnwrap(ShareConfig.shareURL(forJobID: "job-42"))
+        XCTAssertEqual(ShareConfig.jobID(fromDeepLink: url), "job-42")
+    }
 }

@@ -28,11 +28,17 @@ struct JobSeekerHomeView: View {
     let onToggleSavedJob: (String) -> Void
     let onRefresh: () -> Void
     let onShowNotifications: () -> Void
+    /// Admin-only entry point into the admin tools. nil for everyone else.
+    let onShowAdminTools: (() -> Void)?
     let onSignOut: () -> Void
     let onDeleteAccount: () -> Void
     // Server-side filter refetch: fires whenever a filter pill changes so the
     // store can re-query the whole catalog, not just the fetched window.
     let onFiltersChanged: (FeedFilters) -> Void
+
+    /// Feed card-save status: nil when idle, else a short toast message.
+    @State private var cardSaveNotice: String?
+    @State private var savingCardsJobID: String?
 
     @State private var workingProfile: CandidateProfileDraft
     @State private var isEditingProfile = false
@@ -98,6 +104,7 @@ struct JobSeekerHomeView: View {
         onToggleSavedJob: @escaping (String) -> Void,
         onRefresh: @escaping () -> Void,
         onShowNotifications: @escaping () -> Void,
+        onShowAdminTools: (() -> Void)? = nil,
         onSignOut: @escaping () -> Void,
         onDeleteAccount: @escaping () -> Void,
         onFiltersChanged: @escaping (FeedFilters) -> Void = { _ in }
@@ -123,6 +130,7 @@ struct JobSeekerHomeView: View {
         self.onToggleSavedJob = onToggleSavedJob
         self.onRefresh = onRefresh
         self.onShowNotifications = onShowNotifications
+        self.onShowAdminTools = onShowAdminTools
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
         self.onFiltersChanged = onFiltersChanged
@@ -295,6 +303,11 @@ struct JobSeekerHomeView: View {
                     .animation(.spring(response: 0.4), value: easyApplySuccess)
             }
         }
+        .overlay(alignment: .top) {
+            cardSaveToast
+                .padding(.top, 60)
+                .animation(.spring(response: 0.35), value: cardSaveNotice)
+        }
         .animation(.spring(response: 0.4), value: easyApplySuccess)
         .onChange(of: sharedJobID) { _, incoming in
             guard let incoming else { return }
@@ -446,6 +459,50 @@ struct JobSeekerHomeView: View {
         }
     }
 
+    // MARK: - Card save (admin)
+
+    /// Renders a job's carousel to 1080×1350 cards, writes them to Photos in
+    /// order, and copies the caption. One tap is the whole Instagram
+    /// hand-off: the picker follows the order assets were added, so the
+    /// cover stays first.
+    private func saveCardsToPhotos(job: JobPostingRecord, carousel: Carousel) {
+        guard savingCardsJobID == nil else { return }
+        savingCardsJobID = job.id
+        cardSaveNotice = "Rendering cards…"
+        Task { @MainActor in
+            defer { savingCardsJobID = nil }
+            do {
+                let jpegs = try SocialCardExporter.renderJPEGs(job: job, carousel: carousel)
+                try await PhotoLibrarySaver.save(jpegs: jpegs)
+                UIPasteboard.general.string =
+                    SocialCardExporter.caption(job: job, carousel: carousel)
+                    + "\n\n"
+                    + SocialCardExporter.hashtags(job: job).map { "#" + $0 }.joined(separator: " ")
+                cardSaveNotice = "\(jpegs.count) cards saved · caption copied"
+            } catch {
+                cardSaveNotice = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            }
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if savingCardsJobID == nil { cardSaveNotice = nil }
+        }
+    }
+
+    /// Transient confirmation for the card-save action.
+    @ViewBuilder
+    private var cardSaveToast: some View {
+        if let cardSaveNotice {
+            Text(cardSaveNotice)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color.black.opacity(0.82))
+                .clipShape(Capsule())
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
     @ViewBuilder
     private func feedCard(
         job: JobPostingRecord,
@@ -470,7 +527,15 @@ struct JobSeekerHomeView: View {
                     onEmailFounder: (FounderPitchUI.isEnabled && job.founderPitchAllowed)
                         ? { handleEmailFounderTap(for: job) } : nil,
                     onSave: { onToggleSavedJob(job.id) },
-                    isSaved: savedJobIDs.contains(job.id)
+                    isSaved: savedJobIDs.contains(job.id),
+                    // Admins get a one-tap hand-off: render this job's cards,
+                    // drop them in Photos and put the caption on the
+                    // clipboard, ready to paste into Instagram. Nothing is
+                    // uploaded and no queue row is written — that path exists
+                    // for the automatic poster, not for posting one job now.
+                    onSaveCards: onShowAdminTools == nil ? nil : {
+                        saveCardsToPhotos(job: job, carousel: carousel)
+                    }
                 )
             } else {
                 JobFeedCard(
@@ -932,6 +997,9 @@ struct JobSeekerHomeView: View {
 
             Spacer(minLength: 0)
 
+            if let onShowAdminTools {
+                HeaderAction(symbol: "wrench.and.screwdriver.fill", action: onShowAdminTools)
+            }
             HeaderAction(symbol: "bell.fill", action: onShowNotifications)
         }
         .padding(.horizontal, 12)
@@ -965,6 +1033,9 @@ struct JobSeekerHomeView: View {
                         .foregroundStyle(PassportTheme.textSecondary)
                 }
                 Spacer()
+                if let onShowAdminTools {
+                    HeaderAction(symbol: "wrench.and.screwdriver.fill", action: onShowAdminTools)
+                }
                 HeaderAction(symbol: "bell.fill", action: onShowNotifications)
             }
         }

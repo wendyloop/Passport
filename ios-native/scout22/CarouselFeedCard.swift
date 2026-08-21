@@ -26,6 +26,9 @@ struct CarouselFeedCard: View {
     let onEmailFounder: (() -> Void)?
     let onSave: () -> Void
     let isSaved: Bool
+    /// Admin-only: render this job's cards and drop them in Photos. nil for
+    /// everyone else, which is what keeps the control off a normal feed.
+    var onSaveCards: (() -> Void)? = nil
 
     @State private var currentIndex: Int = 0
     @State private var autoAdvanceTask: Task<Void, Never>?
@@ -165,6 +168,14 @@ struct CarouselFeedCard: View {
                             )
                             if let shareURL = ShareConfig.shareURL(forJobID: job.id) {
                                 FeedShareButton(url: shareURL)
+                            }
+                            if let onSaveCards {
+                                FeedActionButton(
+                                    symbol: "square.and.arrow.down",
+                                    isActive: false,
+                                    label: "Cards",
+                                    action: onSaveCards
+                                )
                             }
                         }
                         .frame(width: 56)
