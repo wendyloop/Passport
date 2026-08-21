@@ -38,6 +38,16 @@ struct CarouselFeedCard: View {
 
     private var slides: [CarouselSlide] {
         carousel.renderableSlides.filter { slide in
+            // The founder slide is the in-carousel twin of the "Pitch the
+            // founder" pill, so it follows the same switch. With the pill
+            // hidden it would be a card introducing someone you can't
+            // contact — a dead end with a stranger's name on it. Flipping
+            // FounderPitchUI.isEnabled back on restores both together; the
+            // backend keeps emitting the slide either way, so nothing needs
+            // regenerating.
+            if case .founder = slide {
+                return FounderPitchUI.isEnabled && job.founderPitchAllowed
+            }
             // The backend always emits a details slide (3-slide minimum).
             // When neither the slide nor the job has location/type/comp
             // it would render as a bare "the deets" header — drop it rather

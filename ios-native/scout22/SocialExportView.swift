@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Admin Social tab: run a render batch, then watch the queue drain.
 //
@@ -223,11 +224,29 @@ private struct SocialPostRow: View {
                 }
             }
 
-            // Hand-off for TikTok (and any manual repost): the images plus the
-            // caption, straight into the share sheet.
-            if post.status != .posted, let url = firstImageURL {
-                ShareLink(item: url, message: Text(post.caption)) {
-                    Label("Share", systemImage: "square.and.arrow.up")
+            // Manual hand-off. Saving to Photos then posting from Instagram
+            // is the only way to review a post inside Instagram before it
+            // goes live — its API has no draft state, only create-and-publish.
+            if post.status != .posted {
+                Button {
+                    Task { await store.saveToPhotos(post) }
+                } label: {
+                    if store.savingPostID == post.id {
+                        Label("Saving…", systemImage: "square.and.arrow.down")
+                            .font(.system(size: 12, weight: .bold))
+                    } else {
+                        Label("Save to Photos", systemImage: "square.and.arrow.down")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                }
+                .disabled(store.savingPostID != nil)
+
+                // The caption can't ride along to Photos, so it goes to the
+                // clipboard — paste it once Instagram has the images.
+                Button {
+                    UIPasteboard.general.string = post.fullCaption
+                } label: {
+                    Label("Copy caption", systemImage: "doc.on.doc")
                         .font(.system(size: 12, weight: .bold))
                 }
             }

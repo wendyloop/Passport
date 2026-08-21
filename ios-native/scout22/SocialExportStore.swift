@@ -19,6 +19,8 @@ final class SocialExportStore: ObservableObject {
     @Published private(set) var progress: String?
     @Published private(set) var lastError: String?
     @Published private(set) var lastRunSummary: String?
+    /// id of the post currently being written to Photos, if any.
+    @Published private(set) var savingPostID: String?
     @Published private(set) var queue: [SocialPostRecord] = []
     @Published var platform: SocialPlatform = .instagram
 
@@ -135,6 +137,31 @@ final class SocialExportStore: ObservableObject {
             await loadQueue()
         } catch {
             lastError = friendly(error)
+        }
+    }
+
+    // MARK: - Save to Photos
+
+    /// Writes a post's cards to the camera roll so it can be posted from
+    /// Instagram by hand. This is the path that needs no Meta app, no token
+    /// and no review — and it is also how a post gets reviewed inside
+    /// Instagram, since its API cannot create drafts.
+    func saveToPhotos(_ post: SocialPostRecord) async {
+        guard savingPostID == nil else { return }
+        savingPostID = post.id
+        defer { savingPostID = nil }
+
+        let urls = post.imagePaths.compactMap { publicURL(for: $0) }
+        guard urls.count == post.imagePaths.count else {
+            lastError = "Some cards are missing from storage."
+            return
+        }
+        do {
+            try await PhotoLibrarySaver.save(imageURLs: urls)
+            lastError = nil
+            lastRunSummary = "Saved \(urls.count) cards to Photos — open Instagram and pick them in order."
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? friendly(error)
         }
     }
 

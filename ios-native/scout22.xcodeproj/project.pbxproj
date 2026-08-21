@@ -23,6 +23,7 @@
 		A10000010000000000000042 /* SocialCardExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* SocialCardExporter.swift */; };
 		A10000010000000000000043 /* SocialExportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000043 /* SocialExportStore.swift */; };
 		A10000010000000000000044 /* SocialExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000044 /* SocialExportView.swift */; };
+		A10000010000000000000045 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000045 /* PhotoLibrarySaver.swift */; };
 		A10000010000000000000016 /* SharedUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* SharedUI.swift */; };
 		A10000010000000000000017 /* VideoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* VideoComponents.swift */; };
 		A10000010000000000000018 /* VideoStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* VideoStudio.swift */; };
@@ -108,6 +109,7 @@
 		A20000010000000000000042 /* SocialCardExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporter.swift; sourceTree = "<group>"; };
 		A20000010000000000000043 /* SocialExportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000044 /* SocialExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportView.swift; sourceTree = "<group>"; };
+		A20000010000000000000045 /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		A20000010000000000000016 /* SharedUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUI.swift; sourceTree = "<group>"; };
 		A20000010000000000000017 /* VideoComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoComponents.swift; sourceTree = "<group>"; };
 		A20000010000000000000018 /* VideoStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStudio.swift; sourceTree = "<group>"; };
@@ -213,6 +215,7 @@
 				A20000010000000000000042 /* SocialCardExporter.swift */,
 				A20000010000000000000043 /* SocialExportStore.swift */,
 				A20000010000000000000044 /* SocialExportView.swift */,
+				A20000010000000000000045 /* PhotoLibrarySaver.swift */,
 				A20000010000000000000016 /* SharedUI.swift */,
 				A20000010000000000000017 /* VideoComponents.swift */,
 				A20000010000000000000018 /* VideoStudio.swift */,
@@ -414,6 +417,7 @@
 				A10000010000000000000042 /* SocialCardExporter.swift in Sources */,
 				A10000010000000000000043 /* SocialExportStore.swift in Sources */,
 				A10000010000000000000044 /* SocialExportView.swift in Sources */,
+				A10000010000000000000045 /* PhotoLibrarySaver.swift in Sources */,
 				A10000010000000000000016 /* SharedUI.swift in Sources */,
 				A10000010000000000000005 /* Theme.swift in Sources */,
 				A10000010000000000000017 /* VideoComponents.swift in Sources */,
@@ -537,7 +541,7 @@
 				CODE_SIGN_ENTITLEMENTS = scout22/scout22.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 42AKPHSLM9;
 				ENABLE_PREVIEWS = YES;
@@ -550,7 +554,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tryscout22.scout22;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -576,7 +580,7 @@
 				CODE_SIGN_ENTITLEMENTS = scout22/scout22.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 42AKPHSLM9;
 				ENABLE_PREVIEWS = YES;
@@ -588,7 +592,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tryscout22.scout22;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

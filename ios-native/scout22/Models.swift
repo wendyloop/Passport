@@ -643,6 +643,15 @@ struct SocialPostRecord: Codable, Identifiable {
     }
 }
 
+extension SocialPostRecord {
+    /// Caption plus hashtags — what the publisher sends, and what gets copied
+    /// to the clipboard for a manual post. Stored apart so the tags can be
+    /// re-rendered without rewriting the caption.
+    var fullCaption: String {
+        hashtags.isEmpty ? caption : caption + "\n\n" + hashtags.map { "#" + $0 }.joined(separator: " ")
+    }
+}
+
 /// Insert payload — separate from the read model so server-managed columns
 /// (id, status, timestamps) aren't sent.
 struct SocialPostDraft: Encodable {
