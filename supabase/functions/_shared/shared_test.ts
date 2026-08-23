@@ -230,7 +230,7 @@ Deno.test("buildPitchEmailContent renders facts, escapes HTML, and reflects atta
   assertEquals(content.text.includes("I have an applicant for your Founding Engineer role"), true);
   assertEquals(content.text.includes("who picked out"), false);
   assertEquals(content.text.includes("Two minutes and you'll know if you want to meet them."), true);
-  assertEquals(content.text.includes("scout22 — every application comes with a video intro, so you meet the person, not just the resume."), true);
+  assertEquals(content.text.includes("scout22 — applications come with a video intro, so you meet the person, not just the resume."), true);
   assertEquals(content.html.includes("<script>"), false);
   assertEquals(content.html.includes("Sam &lt;script&gt;"), true);
 });
@@ -250,6 +250,22 @@ Deno.test("buildPitchEmailContent falls back to links when not attached", () => 
   assertEquals(content.text.includes("Watch their video intro: https://cdn/video.mp4"), true);
   assertEquals(content.text.includes("Resume: https://signed/resume.pdf"), true);
   assertEquals(content.text.includes("Hi,"), true);
+});
+
+// The video went optional on 2026-08-22, so a resume-only application is a
+// real state now: the footer must not claim a video intro that isn't there.
+Deno.test("buildPitchEmailContent drops the video claim when there is no video", () => {
+  const content = buildPitchEmailContent({
+    to: "jobs@acme.io",
+    candidateName: "Sam",
+    jobTitle: "PM",
+    companyName: "Acme",
+    videoAttached: false,
+    resumeAttached: true,
+  });
+  assertEquals(content.text.includes("video intro"), false);
+  assertEquals(content.text.includes("scout22 — meet the person, not just the resume."), true);
+  assertEquals(content.text.includes("Their resume is attached."), true);
 });
 
 Deno.test("attachmentFilename sanitizes names and extensions", () => {

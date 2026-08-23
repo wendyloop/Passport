@@ -228,11 +228,13 @@ Deno.serve(async (request) => {
 
     const resolvedVideoURL = selectedVideoURL ?? candidateProfile?.intro_video_url ?? null;
 
-    // Unified pitch (2026-07-28): every application is a video pitch — same
-    // requirements as the founder path, only the recipient differs.
-    if (!resolvedVideoURL) {
-      throw new Error("A pitch video is required before applying.");
-    }
+    // The pitch video is optional as of 2026-08-22: it was a hard gate on
+    // applying, and the video step is where candidates drop out. A resume
+    // is still required. The video attaches when there is one, and the
+    // client nudges for it at the apply drawer instead of blocking.
+    //
+    // NOTE: send-founder-email still requires a video — pitching a founder
+    // cold is the one place the video IS the product.
 
     if (socialPayload.linkedInURL || socialPayload.instagramUsername || socialPayload.tiktokUsername) {
       const { error: upsertCandidateProfileError } = await adminClient

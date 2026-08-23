@@ -67,8 +67,7 @@ struct JobSeekerHomeView: View {
     @State private var selectedWorkModeFilter: WorkModeFilter = .all
     @State private var selectedCompanySizeFilter: CompanySizeFilter = .all
     @State private var founderReachableOnly = false
-    @State private var selectedProfileTab: CandidateProfileTab = .video
-    @State private var showingStrengthDetail = false
+    @State private var selectedProfileTab: CandidateProfileTab = .about
     @State private var profilePlayerItem: ProfileVideoPlayerItem?
     @State private var pendingVideoPost: PendingVideoPost?
     // Saved/applied jobs open as real feed cards (carousel + apply/pitch),
@@ -328,9 +327,9 @@ struct JobSeekerHomeView: View {
             )
         }
         .fullScreenCover(isPresented: $showingVideoStudio) {
-            Scout22VideoStudio(
-                purpose: .candidatePitch,
-                startMode: .library,
+            // Every entry point to the studio — tab bar, profile, apply
+            // drawer — goes through the brief first.
+            CandidatePitchFlow(
                 onCancel: {
                     showingVideoStudio = false
                 },
@@ -586,8 +585,9 @@ struct JobSeekerHomeView: View {
     private func handleApplyTap(for job: JobPostingRecord) {
         if job.canApplyViaDrawer {
             applyDrawerJob = job
-        } else if workingProfile.resumeStoragePath != nil && workingProfile.introVideoURL != nil {
-            // Unified pitch: one-tap only when both required pieces exist.
+        } else if workingProfile.resumeStoragePath != nil {
+            // One-tap needs a resume; the video is optional and rides along
+            // when there is one.
             easyApplyConfirmation = job
         } else {
             applicationDraft = makeApplicationDraft(for: job)
@@ -720,22 +720,24 @@ struct JobSeekerHomeView: View {
         NavigationStack {
             ZStack(alignment: .trailing) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    // P redesign v5 ("Reel"): no card chrome anywhere —
+                    // identity is centred, sections sit directly on the
+                    // background, and the video grid runs edge to edge.
+                    // Horizontal padding is applied per-section so the grid
+                    // can escape it without a negative-margin hack.
+                    VStack(alignment: .leading, spacing: 0) {
                         profileTopBar
+                            .padding(.horizontal, 20)
                         candidateProfileHero
+                        profileResumeNudge
                         profileTabBar
+                            .padding(.top, 18)
                         profileTabContent
                     }
-                    .padding(20)
-                    .padding(.bottom, 84)
+                    .padding(.top, 16)
+                    .padding(.bottom, 96)
                 }
                 .background(PassportTheme.background)
-                .alert("Profile strength", isPresented: $showingStrengthDetail) {
-                    Button("Edit profile") { isEditingProfile = true }
-                    Button("OK", role: .cancel) {}
-                } message: {
-                    Text(strengthDetailMessage)
-                }
                 .fullScreenCover(item: $profilePlayerItem) { item in
                     // TikTok-style: full screen, tap to pause, X to close.
                     ZStack(alignment: .topLeading) {
@@ -874,16 +876,19 @@ struct JobSeekerHomeView: View {
         }
     }
 
+    // The tab bar already says "Me", so the title slot carries the handle
+    // instead — and the settings button loses its circle chrome.
     private var profileTopBar: some View {
         HStack {
             Color.clear
-                .frame(width: 42, height: 42)
+                .frame(width: 22, height: 22)
 
             Spacer()
 
-            Text("Profile")
-                .font(.headline.weight(.bold))
+            Text(handleText)
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(PassportTheme.textPrimary)
+                .lineLimit(1)
 
             Spacer()
 
@@ -893,12 +898,9 @@ struct JobSeekerHomeView: View {
                 }
             } label: {
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(PassportTheme.textPrimary)
-                    .frame(width: 42, height: 42)
-                    .background(PassportTheme.card)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(PassportTheme.border.opacity(0.7), lineWidth: 1))
+                    .frame(width: 22, height: 22)
             }
             .buttonStyle(.plain)
         }
@@ -1041,92 +1043,98 @@ struct JobSeekerHomeView: View {
         }
     }
 
-    // P redesign (mock v4): identity only — no stat row, no link chips
-    // (links live in the About tab). Strength ring replaces the checklist.
+    // P redesign v5 ("Reel"): centred identity on the bare background. The
+    // strength badge that used to overhang the avatar is gone — the score
+    // now lives in the resume strip below, and its breakdown is rendered
+    // inline on the About tab instead of hiding behind an alert.
     private var candidateProfileHero: some View {
-        VStack(spacing: 12) {
-            // Mock v4 layout: avatar on the left, identity on the right —
-            // less vertical space up top, more room for the content below.
-            HStack(alignment: .center, spacing: 14) {
-                profileAvatar
-                    .overlay(alignment: .bottomLeading) {
-                        profileStrengthBadge
-                            .offset(x: -6, y: 4)
-                    }
+        VStack(spacing: 0) {
+            profileAvatar
+                .padding(.top, 20)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(workingProfile.fullName.isEmpty ? "Your Name" : workingProfile.fullName)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(PassportTheme.textPrimary)
-                        .lineLimit(1)
+            Text(workingProfile.fullName.isEmpty ? "Your Name" : workingProfile.fullName)
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .foregroundStyle(PassportTheme.textPrimary)
+                .lineLimit(1)
+                .padding(.top, 10)
 
-                    Text(handleText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PassportTheme.textSecondary)
+            Text(bioText)
+                .font(.system(size: 14))
+                .foregroundStyle(hasCustomBio ? PassportTheme.textPrimary : PassportTheme.textMuted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 18)
 
-                    Text(bioText)
-                        .font(.footnote)
-                        .foregroundStyle(hasCustomBio ? PassportTheme.textPrimary : PassportTheme.textMuted)
-                        .lineLimit(2)
-                        .padding(.top, 1)
-
-                    if !heroMetaText.isEmpty {
-                        Text(heroMetaText)
-                            .font(.caption)
-                            .foregroundStyle(PassportTheme.textMuted)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if !heroMetaText.isEmpty {
+                Text(heroMetaText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(PassportTheme.textMuted)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.top, 4)
             }
 
-            Button {
-                isEditingProfile = true
-            } label: {
-                Text("Edit profile")
-                    .font(.footnote.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-            }
-            .background(PassportTheme.card)
-            .foregroundStyle(PassportTheme.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(PassportTheme.border.opacity(0.65), lineWidth: 1)
-            )
-            .buttonStyle(.plain)
+            // The mock paired this with "Share profile", but candidates have
+            // no public page to share yet — ShareConfig only mints job links
+            // (/j/{id}). Restore the pair when a candidate share route lands.
+            profileActionButton(title: "Edit profile") { isEditingProfile = true }
+                .padding(.top, 18)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .scout22Card(cornerRadius: 24)
+        .padding(.horizontal, 20)
     }
 
-    private var profileStrengthBadge: some View {
-        Button {
-            showingStrengthDetail = true
-        } label: {
-            Text("\(ProfileStrength.score(for: workingProfile))%")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(PassportTheme.textPrimary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(PassportTheme.surface)
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(PassportTheme.accent, lineWidth: 1.5))
+    private func profileActionButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            profileActionLabel(title: title)
         }
         .buttonStyle(.plain)
     }
 
-    private var strengthDetailMessage: String {
-        let missing = ProfileStrength.missing(for: workingProfile)
-        if missing.isEmpty {
-            return "Complete — everything employers look for is here."
-        }
-        let items = missing.map { "\($0.label) (+\($0.points))" }.joined(separator: "\n")
-        return "Still missing:\n\(items)"
+    private func profileActionLabel(title: String) -> some View {
+        Text(title)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(PassportTheme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(PassportTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(PassportTheme.border.opacity(0.7), lineWidth: 1)
+            )
     }
+
+    /// The one accent moment on the profile — and only while a resume is
+    /// still missing. Once one is parsed the strip does not exist at all.
+    @ViewBuilder
+    private var profileResumeNudge: some View {
+        if workingProfile.resumeStoragePath == nil {
+            Button {
+                showingResumeImporter = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 15, weight: .medium))
+                    Text("Add a resume to finish your profile")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("\(ProfileStrength.score(for: workingProfile))%")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(PassportTheme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+        }
+    }
+
 
     private var heroMetaText: String {
         var parts: [String] = []
@@ -1143,6 +1151,9 @@ struct JobSeekerHomeView: View {
         return trimmed.hasPrefix("http") ? trimmed : "https://\(trimmed)"
     }
 
+    // Icon tabs, full-bleed underline. `allCases` order puts the resume
+    // side first — that is the landing tab, so credentials read before
+    // clips (see CandidateProfileTab).
     private var profileTabBar: some View {
         HStack(spacing: 0) {
             ForEach(CandidateProfileTab.allCases) { tab in
@@ -1151,22 +1162,22 @@ struct JobSeekerHomeView: View {
                         selectedProfileTab = tab
                     }
                 } label: {
-                    VStack(spacing: 10) {
-                        Text(tab.title)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(selectedProfileTab == tab ? PassportTheme.textPrimary : PassportTheme.textSecondary)
+                    VStack(spacing: 9) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(selectedProfileTab == tab ? PassportTheme.textPrimary : PassportTheme.textMuted)
                             .frame(maxWidth: .infinity)
 
-                        Capsule()
-                            .fill(selectedProfileTab == tab ? PassportTheme.accent : Color.clear)
-                            .frame(height: 3)
+                        Rectangle()
+                            .fill(selectedProfileTab == tab ? PassportTheme.textPrimary : PassportTheme.border.opacity(0.45))
+                            .frame(height: 2)
                     }
-                    .padding(.top, 2)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
             }
         }
-        .padding(.horizontal, 8)
     }
 
     @ViewBuilder
@@ -1179,10 +1190,10 @@ struct JobSeekerHomeView: View {
         }
     }
 
-    // P redesign + M-C: full-bleed TikTok-style grid — 3 columns, 1pt
-    // seams, escaping the screen's 20pt content padding. One tile per video
-    // (long-press for primary/caption/delete) + a persistent "New video"
-    // tile. Falls back to the intro mirror if the list hasn't loaded.
+    // P redesign v5: 3-column grid with 1pt seams, running the full width
+    // of the screen. The parent no longer applies horizontal padding, so
+    // the grid needs no negative-margin escape hatch — only the CTA and
+    // the toolbar row are inset.
     private var profileVideoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             if candidateVideos.isEmpty && workingProfile.introVideoURL == nil {
@@ -1197,19 +1208,24 @@ struct JobSeekerHomeView: View {
                         Text("Record your first pitch")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(PassportTheme.textPrimary)
-                        Text("The first thing employers see — unlocks founder intros. Up to 3:00.")
+                        // One minute is the target candidates are given; the
+                        // real ceiling stays unadvertised.
+                        Text("Applications with a video are more likely to be viewed by a person. One minute is plenty.")
                             .font(.caption)
                             .foregroundStyle(PassportTheme.textSecondary)
                             .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 44)
+                    .padding(.vertical, 40)
+                    .padding(.horizontal, 20)
                     .background(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .stroke(PassportTheme.border, style: StrokeStyle(lineWidth: 1.5, dash: [7]))
                     )
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, 20)
             } else {
                 HStack {
                     Spacer()
@@ -1226,8 +1242,9 @@ struct JobSeekerHomeView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 20)
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 3), spacing: 0) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 3), spacing: 1) {
                     if candidateVideos.isEmpty, let introURL = workingProfile.introVideoURL {
                         videoTile(urlString: introURL, caption: nil, isPrimary: true)
                     } else {
@@ -1246,9 +1263,9 @@ struct JobSeekerHomeView: View {
                         }
                     }
                 }
-                .padding(.horizontal, -20)
             }
         }
+        .padding(.top, 16)
     }
 
     private func videoTile(urlString: String, caption: String?, isPrimary: Bool, record: CandidateVideoRecord? = nil) -> some View {
@@ -1297,16 +1314,61 @@ struct JobSeekerHomeView: View {
     }
 
     // P redesign About tab: the profile builds itself from the parsed
-    // resume; links close it out with per-role relevance hints.
+    // resume; links close it out with per-role relevance hints. This is the
+    // landing tab now, so it opens with the resume row and closes with the
+    // completion breakdown.
     private var profileAboutTab: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             aboutResumeCard
+            aboutSectionDivider
             aboutExperienceSection
             aboutEducationSection
             aboutSkillsSection
             aboutLinksSection
+            profileStrengthBreakdown
             // visibilityModeCard intentionally omitted — candidate-only v0,
             // see the comment on the card below.
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+    }
+
+    private var aboutSectionDivider: some View {
+        Rectangle()
+            .fill(PassportTheme.border.opacity(0.55))
+            .frame(height: 1)
+    }
+
+    /// What the % badge used to hide behind an alert. Highest-impact items
+    /// first, so the list reads as a to-do rather than a scorecard.
+    @ViewBuilder
+    private var profileStrengthBreakdown: some View {
+        let missing = ProfileStrength.missing(for: workingProfile)
+            .sorted { $0.points > $1.points }
+        if !missing.isEmpty {
+            aboutSectionDivider
+
+            VStack(alignment: .leading, spacing: 11) {
+                aboutSectionLabel("Still missing")
+
+                VStack(spacing: 2) {
+                    ForEach(missing, id: \.label) { item in
+                        HStack(spacing: 11) {
+                            Circle()
+                                .stroke(PassportTheme.border, lineWidth: 1.5)
+                                .frame(width: 17, height: 17)
+                            Text(item.label)
+                                .font(.system(size: 14))
+                                .foregroundStyle(PassportTheme.textPrimary)
+                            Spacer(minLength: 8)
+                            Text("+\(item.points)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(PassportTheme.textMuted)
+                        }
+                        .padding(.vertical, 7)
+                    }
+                }
+            }
         }
     }
 
@@ -1580,8 +1642,6 @@ struct JobSeekerHomeView: View {
                 }
             }
         }
-        .padding(16)
-        .scout22Card(cornerRadius: 20)
     }
 
     @ViewBuilder
@@ -1769,7 +1829,8 @@ struct JobSeekerHomeView: View {
                     target: .portfolio
                 )
             }
-            .scout22Card(cornerRadius: 20)
+            .background(PassportTheme.card.opacity(0.55))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             Text("Different reviewers check different links — marketing looks at Instagram and TikTok, engineering at GitHub, design at your portfolio.")
                 .font(.caption2)
@@ -1925,55 +1986,43 @@ struct JobSeekerHomeView: View {
         }
     }
 
+    // No gradient ring and no badge overhang — the whole avatar IS the
+    // picker. Losing the badge would otherwise strip the app's only avatar
+    // upload route (the profile editor does not handle photos).
     private var profileAvatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [PassportTheme.accent, PassportTheme.accentSoft],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 84, height: 84)
-
-            if let avatarURL = workingProfile.avatarURL, let url = URL(string: avatarURL) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
+        PhotosPicker(
+            selection: $selectedAvatarItem,
+            matching: .images,
+            photoLibrary: .shared()
+        ) {
+            Group {
+                if let avatarURL = workingProfile.avatarURL, let url = URL(string: avatarURL) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        avatarInitials
+                    }
+                    .frame(width: 88, height: 88)
+                    .clipShape(Circle())
+                } else {
                     avatarInitials
                 }
-                .frame(width: 78, height: 78)
-                .clipShape(Circle())
-            } else {
-                avatarInitials
             }
+            .overlay(
+                Circle().stroke(PassportTheme.border.opacity(0.8), lineWidth: 1)
+            )
         }
-        .overlay(alignment: .bottomTrailing) {
-            PhotosPicker(
-                selection: $selectedAvatarItem,
-                matching: .images,
-                photoLibrary: .shared()
-            ) {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(PassportTheme.textPrimary)
-                    .padding(6)
-                    .background(PassportTheme.card)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(PassportTheme.border.opacity(0.7), lineWidth: 1))
-            }
-        }
+        .accessibilityLabel("Change profile photo")
     }
 
     private var avatarInitials: some View {
         Text(initialsText)
-            .font(.system(size: 34, weight: .black, design: .rounded))
-            .foregroundStyle(.black)
-            .frame(width: 78, height: 78)
-            .background(PassportTheme.accent)
+            .font(.system(size: 32, weight: .bold, design: .rounded))
+            .foregroundStyle(PassportTheme.textPrimary)
+            .frame(width: 88, height: 88)
+            .background(PassportTheme.card)
             .clipShape(Circle())
     }
 
@@ -2269,9 +2318,11 @@ private struct ApplySheet: View {
         return videoMenuTitle(selected)
     }
 
+    // The pitch video is encouraged, not required: a resume and an apply
+    // route are all it takes to send. See the video section below for the
+    // nudge that runs in its place.
     private var canApply: Bool {
         draft.resumeFilePath != nil
-            && draft.pitchVideoURL != nil
             && !job.applicationEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -2312,26 +2363,46 @@ private struct ApplySheet: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(PassportTheme.textPrimary)
                         Text(draft.pitchVideoURL == nil
-                            ? "Required — every application is a video pitch. Record one and it rides along with your resume."
-                            : "Required — sent alongside your resume.")
+                            ? "Optional — one minute: who you are, what you do, your latest project."
+                            : "Sent alongside your resume.")
                             .font(.footnote)
                             .foregroundStyle(PassportTheme.textSecondary)
                     }
 
                     if draft.pitchVideoURL == nil {
-                        Button {
-                            dismiss()
-                            onRecordPitch()
-                        } label: {
-                            Label("Record your pitch", systemImage: "video.badge.plus")
-                                .font(.subheadline.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                        // The apply drawer is the highest-motivation moment
+                        // in the app, so the nudge lives here rather than
+                        // a gate. Record-once/reuse is the real argument.
+                        VStack(spacing: 10) {
+                            Text("Applications with a video are more likely to be viewed by a person, not a filter.")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(PassportTheme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                dismiss()
+                                onRecordPitch()
+                            } label: {
+                                Label("Record it — takes 1 minute", systemImage: "video.fill")
+                                    .font(.subheadline.weight(.bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.black)
+                                    .foregroundStyle(PassportTheme.accent)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+
+                            Text("Record once. It rides along with every application after this one.")
+                                .font(.caption2)
+                                .foregroundStyle(PassportTheme.accentSoft)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        .padding(14)
                         .background(PassportTheme.accent)
-                        .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .buttonStyle(.plain)
                     } else if videos.count > 1 {
                         // M-C: pick which video rides along.
                         Menu {
@@ -3606,9 +3677,11 @@ private struct PreviewURL: Identifiable {
     var id: String { url.absoluteString }
 }
 
+/// Declaration order IS tab order. `about` (the resume side) leads, so an
+/// employer reading a shared profile hits credentials before clips.
 private enum CandidateProfileTab: String, CaseIterable, Identifiable {
-    case video
     case about
+    case video
 
     var id: String { rawValue }
 
@@ -3618,6 +3691,15 @@ private enum CandidateProfileTab: String, CaseIterable, Identifiable {
             return "Videos"
         case .about:
             return "About"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .about:
+            return "text.alignleft"
+        case .video:
+            return "square.grid.3x3.fill"
         }
     }
 }

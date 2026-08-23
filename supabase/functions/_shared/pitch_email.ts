@@ -136,8 +136,12 @@ export function buildPitchEmailContent(params: PitchEmailParams): {
     ? `Resume: ${clean(params.resumeSignedURL)}`
     : null;
 
-  const footerLine =
-    "scout22 — every application comes with a video intro, so you meet the person, not just the resume.";
+  // The video became optional on 2026-08-22, so the footer can no longer
+  // claim every application has one. Applications that DO carry a video
+  // keep the stronger line — that is the differentiator worth stating.
+  const footerLine = params.videoAttached || clean(params.pitchVideoURL)
+    ? "scout22 — applications come with a video intro, so you meet the person, not just the resume."
+    : "scout22 — meet the person, not just the resume.";
 
   const text = [
     greeting,

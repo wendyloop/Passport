@@ -30,7 +30,9 @@ enum Scout22VideoStudioPurpose {
     var subtitle: String {
         switch self {
         case .candidatePitch:
-            return "Up to 3 minutes: who you are, then one project you're proud of — show it off."
+            // One minute is the TARGET candidates are given; `maxDuration`
+            // is the ceiling and is deliberately not advertised here.
+            return "One minute: who you are, what you do, then one project you're proud of."
         case .employerRole:
             return "Pick clips, record, add text, and turn it into a hiring post."
         case .adminRole:
@@ -2462,6 +2464,162 @@ private extension NSTextAlignment {
             return .right
         default:
             return .center
+        }
+    }
+}
+
+// MARK: - Candidate pitch brief
+
+/// Wraps the pitch studio in a one-screen brief. Recording a good pitch is
+/// mostly a scripting problem, so the three beats and the one-minute target
+/// are stated before the camera opens rather than buried in a subtitle.
+///
+/// The 1:00 shown here is a TARGET, not the ceiling — `.candidatePitch`
+/// still accepts up to `maxDuration` (180s). Candidates are never told the
+/// ceiling; they're given a length worth aiming for.
+struct CandidatePitchFlow: View {
+    let onCancel: () -> Void
+    let onComplete: (Scout22ComposedVideo) -> Void
+
+    @State private var hasReadBrief = false
+
+    var body: some View {
+        if hasReadBrief {
+            Scout22VideoStudio(
+                purpose: .candidatePitch,
+                // The brief's CTA says "Start recording", so land on the
+                // camera; the library tab is still one tap away.
+                startMode: .camera,
+                onCancel: onCancel,
+                onComplete: onComplete
+            )
+        } else {
+            CandidatePitchBriefView(
+                onStart: { hasReadBrief = true },
+                onClose: onCancel
+            )
+        }
+    }
+}
+
+struct CandidatePitchBriefView: View {
+    let onStart: () -> Void
+    let onClose: () -> Void
+
+    /// Suggested beats. The seconds are guidance, not enforced — nothing in
+    /// the recorder segments on them yet.
+    private struct Beat: Identifiable {
+        let id: Int
+        let title: String
+        let seconds: String
+        let hint: String
+    }
+
+    private let beats: [Beat] = [
+        Beat(id: 1, title: "Introduce yourself", seconds: "15 sec",
+             hint: "Name, where you are, what you're into."),
+        Beat(id: 2, title: "What you do", seconds: "15 sec",
+             hint: "The work itself — not your job title."),
+        Beat(id: 3, title: "Your latest project", seconds: "30 sec",
+             hint: "One thing you built. What it does, and what was hard about it."),
+    ]
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Your 1-minute pitch")
+                        .font(.system(size: 32, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Record it once. It goes out with your resume on every application you send.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.76))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 46)
+
+                // The payoff, before the ask.
+                Text("Applications with a video are more likely to be viewed by a person, not a filter.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 13)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(PassportTheme.accent)
+                            .frame(width: 2)
+                    }
+                    .padding(.top, 22)
+
+                VStack(alignment: .leading, spacing: 20) {
+                    ForEach(beats) { beat in
+                        HStack(alignment: .top, spacing: 13) {
+                            Text("\(beat.id)")
+                                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.black)
+                                .frame(width: 25, height: 25)
+                                .background(PassportTheme.accent)
+                                .clipShape(Circle())
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(beat.title)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(.white)
+                                    Text(beat.seconds)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.white.opacity(0.5))
+                                }
+                                Text(beat.hint)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.white.opacity(0.76))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 30)
+
+                Spacer(minLength: 24)
+
+                VStack(spacing: 12) {
+                    Button(action: onStart) {
+                        HStack(spacing: 9) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 17, weight: .semibold))
+                            Text("Start recording")
+                                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(PassportTheme.accent)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("Re-record as many times as you like — nothing sends until you say so.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 34)
         }
     }
 }
