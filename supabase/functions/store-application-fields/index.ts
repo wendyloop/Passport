@@ -88,36 +88,45 @@ Deno.serve(async (request) => {
       // Two rows per matched field is intentional: the raw label lets us match
       // verbatim on a return visit to the same ATS, the canonical row catches
       // semantically-equivalent labels on a different ATS.
-      const historyRows: Array<{
+      //
+      // Keyed by label and deduped BEFORE the upsert. Postgres rejects an
+      // ON CONFLICT DO UPDATE whose VALUES contain the same conflict target
+      // twice ("cannot affect row a second time", SQLSTATE 21000), and one
+      // form can easily repeat a label — Workday asks for "City" and
+      // "Job Title" once per work-history row, and two distinct labels can
+      // map to the same canonical key. Last value on the page wins.
+      const now = new Date().toISOString();
+      const historyByLabel = new Map<string, {
         candidate_profile_id: string;
         field_label: string;
         field_value: string;
         updated_at: string;
-      }> = [];
-
-      const now = new Date().toISOString();
-      for (const f of shortClean) {
-        historyRows.push({
+      }>();
+      const put = (label: string, value: string) => {
+        historyByLabel.set(label, {
           candidate_profile_id: user.id,
-          field_label: f.label,
-          field_value: f.value,
+          field_label: label,
+          field_value: value,
           updated_at: now,
         });
+      };
+
+      const canonicalKeys = new Set<string>();
+      for (const f of shortClean) {
+        put(f.label, f.value);
         const canon = matchCanonical(f.label);
         if (canon) {
-          historyRows.push({
-            candidate_profile_id: user.id,
-            field_label: canonLabel(canon),
-            field_value: f.value,
-            updated_at: now,
-          });
-          canonicalStored += 1;
+          put(canonLabel(canon), f.value);
+          canonicalKeys.add(canon);
         }
       }
+      canonicalStored = canonicalKeys.size;
 
       const { error: historyError } = await admin
         .from("candidate_field_history")
-        .upsert(historyRows, { onConflict: "candidate_profile_id,field_label" });
+        .upsert([...historyByLabel.values()], {
+          onConflict: "candidate_profile_id,field_label",
+        });
       if (historyError) throw historyError;
       shortStored = shortClean.length;
     }

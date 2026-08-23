@@ -43,6 +43,7 @@ export type CanonicalKey =
   | "preferred_location"
   | "willing_to_relocate"
   | "remote_preference"
+  | "commute_ok"
   | "pronouns"
   | "referral_source"
   | "how_did_you_hear";
@@ -114,6 +115,10 @@ const ALIASES: Record<CanonicalKey, RegExp[]> = {
   preferred_location:  [/preferred[\s_-]?location/i, /where would you like to work/i],
   willing_to_relocate: [/relocat(e|ion)/i],
   remote_preference:   [/remote/i, /work[\s_-]?from[\s_-]?home/i],
+  // "Are you able to commute to our SF office?" is asked by almost every
+  // hybrid role, phrased differently each time — worth a canonical key so the
+  // answer survives across ATS.
+  commute_ok:          [/commut(e|ing)/i, /\bon[\s_-]?site\b/i, /\bin[\s_-]?office\b/i, /\bhybrid\b/i],
   pronouns:            [/pronouns?/i],
   referral_source:     [/referr(ed|al)/i, /who referred you/i],
   how_did_you_hear:    [/how (did|do) you hear/i],

@@ -2,12 +2,22 @@ import XCTest
 import JavaScriptCore
 @testable import scout22
 
-// AUDIT P1-6: autofill injection is allowlisted to the 14 known ATS domains
-// and host matching is suffix-based (spoof-resistant).
+// AUDIT P1-6: autofill injection is allowlisted to known ATS domains and host
+// matching is suffix-based (spoof-resistant).
 final class ATSAutofillPolicyTests: XCTestCase {
-    func testAllowlistHasTheFourteenKnownDomains() {
-        XCTAssertEqual(ATSAutofillPolicy.allowedDomains.count, 14)
-        XCTAssertEqual(Set(ATSAutofillPolicy.allowedDomains).count, 14, "no duplicates")
+    func testAllowlistHasNoDuplicatesOrRedundantSubdomains() {
+        let domains = ATSAutofillPolicy.allowedDomains
+        XCTAssertEqual(Set(domains).count, domains.count, "no duplicates")
+        // Suffix matching already admits every subdomain, so listing one is
+        // dead weight that hides the real coverage.
+        for domain in domains {
+            for other in domains where other != domain {
+                XCTAssertFalse(
+                    domain.hasSuffix("." + other),
+                    "\(domain) is redundant — \(other) already covers it by suffix match"
+                )
+            }
+        }
     }
 
     func testKnownATSHostsAreAllowed() {
@@ -19,6 +29,18 @@ final class ATSAutofillPolicyTests: XCTestCase {
         XCTAssertTrue(ATSAutofillPolicy.isHostAllowed("careers.smartrecruiters.com"))
         XCTAssertTrue(ATSAutofillPolicy.isHostAllowed("acme.recruitee.com"))
         XCTAssertTrue(ATSAutofillPolicy.isHostAllowed("GREENHOUSE.IO"), "case-insensitive")
+    }
+
+    // Workday serves candidate-facing applications from myworkdayjobs.com, not
+    // myworkday.com. Only the latter was listed, so every Workday application
+    // silently got no autofill and no capture.
+    func testWorkdayCandidateDomainsAreAllowed() {
+        XCTAssertTrue(ATSAutofillPolicy.isHostAllowed("cox.wd1.myworkdayjobs.com"))
+        XCTAssertTrue(ATSAutofillPolicy.isHostAllowed("acme.wd5.myworkdaysite.com"))
+        XCTAssertEqual(
+            ATSPlatform.detect(from: URL(string: "https://cox.wd1.myworkdayjobs.com/en-US/cox/job/x")!),
+            .workday
+        )
     }
 
     func testOtherHostsGetNoAutofill() {
@@ -35,30 +57,42 @@ final class ATSAutofillPolicyTests: XCTestCase {
         XCTAssertFalse(ATSAutofillPolicy.isHostAllowed("notrippling.com"))
     }
 
-    // The exact JS prologue that ships inside the WKUserScripts, executed in
-    // JavaScriptCore with a stubbed location — proves the injected gate
-    // agrees with the Swift policy.
+    // The exact host test that ships inside the WKUserScript, executed in
+    // JavaScriptCore — proves the injected gate agrees with the Swift policy.
     private func injectedGateAllows(host: String) -> Bool {
         let context = JSContext()!
         let js = """
         (function() {
-          var location = { hostname: '\(host)' };
-          var result = (function() {
-            \(ATSAutofillPolicy.hostGateJS)
-            return true;
-          })();
-          return result === true;
+          \(ATSAutofillPolicy.hostAllowedJS)
+          return __scoutHostAllowed('\(host)') === true;
         })()
         """
         return context.evaluateScript(js)?.toBool() ?? false
     }
 
     func testInjectedJSGateMatchesPolicy() {
-        for host in ["boards.greenhouse.io", "jobs.lever.co", "acme.wd5.myworkday.com", "acme.recruitee.com"] {
+        let allowed = [
+            "boards.greenhouse.io", "jobs.lever.co", "acme.wd5.myworkday.com",
+            "cox.wd1.myworkdayjobs.com", "acme.recruitee.com",
+        ]
+        for host in allowed {
             XCTAssertTrue(injectedGateAllows(host: host), "\(host) should pass the injected gate")
+            XCTAssertTrue(ATSAutofillPolicy.isHostAllowed(host), "Swift policy must agree for \(host)")
         }
         for host in ["example.com", "greenhouse.io.evil.com", "lever.co.attacker.net", ""] {
             XCTAssertFalse(injectedGateAllows(host: host), "\(host) should be stopped by the injected gate")
+            XCTAssertFalse(ATSAutofillPolicy.isHostAllowed(host), "Swift policy must agree for \(host)")
+        }
+    }
+
+    // Every domain in the Swift list must also be accepted by the injected
+    // copy — a divergence would mean the app thinks it is filling a form the
+    // page-side gate silently refuses (or worse, the reverse).
+    func testInjectedGateAgreesOnEveryAllowlistedDomain() {
+        for domain in ATSAutofillPolicy.allowedDomains {
+            XCTAssertTrue(injectedGateAllows(host: domain), "\(domain) rejected by injected gate")
+            XCTAssertTrue(injectedGateAllows(host: "careers." + domain), "subdomain of \(domain) rejected")
+            XCTAssertFalse(injectedGateAllows(host: domain + ".evil.com"), "\(domain).evil.com must not pass")
         }
     }
 
@@ -144,5 +178,117 @@ final class ATSAutofillPolicyTests: XCTestCase {
         XCTAssertEqual(platform("https://greenhouse.io.evil.com/steal"), .other)
         XCTAssertEqual(platform("https://lever.co.attacker.net/x"), .other)
         XCTAssertEqual(platform("https://evilgreenhouse.io/x"), .other)
+    }
+
+    // REGRESSION: the engine script is injected at document-start, but the
+    // candidate's profile only exists after get-prefill-profile returns. It
+    // used to be baked into the script at makeUIView time — when `prefill` was
+    // still nil — and updateUIView did nothing, so every page got an empty
+    // profile and NOTHING ever autofilled. The profile must travel separately.
+    private func samplePrefill(canonical: [String: String]?, raw: [String: String]?) -> PrefillResponse {
+        PrefillResponse(
+            profile: PrefillProfile(
+                firstName: "Wendy", lastName: "Shi", fullName: "Wendy Shi",
+                email: "w@example.com", phone: "555-0100", city: "New York",
+                linkedInUrl: "", githubUrl: "", portfolioUrl: ""
+            ),
+            canonical: canonical,
+            rawHistory: raw,
+            fieldHistory: [:]
+        )
+    }
+
+    func testProfileJSCarriesTheCandidatesAnswers() {
+        let js = ApplyWebView.profileJS(
+            prefill: samplePrefill(
+                canonical: ["email": "w@example.com"],
+                raw: ["Are you willing to commute?": "Yes"]
+            )
+        )
+        let unwrapped = try? XCTUnwrap(js)
+        XCTAssertNotNil(unwrapped)
+        XCTAssertTrue(js?.contains("__scoutSetProfile") == true, "must call the native-side setter")
+        XCTAssertTrue(js?.contains("w@example.com") == true, "canonical values must be carried")
+        XCTAssertTrue(js?.contains("Are you willing to commute?") == true, "prior answers must be carried")
+    }
+
+    // Falls back to the legacy flat profile bundle, so a candidate with no
+    // application history still gets a fill on their very first application.
+    func testProfileJSHydratesFromLegacyProfileWhenCanonicalIsEmpty() {
+        let js = ApplyWebView.profileJS(prefill: samplePrefill(canonical: [:], raw: [:]))
+        XCTAssertNotNil(js)
+        XCTAssertTrue(js?.contains("Wendy") == true)
+        XCTAssertTrue(js?.contains("555-0100") == true)
+    }
+
+    func testProfileJSIsNilBeforeThePrefillArrives() {
+        // Nothing to push yet — native must not emit a call that would clobber
+        // a profile already in the page with an empty one.
+        XCTAssertNil(ApplyWebView.profileJS(prefill: nil))
+    }
+
+    // REGRESSION (Perplexity, Ashby, 2026-08-21): the intent regex included
+    // "apply", so clicking "Apply for this job" on a two-page gateway counted
+    // as submitting. The SPA's route-change POST then confirmed it, the sheet
+    // reported success and closed — for an application that was never sent.
+    func testGatewayApplyButtonIsNotASubmission() {
+        for label in [
+            "Apply for this job", "Apply", "Apply now", "Apply to this role",
+            "I'm interested", "Continue", "Next",
+        ] {
+            XCTAssertFalse(
+                ATSAutofillPolicy.isStrongSubmitLabel(label),
+                "\(label) must not by itself count as submitting"
+            )
+        }
+    }
+
+    func testRealSubmitButtonsAreStrongIntent() {
+        for label in [
+            "Submit Application", "Submit application", "SUBMIT", "Submit",
+            "Send application", "Complete application", "Finish application",
+        ] {
+            XCTAssertTrue(
+                ATSAutofillPolicy.isStrongSubmitLabel(label),
+                "\(label) should register as a submission"
+            )
+        }
+    }
+
+    // "Apply now" is still reachable, but only inside an already-filled form —
+    // the engine checks that separately. Here we just pin the vocabulary.
+    func testApplyIsWeakIntentNotDiscarded() {
+        XCTAssertTrue(ATSAutofillPolicy.isWeakSubmitLabel("Apply for this job"))
+        XCTAssertTrue(ATSAutofillPolicy.isWeakSubmitLabel("Apply now"))
+        XCTAssertFalse(ATSAutofillPolicy.isWeakSubmitLabel("Save for later"))
+        XCTAssertFalse(ATSAutofillPolicy.isWeakSubmitLabel(nil))
+    }
+
+    // The regexes that actually ship are the JS mirrors — run them the way
+    // WebKit will, and require them to agree with the Swift policy.
+    private func injectedSubmitVerdict(_ label: String) -> (strong: Bool, weak: Bool) {
+        let context = JSContext()!
+        let js = """
+        (function() {
+          \(ATSAutofillPolicy.submitPatternsJS)
+          var t = '\(label)'.toLowerCase();
+          return [STRONG_SUBMIT_RE.test(t), WEAK_SUBMIT_RE.test(t)];
+        })()
+        """
+        let result = context.evaluateScript(js)
+        return (result?.atIndex(0)?.toBool() ?? false, result?.atIndex(1)?.toBool() ?? false)
+    }
+
+    func testInjectedSubmitPatternsMatchPolicy() {
+        for label in ["Apply for this job", "Submit Application", "Apply now", "Send application"] {
+            let injected = injectedSubmitVerdict(label)
+            XCTAssertEqual(injected.strong, ATSAutofillPolicy.isStrongSubmitLabel(label),
+                           "strong verdict diverged for \(label)")
+            XCTAssertEqual(injected.weak, ATSAutofillPolicy.isWeakSubmitLabel(label),
+                           "weak verdict diverged for \(label)")
+        }
+        XCTAssertFalse(injectedSubmitVerdict("Apply for this job").strong,
+                       "the gateway button must not be a strong submit in the shipped JS")
+        XCTAssertTrue(injectedSubmitVerdict("Submit Application").strong)
     }
 }

@@ -119,6 +119,26 @@ final class CandidateService {
         )
     }
 
+    /// The candidate's own most recent resume as raw bytes, for auto-attaching
+    /// to an ATS file input. The `resumes` bucket is private; its RLS policy
+    /// admits the owner (`owner = auth.uid()`), so the user's own JWT suffices —
+    /// no service role and no signed URL round-trip.
+    func downloadLatestResume(session: AuthSession) async throws -> (data: Data, fileName: String)? {
+        guard let record = try await fetchLatestResume(userID: session.user.id, session: session),
+              !record.filePath.isEmpty else { return nil }
+        // Built by string, not appendingPathComponent: the stored path contains
+        // slashes that must stay path separators rather than be escaped.
+        let encoded = record.filePath
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? record.filePath
+        guard let url = URL(string: "\(try transport.storageBaseURL().absoluteString)/object/resumes/\(encoded)")
+        else { return nil }
+        let request = try transport.makeRequest(url: url, method: "GET", accessToken: session.accessToken)
+        let data = try await transport.executeData(request)
+        guard !data.isEmpty else { return nil }
+        let name = record.filePath.split(separator: "/").last.map(String.init) ?? "resume.pdf"
+        return (data, name)
+    }
+
     func insertResumeUpload(userID: String, filePath: String, session: AuthSession) async throws -> ResumeUploadRecord {
         let body: [[String: AnyEncodable]] = [[
             "profile_id": AnyEncodable(userID),
