@@ -50,6 +50,37 @@ Deno.serve(async (request) => {
   const company = job.company as { logo_url?: string | null } | null;
   const logo = company?.logo_url ?? null;
 
+  // JSON mode for the tryscout22.com/j/ landing page.
+  //
+  // That page is static (GitHub Pages) and cannot query the database: the
+  // jobs table is `to authenticated`, so the anon key reads nothing. This
+  // endpoint already runs with the service role and already publishes each
+  // of these fields in the HTML below, so exposing them as JSON adds no new
+  // surface — it just lets a static page render the same thing.
+  if (new URL(request.url).searchParams.get("format") === "json") {
+    return new Response(
+      JSON.stringify({
+        id: job.id,
+        title: job.title ?? "Open role",
+        company: job.company_name ?? null,
+        location: job.location ?? null,
+        compensation: comp,
+        logo,
+        deep_link: APP_SCHEME_URL(jobId),
+        app_store_url: APP_STORE_URL || null,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=300",
+          // The landing page is served from tryscout22.com, a different
+          // origin to this function.
+          "Access-Control-Allow-Origin": "*",
+        },
+      },
+    );
+  }
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
