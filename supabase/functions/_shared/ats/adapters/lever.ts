@@ -9,6 +9,7 @@ import {
   computeContentHash,
   extractFirstEmail,
   parseCompensation,
+  sanitizeCompensation,
   sanitizeISODate,
   stripHTML,
 } from "../compensation.ts";
@@ -106,6 +107,9 @@ async function normalizeLeverPosting(posting: LeverPosting): Promise<NormalizedJ
   };
 }
 
+// Structured salaryRange, so it skips the free-text parser — and with it
+// that parser's plausibility floor. Run it through sanitizeCompensation
+// explicitly; Lever echoes employer typos the same way every board does.
 function leverSalaryToParsed(range: NonNullable<LeverPosting["salaryRange"]>) {
   const currency = (range.currency ?? "USD").toUpperCase();
   if (currency !== "USD") {
@@ -113,12 +117,12 @@ function leverSalaryToParsed(range: NonNullable<LeverPosting["salaryRange"]>) {
   }
   const interval = (range.interval ?? "year").toLowerCase();
   const isHourly = /hour|hr/.test(interval);
-  return {
+  return sanitizeCompensation({
     min_annual: isHourly ? null : range.min ?? null,
     max_annual: isHourly ? null : range.max ?? null,
     min_hourly: isHourly ? range.min ?? null : null,
     max_hourly: isHourly ? range.max ?? null : null,
-  };
+  });
 }
 
 function formatLeverSalary(range: LeverPosting["salaryRange"]): string | null {

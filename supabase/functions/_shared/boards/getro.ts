@@ -13,6 +13,7 @@
 // the cursor; on drain we return null so the orchestrator clears it.
 
 import { fetchJSON } from "../http.ts";
+import { sanitizeCompensation } from "../ats/compensation.ts";
 import type {
   AdapterInput,
   AdapterResult,
@@ -170,6 +171,11 @@ function pickLocation(job: GetroJob): string | null {
   return job.searchable_locations?.[0] ?? null;
 }
 
+// Getro's *_cents fields really are cents ($180,000/yr arrives as
+// 18000000), but they faithfully echo whatever the employer typed into the
+// board form. PermitFlow entered "130"/"160" meaning $130K/$160K and Getro
+// stored 13000/16000 cents — $130/yr. sanitizeCompensation drops those
+// rather than letting them reach the feed as "$0k–$0k".
 function parseGetroComp(job: GetroJob) {
   const period = (job.compensation_period ?? "").toLowerCase();
   const minCents = job.compensation_amount_min_cents ?? null;
@@ -177,10 +183,10 @@ function parseGetroComp(job: GetroJob) {
   const min = minCents != null ? minCents / 100 : null;
   const max = maxCents != null ? maxCents / 100 : null;
   if (period.includes("hour")) {
-    return { min_annual: null, max_annual: null, min_hourly: min, max_hourly: max };
+    return sanitizeCompensation({ min_annual: null, max_annual: null, min_hourly: min, max_hourly: max });
   }
   if (period.includes("year") || period.includes("annual")) {
-    return { min_annual: min, max_annual: max, min_hourly: null, max_hourly: null };
+    return sanitizeCompensation({ min_annual: min, max_annual: max, min_hourly: null, max_hourly: null });
   }
   // Unknown period — drop, don't guess.
   return { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null };

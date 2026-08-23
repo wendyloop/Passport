@@ -23,6 +23,45 @@ const EMPTY: ParsedCompensation = {
   max_hourly: null,
 };
 
+// Plausibility bounds. Employers mistype comp into ATS and board forms —
+// PermitFlow entered "130"/"160" (meaning $130K/$160K) into Getro, which
+// stored it as 13000 cents = $130/yr, and the carousel rendered "$0k–$0k".
+// Anything outside these bounds is a data-entry error, not a real offer.
+const MIN_PLAUSIBLE_ANNUAL = 1_000;
+const MAX_PLAUSIBLE_ANNUAL = 10_000_000;
+const MIN_PLAUSIBLE_HOURLY = 5;
+const MAX_PLAUSIBLE_HOURLY = 2_000;
+
+/// Drops implausible structured compensation. Every ingestion path runs
+/// through this — the free-text parser below, the board adapters that read
+/// structured amounts (Getro cents, Lever salaryRange), and the ingest-jobs
+/// write path as a backstop.
+///
+/// A null endpoint is legitimate ("up to $160,000"), so nulls pass through.
+/// But a *present* endpoint that fails the bounds — or an inverted range —
+/// poisons its whole pair: when one end of a range is a typo the other
+/// almost always is too (130/160 above), so publishing the survivor would
+/// be fabricating a number. Annual and hourly pairs are judged separately.
+export function sanitizeCompensation(comp: ParsedCompensation): ParsedCompensation {
+  const plausible = (value: number | null, lo: number, hi: number): boolean =>
+    value === null || (Number.isFinite(value) && value >= lo && value <= hi);
+
+  const keepPair = (min: number | null, max: number | null, lo: number, hi: number): boolean => {
+    if (!plausible(min, lo, hi) || !plausible(max, lo, hi)) return false;
+    return !(min !== null && max !== null && min > max);
+  };
+
+  const annualOK = keepPair(comp.min_annual, comp.max_annual, MIN_PLAUSIBLE_ANNUAL, MAX_PLAUSIBLE_ANNUAL);
+  const hourlyOK = keepPair(comp.min_hourly, comp.max_hourly, MIN_PLAUSIBLE_HOURLY, MAX_PLAUSIBLE_HOURLY);
+
+  return {
+    min_annual: annualOK ? comp.min_annual : null,
+    max_annual: annualOK ? comp.max_annual : null,
+    min_hourly: hourlyOK ? comp.min_hourly : null,
+    max_hourly: hourlyOK ? comp.max_hourly : null,
+  };
+}
+
 export function parseCompensation(raw: string | null | undefined): ParsedCompensation {
   if (!raw) return EMPTY;
   const trimmed = raw.trim();
@@ -35,7 +74,7 @@ export function parseCompensation(raw: string | null | undefined): ParsedCompens
 
   const isHourly = /\b(hour|hr|hourly|per hour|\/hr|\/hour)\b/i.test(lower);
 
-  const numbers = extractNumbers(trimmed);
+  const numbers = extractNumbers(trimmed, isHourly);
   if (numbers.length === 0) return EMPTY;
 
   const [first, second] = numbers;
@@ -43,28 +82,31 @@ export function parseCompensation(raw: string | null | undefined): ParsedCompens
   const max = second ?? first ?? null;
 
   if (isHourly) {
-    return {
+    return sanitizeCompensation({
       min_annual: null,
       max_annual: null,
       min_hourly: min,
       max_hourly: max,
-    };
+    });
   }
 
-  // Annual amounts under 1,000 are suspect (probably typos or hourly).
-  if (min !== null && min < 1000) return EMPTY;
-
-  return {
+  // Annual amounts under 1,000 are suspect (probably typos or hourly);
+  // sanitizeCompensation owns that rule for every ingestion path.
+  return sanitizeCompensation({
     min_annual: min,
     max_annual: max,
     min_hourly: null,
     max_hourly: null,
-  };
+  });
 }
 
 // Pulls up to two numeric values out of a compensation string, handling
 // k-suffix (120K → 120000), commas (120,000), and ranges (- – —).
-function extractNumbers(input: string): number[] {
+//
+// `isHourly` gates the bare-number heuristic below: "$120 - $160" annual
+// means thousands, but "$60 - $80 per hour" means exactly sixty dollars.
+// Applying the annual rule to hourly strings produced $60,000/hr.
+function extractNumbers(input: string, isHourly = false): number[] {
   const pattern = /(\d[\d,]*\.?\d*)\s*([kKmM])?/g;
   const out: number[] = [];
   let match: RegExpExecArray | null;
@@ -77,7 +119,7 @@ function extractNumbers(input: string): number[] {
     let scaled = value;
     if (suffix === "k") scaled = value * 1_000;
     else if (suffix === "m") scaled = value * 1_000_000;
-    else if (value < 1000 && !/[.]/.test(numericPart)) {
+    else if (!isHourly && value < 1000 && !/[.]/.test(numericPart)) {
       // Bare numbers under 1000 with no decimal — interpret as K (e.g. "120 - 160")
       scaled = value * 1_000;
     }

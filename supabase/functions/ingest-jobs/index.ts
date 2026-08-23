@@ -31,6 +31,7 @@ import {
   computeDedupKey,
   deriveApplyFlow,
 } from "../_shared/ats/classify.ts";
+import { sanitizeCompensation } from "../_shared/ats/compensation.ts";
 import type { FundRow } from "../_shared/ats/models.ts";
 import type { BoardCompany, BoardJob } from "../_shared/boards/types.ts";
 import { jsonError } from "../_shared/http.ts";
@@ -345,6 +346,7 @@ function buildJobRows(
     const company = companyByExtId.get(job.company_board_external_id);
     const resolution = classifyApplyURL(job.apply_url);
     const dedupKey = computeDedupKey(job.apply_url, resolution);
+    const comp = sanitizeCompensation(job.compensation);
 
     byDedupKey.set(dedupKey, {
       dedup_key: dedupKey,
@@ -361,10 +363,13 @@ function buildJobRows(
       experience_level: classifyExperience(job.title),
       work_mode: classifyWorkMode(job.location),
       compensation_text: job.compensation_text,
-      compensation_min_annual: toInt(job.compensation.min_annual),
-      compensation_max_annual: toInt(job.compensation.max_annual),
-      compensation_min_hourly: toInt(job.compensation.min_hourly),
-      compensation_max_hourly: toInt(job.compensation.max_hourly),
+      // Backstop: adapters sanitize their own structured amounts, but this
+      // is the single funnel every board write passes through, so an
+      // adapter added later can't leak an implausible range to the feed.
+      compensation_min_annual: toInt(comp.min_annual),
+      compensation_max_annual: toInt(comp.max_annual),
+      compensation_min_hourly: toInt(comp.min_hourly),
+      compensation_max_hourly: toInt(comp.max_hourly),
       ats_type: resolution?.ats_type ?? null,
       ats_token: resolution?.ats_token ?? null,
       ats_external_id: resolution?.ats_external_id ?? null,

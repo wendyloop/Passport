@@ -13,6 +13,7 @@ import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 import { isSensitiveLabel, matchCanonical } from "./profile_fields.ts";
 import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
+import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 
 Deno.test("jsonResponse sets status, CORS, and content type", async () => {
   const res = jsonResponse({ ok: true }, 201);
@@ -434,4 +435,74 @@ Deno.test("htmlToText flattens JD markup into embedding-ready text", () => {
     "We are hiring.\nRust\nPostgres\nComp: $150K&up",
   );
   assertEquals(htmlToText("<p></p>"), "");
+});
+
+
+Deno.test("sanitizeCompensation drops the PermitFlow-shaped annual typo", () => {
+  // Getro reported 13000/16000 cents = $130/$160 a year; the employer meant
+  // $130K/$160K. Publishing it rendered "$0k–$0k" on the carousel.
+  assertEquals(
+    sanitizeCompensation({ min_annual: 130, max_annual: 160, min_hourly: null, max_hourly: null }),
+    { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+  );
+});
+
+Deno.test("sanitizeCompensation keeps real annual ranges and open-ended ends", () => {
+  assertEquals(
+    sanitizeCompensation({ min_annual: 130000, max_annual: 160000, min_hourly: null, max_hourly: null }),
+    { min_annual: 130000, max_annual: 160000, min_hourly: null, max_hourly: null },
+  );
+  // "Up to $160,000" — a null endpoint is legitimate, not a defect.
+  assertEquals(
+    sanitizeCompensation({ min_annual: null, max_annual: 160000, min_hourly: null, max_hourly: null }),
+    { min_annual: null, max_annual: 160000, min_hourly: null, max_hourly: null },
+  );
+});
+
+Deno.test("sanitizeCompensation poisons the whole pair when one end is bad", () => {
+  // A zero min alongside a plausible max: one typo means the range is
+  // untrustworthy, so the survivor is dropped rather than published alone.
+  assertEquals(
+    sanitizeCompensation({ min_annual: 0, max_annual: 160000, min_hourly: null, max_hourly: null }),
+    { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+  );
+});
+
+Deno.test("sanitizeCompensation rejects inverted ranges", () => {
+  assertEquals(
+    sanitizeCompensation({ min_annual: 200000, max_annual: 100000, min_hourly: null, max_hourly: null }),
+    { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+  );
+});
+
+Deno.test("sanitizeCompensation judges hourly separately from annual", () => {
+  assertEquals(
+    sanitizeCompensation({ min_annual: null, max_annual: null, min_hourly: 60, max_hourly: 80 }),
+    { min_annual: null, max_annual: null, min_hourly: 60, max_hourly: 80 },
+  );
+  // $0.50/hr is a unit error, not an offer.
+  assertEquals(
+    sanitizeCompensation({ min_annual: null, max_annual: null, min_hourly: 0.5, max_hourly: 80 }),
+    { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+  );
+});
+
+Deno.test("parseCompensation still reads the common ATS shapes", () => {
+  assertEquals(parseCompensation("$120,000 - $160,000"), {
+    min_annual: 120000, max_annual: 160000, min_hourly: null, max_hourly: null,
+  });
+  assertEquals(parseCompensation("USD 120K - 160K"), {
+    min_annual: 120000, max_annual: 160000, min_hourly: null, max_hourly: null,
+  });
+  assertEquals(parseCompensation("$60–$80 per hour"), {
+    min_annual: null, max_annual: null, min_hourly: 60, max_hourly: 80,
+  });
+  // Single hourly figure: sixty dollars an hour, not sixty thousand.
+  assertEquals(parseCompensation("$60/hour"), {
+    min_annual: null, max_annual: null, min_hourly: 60, max_hourly: 60,
+  });
+  // Non-USD keeps compensation_text upstream but yields no structured range.
+  assertEquals(parseCompensation("€90,000 - €110,000"), {
+    min_annual: null, max_annual: null, min_hourly: null, max_hourly: null,
+  });
 });

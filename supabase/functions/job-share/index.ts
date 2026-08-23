@@ -139,7 +139,10 @@ function compDisplay(job: {
   compensation_max_annual: number | null;
 }): string | null {
   if (job.compensation_text) return job.compensation_text;
-  const fmt = (n: number) => `$${Math.round(n / 1000)}k`;
+  // Below $1k, round-to-thousands would print "$0k" — a number that reads
+  // as real and is wrong. Ingestion now rejects those, but a stale row or
+  // a genuinely tiny stipend should degrade to visible dollars, not zero.
+  const fmt = (n: number) => (n < 1000 ? `$${Math.round(n)}` : `$${Math.round(n / 1000)}k`);
   if (job.compensation_min_annual && job.compensation_max_annual) {
     return `${fmt(job.compensation_min_annual)}–${fmt(job.compensation_max_annual)}`;
   }
