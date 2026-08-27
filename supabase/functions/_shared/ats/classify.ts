@@ -21,17 +21,32 @@ export type ATSResolution = {
 
 type Matcher = (url: URL) => ATSResolution | null;
 
+// Greenhouse hosts that carry the board token in the first path segment. The
+// `.eu` variants are Greenhouse's EU-resident boards — same public board API,
+// so only the token extraction differs. Without them the `.greenhouse.io`
+// subdomain branch below reads the token as "job-boards.eu".
+const GREENHOUSE_PATH_HOSTS = new Set([
+  "boards.greenhouse.io",
+  "job-boards.greenhouse.io",
+  "boards.eu.greenhouse.io",
+  "job-boards.eu.greenhouse.io",
+]);
+
+// Lever splits its API by data residency; the board host tells us which shard.
+const LEVER_HOSTS = new Set(["jobs.lever.co", "jobs.eu.lever.co"]);
+
 const matchers: Matcher[] = [
   // Greenhouse:
   //   https://boards.greenhouse.io/{token}
   //   https://boards.greenhouse.io/{token}/jobs/123
   //   https://job-boards.greenhouse.io/{token}/jobs/123
+  //   https://job-boards.eu.greenhouse.io/{token}/jobs/123
   //   https://{token}.greenhouse.io
   (url) => {
     const host = url.hostname.toLowerCase();
-    if (host === "boards.greenhouse.io" || host === "job-boards.greenhouse.io") {
+    if (GREENHOUSE_PATH_HOSTS.has(host)) {
       const parts = pathSegments(url);
-      const token = parts[0];
+      const token = decodeSegment(parts[0]);
       if (!token) return null;
       // parts[1] === "jobs", parts[2] === id (when present)
       const id = parts[1] === "jobs" ? (parts[2] ?? null) : null;
@@ -51,11 +66,12 @@ const matchers: Matcher[] = [
   // Lever:
   //   https://jobs.lever.co/{token}
   //   https://jobs.lever.co/{token}/{posting-uuid}
+  //   https://jobs.eu.lever.co/{token}/{posting-uuid}
   (url) => {
     const host = url.hostname.toLowerCase();
-    if (host === "jobs.lever.co") {
+    if (LEVER_HOSTS.has(host)) {
       const parts = pathSegments(url);
-      const token = parts[0];
+      const token = decodeSegment(parts[0]);
       if (!token) return null;
       return { ats_type: "lever", ats_token: token, ats_external_id: parts[1] ?? null };
     }
@@ -69,7 +85,7 @@ const matchers: Matcher[] = [
     const host = url.hostname.toLowerCase();
     if (host === "jobs.ashbyhq.com") {
       const parts = pathSegments(url);
-      const token = parts[0];
+      const token = decodeSegment(parts[0]);
       if (!token) return null;
       return { ats_type: "ashby", ats_token: token, ats_external_id: parts[1] ?? null };
     }
@@ -88,7 +104,7 @@ const matchers: Matcher[] = [
       host.endsWith(".smartrecruiters.com")
     ) {
       const parts = pathSegments(url);
-      const token = parts[0];
+      const token = decodeSegment(parts[0]);
       if (!token) return null;
       return { ats_type: "smartrecruiters", ats_token: token, ats_external_id: parts[1] ?? null };
     }
@@ -128,6 +144,22 @@ export function classifyApplyURL(rawURL: string | null | undefined): ATSResoluti
 
 function pathSegments(url: URL): string[] {
   return url.pathname.split("/").filter(Boolean);
+}
+
+// Board tokens with spaces or punctuation arrive percent-encoded in the URL
+// path ("jobs.ashbyhq.com/Hippocratic%20AI/..."). Adapters re-encode the token
+// when they build the API URL, so storing the raw segment double-encodes it
+// ("Hippocratic%2520AI") and the ATS 404s. Decode once, here.
+//
+// Only tokens are decoded — `ats_external_id` feeds `computeDedupKey`, and
+// changing its shape would strand every already-ingested row's dedup key.
+function decodeSegment(segment: string | undefined): string | undefined {
+  if (!segment) return segment;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment; // malformed escape sequence — keep the raw value
+  }
 }
 
 // Derive apply_flow from the apply URL host. ATS-hosted forms = ats_form;

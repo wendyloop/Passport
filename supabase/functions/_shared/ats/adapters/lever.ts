@@ -4,7 +4,7 @@
 // Returns plain JSON array. Richest of the supported ATSes — `applyUrl`,
 // `hostedUrl`, structured `salaryRange`, `commitment`, and `categories`.
 
-import { fetchJSON } from "../http.ts";
+import { fetchJSON, HTTPError } from "../http.ts";
 import {
   computeContentHash,
   extractFirstEmail,
@@ -38,9 +38,30 @@ type LeverPosting = {
   };
 };
 
+// Lever shards by data residency: an EU-resident board (jobs.eu.lever.co)
+// 404s on the US API and vice versa. The board host isn't stored alongside the
+// token, so try US first and fall back to EU on a 404 only — any other status
+// is a real failure and must not be masked by a second request.
+const LEVER_API_HOSTS = ["api.lever.co", "api.eu.lever.co"];
+
 export async function fetchLever(input: AdapterFetchInput): Promise<AdapterFetchResult> {
-  const url = `https://api.lever.co/v0/postings/${encodeURIComponent(input.ats_token)}?mode=json`;
-  const postings = await fetchJSON<LeverPosting[]>(url);
+  const token = encodeURIComponent(input.ats_token);
+  let postings: LeverPosting[] | null = null;
+  let notFound: unknown;
+
+  for (const host of LEVER_API_HOSTS) {
+    try {
+      postings = await fetchJSON<LeverPosting[]>(`https://${host}/v0/postings/${token}?mode=json`);
+      break;
+    } catch (error) {
+      if (error instanceof HTTPError && error.status === 404) {
+        notFound = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (!postings) throw notFound ?? new Error(`Lever board "${input.ats_token}" not found`);
 
   const jobs: NormalizedJob[] = [];
   for (const posting of postings ?? []) {
