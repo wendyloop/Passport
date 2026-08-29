@@ -893,29 +893,45 @@ struct ApplyWebView: UIViewRepresentable {
           // always visually hidden behind a styled "Attach" button, so the
           // visibility gate that protects fill/capture would skip every one.
           window.__scoutAttachResume = function (b64, name, mime) {
+            var target = null;
             try {
               var inputs = document.querySelectorAll('input[type="file"]');
-              var target = null;
               for (var i = 0; i < inputs.length; i++) {
                 var el = inputs[i];
                 if (el.disabled) continue;
                 if (el.files && el.files.length > 0) continue;   // already attached
-                var hay = norm([el.getAttribute('name'), el.id, ownLabel(el),
-                                el.getAttribute('accept')].join(' '));
+                var accept = (el.getAttribute('accept') || '').toLowerCase();
+                var hay = norm([el.getAttribute('name'), el.id, ownLabel(el), accept].join(' '));
+                // Only inputs that actually ask for a document. The previous
+                // "fall back to the first free file input" rule is what drove
+                // the attach into avatar and cover-letter uploaders, whose own
+                // bundle then threw (undefined is not an object: le.uploadFile)
+                // — asynchronously, where the try/catch below cannot reach it.
                 if (/resume|cv|attach/.test(hay)) { target = el; break; }
-                if (!target) target = el;   // fall back to the first free input
+                if (/pdf|msword|officedocument|\\.docx?/.test(accept)) { target = el; break; }
               }
-              if (!target) return false;
+              if (!target) { log('resume attach skipped: no document input on this form'); return false; }
               var bin = atob(b64), arr = new Uint8Array(bin.length);
               for (var j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
               var dt = new DataTransfer();
               dt.items.add(new File([arr], name, { type: mime || 'application/pdf' }));
               target.files = dt.files;
-              target.dispatchEvent(new Event('input',  { bubbles: true }));
-              target.dispatchEvent(new Event('change', { bubbles: true }));
-              log('resume attached (' + name + ')');
-              return true;
             } catch (e) { log('resume attach failed: ' + e); return false; }
+
+            // The page's uploader runs on this event and may throw from its own
+            // bundle. Muzzle that one error instead of letting it surface as a
+            // page-level crash; 'input' is dropped because it is not a standard
+            // file-input event and some handlers choke on it.
+            var priorHandler = window.onerror;
+            window.onerror = function () { return true; };
+            try {
+              target.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (e) { /* page handler threw synchronously */ }
+            setTimeout(function () { window.onerror = priorHandler; }, 1500);
+
+            var ok = !!(target.files && target.files.length > 0);
+            log(ok ? 'resume attached (' + name + ')' : 'resume attach did not take');
+            return ok;
           };
 
           function cssPath(el) {
@@ -1163,7 +1179,21 @@ struct ApplyWebView: UIViewRepresentable {
           }
 
           var lastSignature = '';
+          var lastFieldCount = -1;
+          var lastPassAt = 0;
+
           function fillIfChanged() {
+            // Cheap gate before the expensive one. signature() calls
+            // getBoundingClientRect() on every field, which forces a synchronous
+            // layout; a React ATS mutates the DOM continuously, so running that
+            // on every batch pinned the main thread and made the form crawl.
+            // Counting nodes forces no layout, so it can gate the rest.
+            var count = document.querySelectorAll('input, textarea, select').length;
+            var now = Date.now();
+            if (count === lastFieldCount && now - lastPassAt < 4000) return;
+            lastFieldCount = count;
+            lastPassAt = now;
+
             var sig = signature();
             if (!sig || sig === lastSignature) return;
             lastSignature = sig;
@@ -1186,9 +1216,16 @@ struct ApplyWebView: UIViewRepresentable {
 
           function observe() {
             var timer = null;
+            var pending = false;
+            // A single burst of React renders can fire this callback thousands
+            // of times; collapsing to one wake-up per burst keeps the callback
+            // itself off the hot path, not just the work it schedules.
             var obs = new MutationObserver(function () {
+              if (pending) return;
+              pending = true;
               clearTimeout(timer);
               timer = setTimeout(function () {
+                pending = false;
                 fillIfChanged();
                 if (hasIntent(false) && looksConfirmed()) reportSubmission('confirmation-text');
               }, 400);

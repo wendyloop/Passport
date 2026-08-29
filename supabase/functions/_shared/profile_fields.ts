@@ -132,3 +132,31 @@ export function matchCanonical(rawLabel: string): CanonicalKey | null {
   }
   return null;
 }
+
+// Résumés typeset the candidate's name in caps ("WENDY SHI"), the parser
+// stores it verbatim, and autofill then types SHOUTING into every ATS form.
+// Only person-name and city fields are de-capsed: `state` is legitimately
+// "NY", `highest_degree` is "M.S.", and company/school acronyms ("IBM",
+// "UCLA") must survive, so none of those are touched.
+const DECAPS_KEYS: ReadonlySet<CanonicalKey> = new Set<CanonicalKey>([
+  "first_name",
+  "last_name",
+  "full_name",
+  "city",
+]);
+
+/// Title-cases a value that arrived entirely in caps. Mixed-case input is
+/// returned untouched, so "McDonald" and "van der Berg" are never mangled —
+/// this only repairs the all-caps case, where the original casing is already
+/// lost and title case is the best available reconstruction.
+export function normalizeCanonicalValue(key: CanonicalKey, value: string): string {
+  const trimmed = value.trim();
+  if (!DECAPS_KEYS.has(key)) return trimmed;
+  if (!/[A-Z]/.test(trimmed)) return trimmed;
+  if (trimmed !== trimmed.toUpperCase()) return trimmed;   // already mixed case
+  if (trimmed.replace(/[^A-Za-z]/g, "").length < 2) return trimmed;
+
+  return trimmed
+    .toLowerCase()
+    .replace(/(^|[\s\-'’])([a-z])/g, (_m, lead: string, ch: string) => lead + ch.toUpperCase());
+}

@@ -16,7 +16,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
-import { canonLabel, isSensitiveLabel, matchCanonical } from "../_shared/profile_fields.ts";
+import { canonLabel, isSensitiveLabel, matchCanonical, normalizeCanonicalValue } from "../_shared/profile_fields.ts";
 import { embedText, normalizeQuestion, toPgVector } from "../_shared/openai_embeddings.ts";
 
 const ESSAY_MIN_CHARS = 200;
@@ -116,7 +116,8 @@ Deno.serve(async (request) => {
         put(f.label, f.value);
         const canon = matchCanonical(f.label);
         if (canon) {
-          put(canonLabel(canon), f.value);
+          // De-caps resume-typography names before they reach storage.
+          put(canonLabel(canon), normalizeCanonicalValue(canon, f.value));
           canonicalKeys.add(canon);
         }
       }

@@ -11,7 +11,7 @@ import { buildPitchEmailContent, pitchSubject } from "./pitch_email.ts";
 import { attachmentFilename } from "./email_attachments.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
-import { isSensitiveLabel, matchCanonical } from "./profile_fields.ts";
+import { isSensitiveLabel, matchCanonical, normalizeCanonicalValue } from "./profile_fields.ts";
 import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
 import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
@@ -733,4 +733,27 @@ Deno.test("getroJobDetailURL encodes both ids", () => {
     getroJobDetailURL("90361272", "8672"),
     "https://api.getro.com/api/v1/jobs/90361272?collection_id=8672",
   );
+});
+
+// Résumé headers are typeset in caps, so the parser stores "WENDY SHI" and
+// autofill typed it into every form. De-capsing has to be surgical: several
+// canonical fields are legitimately uppercase.
+Deno.test("normalizeCanonicalValue de-capses names but spares real uppercase", () => {
+  assertEquals(normalizeCanonicalValue("first_name", "WENDY"), "Wendy");
+  assertEquals(normalizeCanonicalValue("last_name", "SHI"), "Shi");
+  assertEquals(normalizeCanonicalValue("full_name", "WENDY B SHI"), "Wendy B Shi");
+  assertEquals(normalizeCanonicalValue("city", "NEW YORK"), "New York");
+  // Hyphens and apostrophes start new words too.
+  assertEquals(normalizeCanonicalValue("last_name", "O'BRIEN-SMITH"), "O'Brien-Smith");
+  // Already mixed case is never touched — McDonald must not become Mcdonald.
+  assertEquals(normalizeCanonicalValue("last_name", "McDonald"), "McDonald");
+  assertEquals(normalizeCanonicalValue("first_name", "Wendy"), "Wendy");
+  // Keys that are legitimately uppercase are left alone.
+  assertEquals(normalizeCanonicalValue("state", "NY"), "NY");
+  assertEquals(normalizeCanonicalValue("highest_degree", "M.S."), "M.S.");
+  assertEquals(normalizeCanonicalValue("current_company", "IBM"), "IBM");
+  assertEquals(normalizeCanonicalValue("school", "UCLA"), "UCLA");
+  // Initials stay as-is: too short to reconstruct meaningfully.
+  assertEquals(normalizeCanonicalValue("first_name", "W"), "W");
+  assertEquals(normalizeCanonicalValue("email", "WENDY@X.COM"), "WENDY@X.COM");
 });

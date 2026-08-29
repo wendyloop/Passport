@@ -13,7 +13,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
-import { CANON_PREFIX } from "../_shared/profile_fields.ts";
+import { CANON_PREFIX, type CanonicalKey, normalizeCanonicalValue } from "../_shared/profile_fields.ts";
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -54,7 +54,10 @@ Deno.serve(async (request) => {
       const value = row.field_value?.trim();
       if (!label || !value) continue;
       if (label.startsWith(CANON_PREFIX)) {
-        canonical[label.slice(CANON_PREFIX.length)] = value;
+        // Also applied on read so rows captured before the fix stop shouting
+        // without needing a backfill.
+        const key = label.slice(CANON_PREFIX.length);
+        canonical[key] = normalizeCanonicalValue(key as CanonicalKey, value);
       } else {
         rawHistory[label] = value;
       }
