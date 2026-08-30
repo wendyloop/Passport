@@ -22,7 +22,7 @@
                             <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="scout22" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="LaunchTitleLabel">
                                 <rect key="frame" x="92" y="430" width="209" height="49"/>
                                 <fontDescription key="fontDescription" type="system" weight="heavy" pointSize="40"/>
-                                <color key="textColor" red="0.96078431369999998" green="0.87843137250000004" blue="0.60000002380000002" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                <color key="textColor" white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                                 <nil key="highlightedColor"/>
                             </label>
                         </subviews>
