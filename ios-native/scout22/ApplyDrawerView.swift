@@ -892,7 +892,10 @@ struct ApplyWebView: UIViewRepresentable {
           // directly rather than through isFillable: ATS file inputs are almost
           // always visually hidden behind a styled "Attach" button, so the
           // visibility gate that protects fill/capture would skip every one.
-          window.__scoutAttachResume = function (b64, name, mime) {
+          // Attaches into THIS frame only. The public entry point below falls
+          // back to child frames, because WKWebView's evaluateJavaScript runs
+          // in the main frame and Greenhouse/Lever host the form in an iframe.
+          function attachResumeHere(b64, name, mime) {
             var target = null;
             try {
               var inputs = document.querySelectorAll('input[type="file"]');
@@ -910,7 +913,11 @@ struct ApplyWebView: UIViewRepresentable {
                 if (/resume|cv|attach/.test(hay)) { target = el; break; }
                 if (/pdf|msword|officedocument|\\.docx?/.test(accept)) { target = el; break; }
               }
-              if (!target) { log('resume attach skipped: no document input on this form'); return false; }
+              if (!target) {
+                log('no document input in frame ' + location.hostname
+                    + ' (file inputs seen: ' + inputs.length + ')');
+                return false;
+              }
               var bin = atob(b64), arr = new Uint8Array(bin.length);
               for (var j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
               var dt = new DataTransfer();
@@ -930,8 +937,50 @@ struct ApplyWebView: UIViewRepresentable {
             setTimeout(function () { window.onerror = priorHandler; }, 1500);
 
             var ok = !!(target.files && target.files.length > 0);
-            log(ok ? 'resume attached (' + name + ')' : 'resume attach did not take');
+            log(ok ? 'resume attached in ' + location.hostname + ' (' + name + ')'
+                   : 'resume attach did not take in ' + location.hostname);
             return ok;
+          }
+
+          // Hand the resume down to ATS-hosted child frames. The payload is a
+          // private document, so it is posted ONLY to frames whose own origin
+          // is an allowed ATS host, and with that exact origin as the target —
+          // never '*', which would hand it to every analytics frame on the page.
+          function relayResumeToFrames(b64, name, mime) {
+            var frames = document.querySelectorAll('iframe');
+            var sent = 0;
+            for (var i = 0; i < frames.length; i++) {
+              var origin = '';
+              try {
+                var u = new URL(frames[i].getAttribute('src') || '', location.href);
+                if (!__scoutHostAllowed(u.hostname)) continue;
+                origin = u.origin;
+              } catch (e) { continue; }
+              try {
+                frames[i].contentWindow.postMessage(
+                  { __scout: 'attachResume', b64: b64, name: name, mime: mime }, origin);
+                sent++;
+              } catch (e) { /* cross-origin frame we cannot reach */ }
+            }
+            if (sent) log('resume relayed to ' + sent + ' ATS frame(s)');
+            return sent > 0;
+          }
+
+          window.__scoutAttachResume = function (b64, name, mime) {
+            if (attachResumeHere(b64, name, mime)) return true;
+            return relayResumeToFrames(b64, name, mime);
+          };
+
+          // Receiving half of the relay, live in every ATS frame.
+          window.__scoutListenForResume = function () {
+            window.addEventListener('message', function (ev) {
+              var d = ev && ev.data;
+              if (!d || d.__scout !== 'attachResume') return;
+              var host = '';
+              try { host = new URL(ev.origin).hostname; } catch (e) { return; }
+              if (!__scoutHostAllowed(host)) return;   // only trust ATS senders
+              attachResumeHere(d.b64, d.name, d.mime);
+            });
           };
 
           function cssPath(el) {
@@ -1255,9 +1304,23 @@ struct ApplyWebView: UIViewRepresentable {
           // Re-run on demand (native calls this after a navigation completes).
           window.__scoutRunPrefill = function () { if (booted) fillIfChanged(); };
 
+          // The engine is injected with forMainFrameOnly: false, so this runs
+          // in EVERY frame — and an ATS application page carries a lot of them
+          // (reCAPTCHA, tag managers, analytics pixels, embedded video). Each
+          // one was patching fetch/XHR and, if same-host, running its own
+          // MutationObserver; that is what made these pages crawl. A frame that
+          // is neither the top frame nor an ATS host can never hold the form,
+          // so it does nothing at all. The top frame is exempt because it may
+          // still navigate to an ATS host later.
+          var __scoutIsTop = (function () {
+            try { return window.top === window; } catch (e) { return false; }
+          })();
+          if (!__scoutIsTop && !__scoutHostAllowed(location.hostname)) return;
+
           // Patch the network before anything else can capture references,
           // regardless of activation — the patches are inert until intent.
           patchNetwork();
+          window.__scoutListenForResume();
 
           if (__scoutHostAllowed(location.hostname)) window.__scoutActivate();
         })();
