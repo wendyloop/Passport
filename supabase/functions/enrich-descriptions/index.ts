@@ -434,6 +434,12 @@ async function runGetroPass(
     .eq("is_active", true)
     .in("source_board", slugs)
     .not("external_id", "is", null)
+    // Rotation cursor FIRST, freshness second. Ordering by last_seen_at alone
+    // is fixed — nothing this pass writes to a still-open job without a JD
+    // changes its position, so the same 280 rows came back every hour while
+    // ~5,600 others were never fetched at all. The cursor is already stamped
+    // on every examined row; it just was not being read here.
+    .order("liveness_checked_at", { ascending: true, nullsFirst: true })
     .order("last_seen_at", { ascending: false })
     .limit(blankBudget);
   if (jobError) {
