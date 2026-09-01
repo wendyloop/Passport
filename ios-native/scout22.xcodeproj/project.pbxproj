@@ -20,10 +20,6 @@
 		A10000010000000000000012 /* AppSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* AppSessionStore.swift */; };
 		A10000010000000000000013 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* LaunchScreen.storyboard */; };
 		A10000010000000000000015 /* AdminHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* AdminHomeView.swift */; };
-		A10000010000000000000042 /* SocialCardExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* SocialCardExporter.swift */; };
-		A10000010000000000000043 /* SocialExportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000043 /* SocialExportStore.swift */; };
-		A10000010000000000000044 /* SocialExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000044 /* SocialExportView.swift */; };
-		A10000010000000000000045 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000045 /* PhotoLibrarySaver.swift */; };
 		A10000010000000000000016 /* SharedUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* SharedUI.swift */; };
 		A10000010000000000000017 /* VideoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* VideoComponents.swift */; };
 		A10000010000000000000018 /* VideoStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* VideoStudio.swift */; };
@@ -46,10 +42,13 @@
 		A10000010000000000000036 /* CarouselFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000036 /* CarouselFonts.swift */; };
 		A10000010000000000000037 /* CarouselCardTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000037 /* CarouselCardTemplates.swift */; };
 		A10000010000000000000041 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* OnboardingFlowView.swift */; };
+		A10000010000000000000042 /* SocialCardExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* SocialCardExporter.swift */; };
+		A10000010000000000000043 /* SocialExportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000043 /* SocialExportStore.swift */; };
+		A10000010000000000000044 /* SocialExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000044 /* SocialExportView.swift */; };
+		A10000010000000000000045 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000045 /* PhotoLibrarySaver.swift */; };
 		A100000100000000000E0031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
 		A100000100000000000E0032 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* KeychainStore.swift */; };
 		A2D918232FD8BC580087EF97 /* scout22ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* scout22ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		AB0000010000000000000009 /* SocialCardExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000009 /* SocialCardExporterTests.swift */; };
 		AB0000010000000000000001 /* ModelsDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000001 /* ModelsDecodingTests.swift */; };
 		AB0000010000000000000002 /* SharedFormattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000002 /* SharedFormattersTests.swift */; };
 		AB0000010000000000000003 /* SupabaseErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */; };
@@ -57,6 +56,7 @@
 		AB0000010000000000000006 /* AppSessionStoreBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000006 /* AppSessionStoreBootstrapTests.swift */; };
 		AB0000010000000000000007 /* ATSAutofillPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000007 /* ATSAutofillPolicyTests.swift */; };
 		AB0000010000000000000008 /* CarouselStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000008 /* CarouselStyleTests.swift */; };
+		AB0000010000000000000009 /* SocialCardExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000010000000000000009 /* SocialCardExporterTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -106,10 +106,6 @@
 		A20000010000000000000013 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A20000010000000000000014 /* scout22.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = scout22.xcconfig; sourceTree = "<group>"; };
 		A20000010000000000000015 /* AdminHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminHomeView.swift; sourceTree = "<group>"; };
-		A20000010000000000000042 /* SocialCardExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporter.swift; sourceTree = "<group>"; };
-		A20000010000000000000043 /* SocialExportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportStore.swift; sourceTree = "<group>"; };
-		A20000010000000000000044 /* SocialExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportView.swift; sourceTree = "<group>"; };
-		A20000010000000000000045 /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		A20000010000000000000016 /* SharedUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUI.swift; sourceTree = "<group>"; };
 		A20000010000000000000017 /* VideoComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoComponents.swift; sourceTree = "<group>"; };
 		A20000010000000000000018 /* VideoStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStudio.swift; sourceTree = "<group>"; };
@@ -133,8 +129,11 @@
 		A20000010000000000000036 /* CarouselFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselFonts.swift; sourceTree = "<group>"; };
 		A20000010000000000000037 /* CarouselCardTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselCardTemplates.swift; sourceTree = "<group>"; };
 		A20000010000000000000041 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		A20000010000000000000042 /* SocialCardExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporter.swift; sourceTree = "<group>"; };
+		A20000010000000000000043 /* SocialExportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportStore.swift; sourceTree = "<group>"; };
+		A20000010000000000000044 /* SocialExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialExportView.swift; sourceTree = "<group>"; };
+		A20000010000000000000045 /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		A2D918192FD8BC580087EF97 /* scout22ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = scout22ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC0000010000000000000009 /* SocialCardExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporterTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000001 /* ModelsDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsDecodingTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000002 /* SharedFormattersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedFormattersTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000003 /* SupabaseErrorMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseErrorMappingTests.swift; sourceTree = "<group>"; };
@@ -142,6 +141,7 @@
 		AC0000010000000000000006 /* AppSessionStoreBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSessionStoreBootstrapTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000007 /* ATSAutofillPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ATSAutofillPolicyTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000008 /* CarouselStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselStyleTests.swift; sourceTree = "<group>"; };
+		AC0000010000000000000009 /* SocialCardExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCardExporterTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000A00001 /* scout22Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = scout22Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -554,7 +554,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tryscout22.scout22;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -592,7 +592,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tryscout22.scout22;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
