@@ -139,6 +139,19 @@ Deno.serve(async (request) => {
 
     const essayResults: Array<{ question: string; stored: boolean; error?: string }> = [];
 
+    // Provenance for the anti-slop invariant (S-1). What the assistant offered
+    // is compared against what the candidate actually submitted:
+    //   identical -> 'generated'   they took the draft as-is
+    //   different -> 'edited'      they rewrote it; this is their voice now
+    //   no row    -> 'human'       they wrote it cold
+    // Only 'human' and 'edited' rows are ever used as voice samples when
+    // prompting, so a wrong stamp here quietly degrades every future draft.
+    const suggestionByNorm = await loadSuggestions(
+      admin,
+      user.id,
+      essayClean.map((e) => normalizeQuestion(e.question)).filter(Boolean),
+    );
+
     for (const essay of essayClean) {
       try {
         const norm = normalizeQuestion(essay.question);
@@ -153,6 +166,7 @@ Deno.serve(async (request) => {
               question_norm: norm,
               question_embedding: toPgVector(embedding),
               answer: essay.answer,
+              source: classifySource(suggestionByNorm.get(norm), essay.answer),
               source_job_id: event.job_id ?? null,
               source_event_id: body.eventId,
               updated_at: new Date().toISOString(),
@@ -206,4 +220,46 @@ function splitInputs(body: RequestBody): { shortFields: ShortField[]; essays: Es
     }
   }
   return { shortFields, essays };
+}
+
+// ---------------------------------------------------------------------------
+// S-1 provenance
+// ---------------------------------------------------------------------------
+
+// Newest suggestion per normalized question. One query for the whole form —
+// a page can hold several essay questions and each would otherwise cost a
+// round trip inside the capture path, which runs while the user waits.
+async function loadSuggestions(
+  admin: ReturnType<typeof createAdminClient>,
+  profileId: string,
+  norms: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (norms.length === 0) return out;
+  const { data, error } = await admin
+    .from("candidate_answer_suggestions")
+    .select("question_norm, suggested_answer, created_at")
+    .eq("candidate_profile_id", profileId)
+    .in("question_norm", norms)
+    .order("created_at", { ascending: false });
+  if (error) {
+    // Fail soft to 'human'. Mis-stamping an AI draft as human-written is the
+    // one wrong outcome here, but a failed capture is worse, and the next
+    // submission of the same question re-stamps it correctly.
+    console.error("suggestion lookup failed", error);
+    return out;
+  }
+  for (const row of data ?? []) {
+    // Descending order means the first row seen for a norm is the newest.
+    if (!out.has(row.question_norm)) out.set(row.question_norm, row.suggested_answer);
+  }
+  return out;
+}
+
+export function classifySource(
+  suggested: string | undefined,
+  submitted: string,
+): "human" | "generated" | "edited" {
+  if (!suggested) return "human";
+  return suggested.trim() === submitted.trim() ? "generated" : "edited";
 }

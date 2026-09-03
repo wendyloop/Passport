@@ -128,3 +128,114 @@ M-A → M-B → P → M-C → M-D → M-E → M-F.
 |---|---|
 | **F10b** universal links | Which domain hosts the share links + AASA file — `tryscout22.com`? Where is it hosted today (it currently only has Resend DNS records)? Universal links need us to serve `/.well-known/apple-app-site-association` from that domain over HTTPS. |
 | **F10c** landing CTA | Is there a public TestFlight link (or App Store listing) yet? The landing page's "get the app" button needs a real destination before share links go out. |
+
+---
+
+## 2026-09-02 roadmap — Simplify parity, coverage, distribution
+
+From the 2026-09-02 competitive review of Simplify Copilot (simplify.jobs).
+Strategic frame: the video feed stays the long-term moat but is **deliberately
+dormant** until there is an audience to watch it (`FounderPitchUI.isEnabled =
+false` is already that switch). Until ~1,000 active users, scout22 competes as
+"Simplify on mobile". **No feature below deletes or degrades anything
+video-related** — the video surface stays built and shipped, and later becomes
+the unlock ("record a pitch → get X").
+
+Everything ships **free**. No paid tier while the goal is first users. Feature
+flags below are cost kill-switches, not paywalls.
+
+Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
+
+### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS 2026-09-02
+
+| ID | Item | Effort | Depends on |
+|---|---|---|---|
+| S-1 | AI-generated application answers. Three-mode resolution by cosine distance against `candidate_essay_answers`: **reuse** (≥0.85, exists today, $0) → **adapt** (0.60–0.85, rewrite closest prior answer) → **generate** (<0.60, cold, grounded in resume + voice samples). Retrieval path is kept intact and stays the default — it is the free tier if tiering ever returns | M | — |
+| S-2 | Resume↔JD keyword gap: `{covered[], missing[], coverage}` surfaced in the apply drawer + feed card. Forces the **M-F calibration** (`match_score_floor`/`ceiling` are still unvalidated guesses) | S–M | M-F calibration |
+| S-3 | Cover letters: generate + attach. Attachment needs a **sibling** to `attachResumeHere` — that function deliberately refuses cover-letter uploaders (they threw async from their own bundle; see the comment at its head). Do NOT relax the resume regex. Also needs a textarea path, since many ATS ask for the letter as text | M | S-1 |
+| S-4 | Resume versions + per-job tailoring + on-device PDF render (`ImageRenderer`, same muscle as `CarouselCardTemplates`). Unlimited versions, base never mutated | L | S-2, S-5 |
+| S-5 | Multiple resumes: `resume_uploads` already stores one row per upload; only `fetchLatestResume`'s `limit=1` makes it singular. Add default + picker | S | — |
+| S-6 | Candidate-side tracker depth: candidate-editable status, interview date, follow-up. **Must not** reuse `application_notes` — that table is employer-only by RLS design (AUDIT P1-9) | M | — |
+
+**Anti-slop invariant (S-1/S-3/S-4):** only `source IN ('human','edited')` rows
+are ever used as voice samples. Never feed model-generated text back in as a
+style exemplar — the corpus collapses to one voice within months.
+
+### Part 3 (C) — job coverage beyond VC boards — after Part 2
+
+Measured 2026-09-02 across Simplify's two public lists (34,901 postings /
+5,076 distinct companies). **The five existing ATS adapters cover only ~20% of
+the intern + new-grad market.** Breakdown (internships / new grad):
+Workday **50.2% / 45.1%** · bespoke career sites 17.1% / 17.3% · Oracle Cloud
+5.5% / 13.2% · Greenhouse 9.8% / 7.9% · iCIMS 4.2% / 4.1% · SmartRecruiters
+4.4% / 4.8% · Ashby 4.2% / 3.9% · Lever 3.0% / 2.3% · Recruitee ~0%.
+
+Intern/new-grad skews enterprise (banks, defense, aero, big tech) and those run
+Workday. So coverage needs **both** more tokens *and* new adapters — an earlier
+read that named only the token list was wrong.
+
+| ID | Item | Effort | Depends on |
+|---|---|---|---|
+| C-0 | Baseline: `select ats_type, count(*) from companies where ats_token is not null group by 1`. Judge everything below against it | S | — |
+| C-1 | Harvest tokens already owned: sweep `jobs.apply_url` through `classifyApplyURL`, insert any `(ats_type, ats_token)` not in `companies`. Zero network calls | S | C-0 |
+| C-2 | Token probing: for companies with a name/domain but no token, guess slug variants against all 5 ATS APIs, keep the 200s. Verified live — `greenhouse/stripe` → 592 jobs, `greenhouse/anthropic` → 1,166; 2 of 4 naive guesses hit. Shape it like `enrich-company-contacts` (cron + cursor + `x-pitch-cron-secret`; remember the `verify_jwt = false` entry in `config.toml`) | M | C-1 |
+| C-3 | **Workday adapter** — the single biggest coverage win (~half this market). Known pattern: `POST {tenant}.{host}/wday/cxs/{tenant}/{site}/jobs` with facet/pagination body. Multi-tenant, so the "token" is a (tenant, site) pair — `companies.ats_token` is a single column and will need widening | M–L | C-0 |
+| C-4 | Oracle Cloud adapter (`*.oraclecloud.com`, ~5–13%) and iCIMS (~4%). Lower priority than C-3, same shape of work | M | C-3 |
+| C-5 | Split the intern/new-grad feed filter. Backend is done — `classifyExperience` already emits `intern` and `entry` separately — but `ExperienceFilter.earlyCareer` merges them. One-line change, outsized impact if interns are the target market | S | — |
+| C-6 | More funds (Getro/Consider power hundreds of VC networks; adapters exist, adding fund rows is config) | S | — |
+| C-7 | Schema widening this implies: `funds.platform` CHECK is `('getro','consider','bespoke')` — a probe or an external list is not a fund, so this wants a `job_sources` concept. `companies.ats_type` CHECK is the 5 supported and must widen per new adapter | S | C-2/C-3 |
+
+**Built In — assessed and mostly rejected as a jobs source.** `robots.txt`
+carries `Disallow: /job/sitemap.xml`; `job-board-sitemap.xml` holds only facet
+pages (`/jobs/nashville/project-management`), no job detail URLs; filtered
+board pages are disallowed for general crawlers while GPTBot/PerplexityBot get
+broad `Allow` exceptions. `/companies/sitemap.xml` IS allowed and enumerates
+the company directory — so Built In is a **company-name source that feeds C-2**,
+not a job feed. Low priority.
+
+### Part 1 (D) — distribution — after Part 3
+
+Simplify's funnel: GitHub list + programmatic SEO + campus → free unlimited
+autofill → tracker → (2026) paid AI. They spent 2021–2024 on the top of that
+funnel and only monetized ~5 years in. The AI features retain users; they do
+not acquire them.
+
+**Decided 2026-09-02: do SEO pages + campus/CS-club. GitHub list explicitly
+deferred** (revisit once the data advantage is real). Wendy will supply the
+tryscout22.com web repo when this part starts.
+
+| ID | Item | Effort | Depends on |
+|---|---|---|---|
+| D-0 | **Domain decision — the actual blocker.** `tryscout22.com` currently has only Resend DNS. Pointing it at the `job-share` function unblocks F10b universal links, F10c's landing CTA, *and* the entire SEO channel at once. This is the highest-leverage open question in the repo | S | ⚠ F10b open question above |
+| D-1 | Programmatic SEO pages. `job-share` **already renders a public OG landing page + JSON** — the renderer exists. Needs templated routes generated from rows already held: `/c/{company}`, `/internships/{category}`, `/{role}-jobs-{city}` | M–L | D-0 |
+| D-2 | Campus / CS-club channel. Simplify's list is co-branded with Pitt CSC; the partnership is the distribution, the repo is just its artifact | M | — |
+| D-3 | ~~GitHub list repo~~ — **deferred 2026-09-02.** Would expose only a new, separate public repo (README + listings JSON + generator); app source is unaffected. Simplify's own org confirms the model: lists + take-homes + small MIT libs are public, product code is private | — | revisit |
+
+**Research banked for D (2026-09-02), so it is not re-derived:**
+
+- **Role mix.** Both lists are tech-only across five categories. Internships
+  (15,497 records): AI/ML/Data 43% · Software 31% · Hardware 15% · Product 7% ·
+  Quant 3%. New grad (19,404): Software 29% · AI/ML/Data 29% · Hardware 24% ·
+  Quant 12% · Product 5%. Hardware and Quant are far larger than expected —
+  the new-grad list is not a SWE list.
+- **How they are generated — hypothesis, well supported.** 98.6% of internship
+  records and 99.4% of new-grad records carry `"source": "Simplify"`; the rest
+  are GitHub usernames. The lists are ~99% machine-emitted from Simplify's own
+  job DB, with a thin community-PR layer that is mostly co-branding. Supporting
+  evidence: `sponsorship` is `"Other"` on 99.3% of rows (a schema field the
+  pipeline never populates → generic internal schema, not hand curation); the
+  category vocabulary shows a rename in progress (139 `Software Engineering`
+  and 72 `Data Science, AI & Machine Learning` stragglers beside the current
+  `Software` / `AI/ML/Data`); and the repo is **append-only** — only 17.6% of
+  internships and 16.9% of new-grad rows are `active`, the rest kept as an
+  archive. Same write-once instinct as `upsert_board_jobs`.
+- **Term drift.** "Summer2027-Internships" is mostly *not* Summer 2027 —
+  Summer 2026 8,843 · Fall 2026 2,726 · Summer 2027 1,491. `date_posted` spans
+  2026-01-05 → present. The new-grad list has no `terms` at all.
+- **Record shape** (directly consumable): `company_name`, `title`, `category`,
+  `terms[]`, `locations[]`, `url` (raw ATS link), `sponsorship`, `degrees[]`,
+  `active`, `date_posted`/`date_updated` (unix), `company_url`.
+- **Licence: none** on all three list repos (`"license": null` = all rights
+  reserved, not public domain), and every record is stamped `"source":
+  "Simplify"` + a `simplify.jobs/c/…` link. Use these lists **only** as a
+  company-name discovery seed for C-2, never as a jobs feed to republish.

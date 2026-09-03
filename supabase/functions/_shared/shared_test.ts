@@ -12,6 +12,15 @@ import { attachmentFilename } from "./email_attachments.ts";
 import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 import { isSensitiveLabel, matchCanonical, normalizeCanonicalValue } from "./profile_fields.ts";
+import {
+  ADAPT_FLOOR,
+  enforceCharLimit,
+  pickMode,
+  REUSE_FLOOR,
+  selectVoiceSamples,
+  targetWordCount,
+  truncate,
+} from "./answer_prompts.ts";
 import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
 import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
@@ -756,4 +765,88 @@ Deno.test("normalizeCanonicalValue de-capses names but spares real uppercase", (
   // Initials stay as-is: too short to reconstruct meaningfully.
   assertEquals(normalizeCanonicalValue("first_name", "W"), "W");
   assertEquals(normalizeCanonicalValue("email", "WENDY@X.COM"), "WENDY@X.COM");
+});
+
+// ---------------------------------------------------------------------------
+// S-1 — answer suggestion prompts
+// ---------------------------------------------------------------------------
+
+Deno.test("pickMode splits reuse / adapt / generate at the floors", () => {
+  assertEquals(pickMode(0.99), "reuse");
+  assertEquals(pickMode(REUSE_FLOOR), "reuse");
+  // Just under the reuse floor must adapt, not reuse — the whole point of the
+  // middle band is that a near-miss question needs rewriting, not verbatim
+  // reuse of an answer to a different question.
+  assertEquals(pickMode(REUSE_FLOOR - 0.001), "adapt");
+  assertEquals(pickMode(ADAPT_FLOOR), "adapt");
+  assertEquals(pickMode(ADAPT_FLOOR - 0.001), "generate");
+  // No prior answer at all, or a malformed score, means cold generation.
+  assertEquals(pickMode(null), "generate");
+  assertEquals(pickMode(undefined), "generate");
+  assertEquals(pickMode(NaN), "generate");
+});
+
+// THE anti-slop invariant. If model output is ever admitted as a voice sample,
+// every future draft is shaped by the last draft and the corpus collapses to
+// one synthetic voice. Only text the candidate wrote or corrected qualifies.
+Deno.test("selectVoiceSamples admits only human and edited rows", () => {
+  const long = (n: number) => "x".repeat(n);
+  const rows = [
+    { id: "1", question_text: "q1", answer: long(200), source: "generated", updated_at: "2026-09-01" },
+    { id: "2", question_text: "q2", answer: long(200), source: "human",     updated_at: "2026-08-01" },
+    { id: "3", question_text: "q3", answer: long(200), source: "edited",    updated_at: "2026-07-01" },
+  ];
+  const picked = selectVoiceSamples(rows);
+  assertEquals(picked.map((p) => p.id), ["2", "3"]);
+});
+
+Deno.test("selectVoiceSamples filters by length, sorts newest first, caps at 3", () => {
+  const long = (n: number) => "x".repeat(n);
+  const rows = [
+    // Too short to carry voice.
+    { id: "short", question_text: "q", answer: long(10),   source: "human", updated_at: "2026-09-05" },
+    // Too long — would crowd out the resume in the prompt.
+    { id: "long",  question_text: "q", answer: long(5000), source: "human", updated_at: "2026-09-04" },
+    { id: "a", question_text: "q", answer: long(200), source: "human", updated_at: "2026-09-03" },
+    { id: "b", question_text: "q", answer: long(200), source: "human", updated_at: "2026-09-02" },
+    { id: "c", question_text: "q", answer: long(200), source: "human", updated_at: "2026-09-01" },
+    { id: "d", question_text: "q", answer: long(200), source: "human", updated_at: "2026-08-31" },
+  ];
+  assertEquals(selectVoiceSamples(rows).map((p) => p.id), ["a", "b", "c"]);
+  // The prior answer being adapted is excluded so the model is not handed the
+  // same text twice, once as source and once as style.
+  assertEquals(selectVoiceSamples(rows, "a").map((p) => p.id), ["b", "c", "d"]);
+  // A missing source column means legacy rows captured before S-1, which were
+  // all candidate-typed.
+  assertEquals(
+    selectVoiceSamples([{ id: "z", question_text: "q", answer: long(200), updated_at: "2026-09-01" }])
+      .map((p) => p.id),
+    ["z"],
+  );
+});
+
+Deno.test("targetWordCount leaves headroom under a hard char limit", () => {
+  assertEquals(targetWordCount(null), 150);
+  assertEquals(targetWordCount(0), 150);
+  // 1200 chars * 0.9 / 6 chars-per-word
+  assertEquals(targetWordCount(1200), 180);
+  // Never asks for an unusably short answer.
+  assertEquals(targetWordCount(60), 40);
+});
+
+Deno.test("enforceCharLimit trims to a sentence boundary, not mid-word", () => {
+  const text = "First sentence here. Second sentence here. Third one.";
+  assertEquals(enforceCharLimit(text, 1000), text);
+  // Cuts back to the last full sentence that fits.
+  assertEquals(enforceCharLimit(text, 45), "First sentence here. Second sentence here.");
+  // With no sentence boundary in the back half, a hard cut is the only option.
+  assertEquals(enforceCharLimit("x".repeat(100), 10), "x".repeat(10));
+  assertEquals(enforceCharLimit("  padded  ", 100), "padded");
+  assertEquals(enforceCharLimit("anything", null), "anything");
+});
+
+Deno.test("truncate marks the cut so the model knows the JD is partial", () => {
+  assertEquals(truncate(null, 10), null);
+  assertEquals(truncate("short", 10), "short");
+  assertEquals(truncate("abcdefghijkl", 5), "abcde\n[truncated]");
 });
