@@ -1351,3 +1351,37 @@ struct EssayMatchEnvelope: Codable {
     let match: EssayMatch?
 }
 
+/// S-1: one suggested answer for one application question.
+///
+/// `mode` is decided server-side by how close the candidate has already come
+/// to answering this before: "reuse" (their own prior answer, verbatim),
+/// "adapt" (that answer rewritten for this role), "generate" (a cold draft
+/// from the resume), or "none" (nothing worth offering — leave the field
+/// alone). The client's only job is deciding whether to warn about it.
+///
+/// The function returns several tuning fields (factsUsed, confidence,
+/// changed, changeSummary) that nothing on device reads yet; unknown keys
+/// decode away, so they can be adopted without a backend change.
+struct AnswerSuggestion: Codable {
+    let mode: String
+    let answer: String?
+    /// True for anything a model touched. A reused answer is the candidate's
+    /// own words and gets no banner; a drafted one always does.
+    let needsReview: Bool?
+    let priorQuestion: String?
+    let similarity: Double?
+    /// Set on a cold draft when the question asks about something the resume
+    /// does not cover. Worth surfacing rather than quietly papering over.
+    let missingInfo: String?
+
+    var isAIDrafted: Bool { needsReview == true }
+
+    /// Non-empty answer text, or nil. The function can legitimately return
+    /// mode "none" with a null answer — disabled, capped, or a failed draft.
+    var usableAnswer: String? {
+        guard let answer else { return nil }
+        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+

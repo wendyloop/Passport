@@ -211,6 +211,10 @@ struct ApplyDrawerView: View {
     @State private var isSaving = false
     @State private var resumeBase64: String?
     @State private var resumeFileName: String?
+    /// Questions a model drafted an answer for, in the order they were filled.
+    /// Drives the review banner; reused prior answers never land here.
+    @State private var aiDraftedQuestions: [String] = []
+    @State private var aiBannerDismissed = false
 
     var body: some View {
         NavigationStack {
@@ -226,8 +230,13 @@ struct ApplyDrawerView: View {
                             resumeFileName: resumeFileName,
                             session: session,
                             service: service,
+                            jobID: job.id,
                             onBuffered: { buffer = $0 },
-                            onSubmitted: { handleSubmission(payload: $0) }
+                            onSubmitted: { handleSubmission(payload: $0) },
+                            onAIDraft: { question in
+                                guard !aiDraftedQuestions.contains(question) else { return }
+                                aiDraftedQuestions.append(question)
+                            }
                         )
                         .ignoresSafeArea(edges: .bottom)
                     }
@@ -246,6 +255,11 @@ struct ApplyDrawerView: View {
             .overlay {
                 if submittedSuccessfully {
                     submittedBanner
+                }
+            }
+            .overlay(alignment: .top) {
+                if !aiDraftedQuestions.isEmpty, !aiBannerDismissed, !submittedSuccessfully {
+                    aiDraftBanner
                 }
             }
             // Detection can miss on an unusual portal. If the candidate typed
@@ -287,6 +301,69 @@ struct ApplyDrawerView: View {
             .tint(PassportTheme.accent)
         }
         .padding(40)
+    }
+
+    /// Drafted answers are written straight into the form — speed is the whole
+    /// reason the feature is worth having — so the honesty lives here instead.
+    /// Dismissible, because it must not sit on top of the form the candidate
+    /// is trying to read.
+    private var aiDraftBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(PassportTheme.accent)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("AI draft — review before submitting")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(PassportTheme.textPrimary)
+                Text(aiDraftSummary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(PassportTheme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                aiBannerDismissed = true
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(PassportTheme.textMuted)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(PassportTheme.accent.opacity(0.45), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.easeOut(duration: 0.2), value: aiDraftedQuestions.count)
+    }
+
+    /// Names the fields so "review before submitting" points somewhere. One
+    /// question reads better in full; beyond that a count is more usable than
+    /// a wall of truncated prompts.
+    private var aiDraftSummary: String {
+        guard let first = aiDraftedQuestions.first else { return "" }
+        let trimmed = first.count > 60 ? String(first.prefix(60)) + "…" : first
+        if aiDraftedQuestions.count == 1 {
+            return "We drafted: \(trimmed)"
+        }
+        return "We drafted \(aiDraftedQuestions.count) answers, including: \(trimmed)"
     }
 
     private var submittedBanner: some View {
@@ -398,16 +475,20 @@ struct ApplyWebView: UIViewRepresentable {
     let resumeFileName: String?
     let session: AuthSession
     let service: CandidateService
+    let jobID: String?
     let onBuffered: (CapturedSubmission) -> Void
     let onSubmitted: (CapturedSubmission) -> Void
+    let onAIDraft: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             initialHostAllowed: ATSAutofillPolicy.isHostAllowed(url.host),
             session: session,
             service: service,
+            jobID: jobID,
             onBuffered: onBuffered,
-            onSubmitted: onSubmitted
+            onSubmitted: onSubmitted,
+            onAIDraft: onAIDraft
         )
     }
 
@@ -871,7 +952,11 @@ struct ApplyWebView: UIViewRepresentable {
                 if (!isFillable(ta) || (ta.value && ta.value.trim())) return;
                 var label = labelFor(ta);
                 if (label && label.length > 8) {
-                  questions.push({ question: label, selector: cssPath(ta) });
+                  // maxLength is -1 on an unconstrained textarea. Normalize to
+                  // 0 so native can treat "no limit" and "not declared" alike.
+                  var cap = (typeof ta.maxLength === 'number' && ta.maxLength > 0)
+                    ? ta.maxLength : 0;
+                  questions.push({ question: label, selector: cssPath(ta), maxLength: cap });
                 }
               });
             } catch (e) { /* ignore */ }
@@ -1332,8 +1417,15 @@ struct ApplyWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let session: AuthSession
         let service: CandidateService
+        /// Context for the answer draft. Nil is tolerated — the draft is just
+        /// less specific without the job description.
+        let jobID: String?
         let onBuffered: (CapturedSubmission) -> Void
         let onSubmitted: (CapturedSubmission) -> Void
+        /// Fires once per question that a model drafted, so the drawer can say
+        /// so. Never fires for a reused answer: those are the candidate's own
+        /// words and a warning there would train people to ignore the banner.
+        let onAIDraft: (String) -> Void
         weak var webView: WKWebView?
 
         /// True when the job's own apply URL was on the allowlist. Only then
@@ -1368,14 +1460,18 @@ struct ApplyWebView: UIViewRepresentable {
             initialHostAllowed: Bool,
             session: AuthSession,
             service: CandidateService,
+            jobID: String?,
             onBuffered: @escaping (CapturedSubmission) -> Void,
-            onSubmitted: @escaping (CapturedSubmission) -> Void
+            onSubmitted: @escaping (CapturedSubmission) -> Void,
+            onAIDraft: @escaping (String) -> Void
         ) {
             self.initialHostAllowed = initialHostAllowed
             self.session = session
             self.service = service
+            self.jobID = jobID
             self.onBuffered = onBuffered
             self.onSubmitted = onSubmitted
+            self.onAIDraft = onAIDraft
         }
 
         /// An employer's own careers domain is trusted only as the resolved
@@ -1404,14 +1500,22 @@ struct ApplyWebView: UIViewRepresentable {
 
             case "scoutEssayQuestions":
                 let body = message.body as? [String: Any]
-                let questions = body?["questions"] as? [[String: String]] ?? []
+                // [String: Any], not [String: String]: maxLength arrives as a
+                // number and the whole dictionary fails to bridge otherwise.
+                let questions = body?["questions"] as? [[String: Any]] ?? []
                 for q in questions {
-                    guard let question = q["question"], let selector = q["selector"] else { continue }
+                    guard let question = q["question"] as? String,
+                          let selector = q["selector"] as? String else { continue }
+                    let charLimit = (q["maxLength"] as? NSNumber)?.intValue ?? 0
                     let key = "\(selector)|\(question)"
                     if essayLookupsInFlight.contains(key) { continue }
                     essayLookupsInFlight.insert(key)
                     Task { [weak self] in
-                        await self?.lookupEssay(question: question, selector: selector)
+                        await self?.lookupEssay(
+                            question: question,
+                            selector: selector,
+                            charLimit: charLimit
+                        )
                     }
                 }
 
@@ -1436,12 +1540,24 @@ struct ApplyWebView: UIViewRepresentable {
             return CapturedSubmission(shortFields: shorts, essays: essays)
         }
 
-        private func lookupEssay(question: String, selector: String) async {
-            let match = try? await service.matchEssayAnswer(question: question, session: session)
-            guard let match else { return }
-            let js = "window.__scoutFillEssay && window.__scoutFillEssay(\(jsString(selector)), \(jsString(match.answer)));"
+        private func lookupEssay(question: String, selector: String, charLimit: Int) async {
+            let suggestion = try? await service.suggestApplicationAnswer(
+                question: question,
+                jobID: jobID,
+                charLimit: charLimit > 0 ? charLimit : nil,
+                session: session
+            )
+            // mode "none" (disabled, daily cap, failed draft) lands here as a
+            // nil answer. Leaving the field empty is the correct degradation.
+            guard let suggestion, let answer = suggestion.usableAnswer else { return }
+
+            let js = "window.__scoutFillEssay && window.__scoutFillEssay("
+                + "\(jsString(selector)), \(jsString(answer)));"
             await MainActor.run {
+                // __scoutFillEssay still refuses to overwrite anything already
+                // typed, so a slow draft can never clobber the candidate.
                 self.webView?.evaluateJavaScript(js, completionHandler: nil)
+                if suggestion.isAIDrafted { self.onAIDraft(question) }
             }
         }
 

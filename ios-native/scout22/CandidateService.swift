@@ -346,6 +346,29 @@ final class CandidateService {
         return envelope.match
     }
 
+    /// S-1: reuse / adapt / generate, decided server-side. `matchEssayAnswer`
+    /// above stays as the pure-retrieval path — this one supersedes it in the
+    /// apply drawer but neither replaces nor removes it.
+    func suggestApplicationAnswer(
+        question: String,
+        jobID: String?,
+        charLimit: Int?,
+        session: AuthSession
+    ) async throws -> AnswerSuggestion {
+        var body: [String: AnyEncodable] = ["question": AnyEncodable(question)]
+        if let jobID { body["jobId"] = AnyEncodable(jobID) }
+        // Only send a limit the form actually declared. `maxlength` is -1 on an
+        // unconstrained textarea and 0 would read as "no words allowed".
+        if let charLimit, charLimit > 0 { body["charLimit"] = AnyEncodable(charLimit) }
+
+        let request = try transport.makeFunctionRequest(
+            name: "suggest-application-answer",
+            accessToken: session.accessToken,
+            body: body
+        )
+        return try await transport.execute(request, decode: AnswerSuggestion.self)
+    }
+
     // Editor-driven corrections to the parsed resume (experience/education/
     // skills shown on the profile). Owner-scoped by RLS.
     func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {
