@@ -14,6 +14,7 @@
 
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
+import { selectResume } from "../_shared/resume_select.ts";
 import { jsonError, jsonResponse } from "../_shared/http.ts";
 import { sendEmail } from "../_shared/email.ts";
 import { founderProfileGateReason } from "../_shared/founder_eligibility.ts";
@@ -102,9 +103,13 @@ Deno.serve(async (request) => {
         .select("profile_id, intro_video_url, school_name, desired_compensation_range, linkedin_url, github_url, portfolio_url, instagram_username, tiktok_username")
         .eq("profile_id", user.id).maybeSingle(),
       admin.from("jobs").select("id, company_id, title, company_name, location, is_active").eq("id", jobId).single(),
-      admin.from("resume_uploads").select("id, file_path, parsed_json")
-        .eq("profile_id", user.id).neq("parse_status", "failed")
-        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      // S-5: honours the candidate's default resume, then falls back to the
+      // newest — the ordering this used to hard-code.
+      selectResume<{ id: string; file_path: string; parsed_json: unknown }>(
+        admin,
+        user.id,
+        { columns: "id, file_path, parsed_json" },
+      ).then((data) => ({ data, error: null as { message: string } | null })),
       configFlag(admin, "founder_email_require_resume", true),
     ]);
 

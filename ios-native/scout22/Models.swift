@@ -234,6 +234,18 @@ struct ResumeUploadRecord: Codable, Identifiable {
     // failable decode: rows written before the LLM parser (or with malformed
     // blobs) must not break the fetch.
     let parsedDetails: ParsedResumeDetails?
+    /// S-5: the one every path resolves to unless the candidate picks another
+    /// for a specific application. Exactly one per candidate, enforced by a
+    /// partial unique index.
+    let isDefault: Bool
+    /// User-given name ("SWE resume"). Nil renders as the file name.
+    let label: String?
+
+    /// What to show in a picker row.
+    var displayName: String {
+        if let label, !label.trimmingCharacters(in: .whitespaces).isEmpty { return label }
+        return filePath.split(separator: "/").last.map(String.init) ?? "Resume"
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -244,6 +256,8 @@ struct ResumeUploadRecord: Codable, Identifiable {
         case parsedEmployers = "parsed_employers"
         case createdAt = "created_at"
         case parsedDetails = "parsed_json"
+        case isDefault = "is_default"
+        case label
     }
 
     init(from decoder: Decoder) throws {
@@ -256,6 +270,10 @@ struct ResumeUploadRecord: Codable, Identifiable {
         parsedEmployers = try c.decodeIfPresent([String].self, forKey: .parsedEmployers) ?? []
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         parsedDetails = try? c.decodeIfPresent(ParsedResumeDetails.self, forKey: .parsedDetails)
+        // Defaulted: rows fetched by an older query that does not select the
+        // S-5 columns must still decode.
+        isDefault = try c.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        label = try c.decodeIfPresent(String.self, forKey: .label)
     }
 }
 

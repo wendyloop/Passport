@@ -106,26 +106,68 @@ final class CandidateService {
 
     // MARK: - Resume
 
+    /// S-5: the candidate's default resume, falling back to the newest.
+    /// Mirrors `_shared/resume_select.ts` — the two must agree or the resume
+    /// the app attaches differs from the one the backend reasons about.
     func fetchLatestResume(userID: String, session: AuthSession) async throws -> ResumeUploadRecord? {
         try await transport.selectSingle(
             path: "resume_uploads",
             query: [
                 ("profile_id", "eq.\(userID)"),
                 ("select", "*"),
-                ("order", "created_at.desc"),
+                ("order", "is_default.desc,created_at.desc"),
                 ("limit", "1")
             ],
             session: session
         )
     }
 
+    /// Every resume the candidate holds, default first. Backs the picker.
+    func fetchResumes(userID: String, session: AuthSession) async throws -> [ResumeUploadRecord] {
+        try await transport.selectArray(
+            path: "resume_uploads",
+            query: [
+                ("profile_id", "eq.\(userID)"),
+                ("select", "*"),
+                ("order", "is_default.desc,created_at.desc")
+            ],
+            session: session
+        )
+    }
+
+    /// Switching the default clears the previous one in the same statement —
+    /// two client writes would briefly leave the candidate with no default,
+    /// and the partial unique index would reject the second one anyway.
+    func setDefaultResume(resumeID: String, session: AuthSession) async throws {
+        // The RPC returns void, so there is no body to decode — executeData,
+        // the same shape invokeParseResume uses for its fire-and-forget call.
+        let request = try transport.makeRestRequest(
+            path: "rpc/set_default_resume",
+            method: "POST",
+            accessToken: session.accessToken,
+            body: ["p_resume_id": AnyEncodable(resumeID)]
+        )
+        _ = try await transport.executeData(request)
+    }
+
     /// The candidate's own most recent resume as raw bytes, for auto-attaching
     /// to an ATS file input. The `resumes` bucket is private; its RLS policy
     /// admits the owner (`owner = auth.uid()`), so the user's own JWT suffices —
     /// no service role and no signed URL round-trip.
-    func downloadLatestResume(session: AuthSession) async throws -> (data: Data, fileName: String)? {
-        guard let record = try await fetchLatestResume(userID: session.user.id, session: session),
-              !record.filePath.isEmpty else { return nil }
+    func downloadLatestResume(
+        session: AuthSession,
+        resume: ResumeUploadRecord? = nil
+    ) async throws -> (data: Data, fileName: String)? {
+        // An explicit pick wins; otherwise resolve the default the same way
+        // the backend does. Written out rather than with `??` — that operator
+        // takes an autoclosure, which cannot be async.
+        let resolved: ResumeUploadRecord?
+        if let resume {
+            resolved = resume
+        } else {
+            resolved = try await fetchLatestResume(userID: session.user.id, session: session)
+        }
+        guard let record = resolved, !record.filePath.isEmpty else { return nil }
         // Built by string, not appendingPathComponent: the stored path contains
         // slashes that must stay path separators rather than be escaped.
         let encoded = record.filePath

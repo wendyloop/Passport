@@ -146,7 +146,7 @@ flags below are cost kill-switches, not paywalls.
 
 Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
 
-### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS (S-1, S-2, S-3 shipped 2026-09-02)
+### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS (S-1, S-2, S-3, S-5 shipped 2026-09-02)
 
 | ID | Item | Effort | Depends on |
 |---|---|---|---|
@@ -155,7 +155,7 @@ Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
 | S-2b | **M-F calibration still pending, and not blocked by S-2.** `match_score_floor` 0.20 / `match_score_ceiling` 0.75 remain unvalidated guesses. Calibration needs ~50 real resume/job pairs, which do not exist yet — this is a data problem, not a code one. The S-2 keyword score is a separate, explainable metric and does not depend on it | S | real resumes |
 | ~~S-3~~ | ✅ **shipped 2026-09-02**. Cover letters: generate + attach. Attachment needs a **sibling** to `attachResumeHere` — that function deliberately refuses cover-letter uploaders (they threw async from their own bundle; see the comment at its head). Do NOT relax the resume regex. Textarea path routes on a shared `coverLetterPattern` (Swift + injected JS, tested on both sides); file path renders a text-only PDF on device via `CoverLetterPDF`. The kind-aware `findDocumentInput` also closed a latent bug — the resume's accept-based fallback could land it in a cover-letter slot. Voice samples prefer prior letters over essay answers | M | S-1 |
 | S-4 | Resume versions + per-job tailoring + on-device PDF render (`ImageRenderer`, same muscle as `CarouselCardTemplates`). Unlimited versions, base never mutated | L | S-2, S-5 |
-| S-5 | Multiple resumes: `resume_uploads` already stores one row per upload; only `fetchLatestResume`'s `limit=1` makes it singular. Add default + picker | S | — |
+| ~~S-5~~ | ✅ **shipped 2026-09-02**. Multiple resumes: `resume_uploads` already stores one row per upload; only `fetchLatestResume`'s `limit=1` makes it singular. `is_default` (partial unique index) + `label` + a `set_default_resume` RPC that swaps atomically. Resolution — explicit pick → default → newest — now lives in `_shared/resume_select.ts` and **all five** edge functions use it; a default that the cover letter and keyword gap ignored would be worse than none. Picker in the apply drawer changes the resume for that application only, never the default | S | — |
 | S-6 | Candidate-side tracker depth: candidate-editable status, interview date, follow-up. **Must not** reuse `application_notes` — that table is employer-only by RLS design (AUDIT P1-9) | M | — |
 
 **Anti-slop invariant (S-1/S-3/S-4):** only `source IN ('human','edited')` rows

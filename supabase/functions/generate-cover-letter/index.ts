@@ -14,6 +14,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
+import { selectResume } from "../_shared/resume_select.ts";
 import { callStructured } from "../_shared/openai.ts";
 import {
   buildCoverLetterPrompt,
@@ -145,15 +146,11 @@ Deno.serve(async (request) => {
 });
 
 async function loadResume(admin: ReturnType<typeof createAdminClient>, profileId: string) {
-  const { data } = await admin
-    .from("resume_uploads")
-    .select("parsed_json")
-    .eq("profile_id", profileId)
-    .not("parsed_json", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.parsed_json ?? null;
+  const row = await selectResume<{ parsed_json: unknown }>(admin, profileId, {
+    columns: "parsed_json",
+    requireParsed: true,
+  });
+  return row?.parsed_json ?? null;
 }
 
 async function loadProfile(admin: ReturnType<typeof createAdminClient>, profileId: string) {

@@ -238,6 +238,12 @@ struct ApplyDrawerView: View {
     /// or when the backend has nothing worth showing.
     @State private var keywordGap: KeywordGapReport?
     @State private var gapCardDismissed = false
+    /// S-5: every resume on file, and the one attached to THIS application.
+    /// Choosing here does not change the candidate's default — that is a
+    /// profile-level decision, and picking a different resume for one job
+    /// should not silently re-point every future one.
+    @State private var resumes: [ResumeUploadRecord] = []
+    @State private var selectedResume: ResumeUploadRecord?
 
     var body: some View {
         NavigationStack {
@@ -275,6 +281,12 @@ struct ApplyDrawerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { attemptClose() }
+                }
+                // Only worth showing when there is a choice to make.
+                if resumes.count > 1 {
+                    ToolbarItem(placement: .primaryAction) {
+                        resumePicker
+                    }
                 }
             }
             .overlay {
@@ -396,6 +408,45 @@ struct ApplyDrawerView: View {
         return "We drafted \(aiDraftedQuestions.count) answers, including: \(trimmed)"
     }
 
+    private var resumePicker: some View {
+        Menu {
+            ForEach(resumes) { resume in
+                Button {
+                    guard resume.id != selectedResume?.id else { return }
+                    selectedResume = resume
+                    Task { await reattachResume(resume) }
+                } label: {
+                    // A checkmark for the one in use, a star for the default —
+                    // they are different things and conflating them is how a
+                    // candidate sends the wrong resume.
+                    Label(
+                        resume.isDefault ? "\(resume.displayName) (default)" : resume.displayName,
+                        systemImage: resume.id == selectedResume?.id ? "checkmark" : ""
+                    )
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "doc.text")
+                Text(selectedResume?.displayName ?? "Resume")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .font(.system(size: 13, weight: .semibold))
+        }
+    }
+
+    /// Swaps the attached file mid-application. The engine refuses inputs that
+    /// already hold a file, so the old one is cleared first.
+    private func reattachResume(_ resume: ResumeUploadRecord) async {
+        guard let fetched = try? await service.downloadLatestResume(
+            session: session,
+            resume: resume
+        ) else { return }
+        resumeBase64 = fetched.data.base64EncodedString()
+        resumeFileName = fetched.fileName
+    }
+
     /// What this posting asks for that the resume does not show. Shown before
     /// the application is sent, because that is the only point where the
     /// information can still change what the candidate does.
@@ -502,12 +553,23 @@ struct ApplyDrawerView: View {
         // Runs alongside the rest rather than after: on a cache miss this one
         // costs a model call, and the prefill must not wait behind it.
         async let gapTask = fetchKeywordGap()
-        let (p, eid, r, gap) = await (prefillTask, eventTask, resumeTask, gapTask)
+        async let resumeListTask = fetchResumes()
+        let (p, eid, r, gap, list) = await (
+            prefillTask, eventTask, resumeTask, gapTask, resumeListTask
+        )
         prefill = p
         eventId = eid
         resumeBase64 = r?.base64
         resumeFileName = r?.fileName
         keywordGap = gap
+        resumes = list
+        // fetchResume already attached the default; reflect that in the picker
+        // rather than re-resolving and risking the two disagreeing.
+        selectedResume = list.first { $0.isDefault } ?? list.first
+    }
+
+    private func fetchResumes() async -> [ResumeUploadRecord] {
+        (try? await service.fetchResumes(userID: session.user.id, session: session)) ?? []
     }
 
     /// Nil on any failure. The gap card is a nice-to-have next to the form
@@ -1216,6 +1278,47 @@ struct ApplyWebView: UIViewRepresentable {
             return attachDocument(b64, name, mime, 'cover_letter');
           };
 
+          // S-5: swapping the attached resume mid-application. findDocumentInput
+          // skips inputs that already hold a file, so without clearing the old
+          // one the new attach silently finds no target.
+          //
+          // Matched by FILE NAME rather than by kind: clearing "the first
+          // non-cover-letter input holding a file" would happily wipe an avatar
+          // or a transcript the candidate uploaded by hand.
+          function clearDocumentHere(fileName) {
+            try {
+              var inputs = document.querySelectorAll('input[type="file"]');
+              for (var i = 0; i < inputs.length; i++) {
+                var el = inputs[i];
+                if (!el.files || el.files.length === 0) continue;
+                if (el.files[0].name !== fileName) continue;
+                el.value = '';
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                log('cleared ' + fileName + ' in ' + location.hostname);
+                return true;
+              }
+            } catch (e) { log('clear failed: ' + e); }
+            return false;
+          }
+
+          function relayClearToFrames(fileName) {
+            var frames = document.querySelectorAll('iframe');
+            for (var i = 0; i < frames.length; i++) {
+              try {
+                var u = new URL(frames[i].getAttribute('src') || '', location.href);
+                if (!__scoutHostAllowed(u.hostname)) continue;
+                frames[i].contentWindow.postMessage(
+                  { __scout: 'clearDocument', name: fileName }, u.origin);
+              } catch (e) { /* cross-origin frame we cannot reach */ }
+            }
+          }
+
+          window.__scoutClearDocument = function (fileName) {
+            if (clearDocumentHere(fileName)) return true;
+            relayClearToFrames(fileName);
+            return false;
+          };
+
           // Receiving half of the relay, live in every ATS frame. The name is
           // kept as __scoutListenForResume because the native call site and
           // the didFinish hook both reference it; it now listens for any
@@ -1223,10 +1326,15 @@ struct ApplyWebView: UIViewRepresentable {
           window.__scoutListenForResume = function () {
             window.addEventListener('message', function (ev) {
               var d = ev && ev.data;
-              if (!d || d.__scout !== 'attachDocument') return;
+              if (!d) return;
+              if (d.__scout !== 'attachDocument' && d.__scout !== 'clearDocument') return;
               var host = '';
               try { host = new URL(ev.origin).hostname; } catch (e) { return; }
               if (!__scoutHostAllowed(host)) return;   // only trust ATS senders
+              if (d.__scout === 'clearDocument') {
+                clearDocumentHere(d.name);
+                return;
+              }
               attachDocumentHere(d.b64, d.name, d.mime, d.kind || 'resume');
             });
           };
@@ -1620,6 +1728,9 @@ struct ApplyWebView: UIViewRepresentable {
         /// fresh JS context with an empty profile again.
         private var profileJS: String?
         private var resumeJS: String?
+        /// Name of the resume currently in the form's file input, so a switch
+        /// knows which attachment to clear.
+        private var attachedResumeFileName: String?
         private var isActivated = false
 
         func setProfileJS(_ js: String?, webView: WKWebView) {
@@ -1633,7 +1744,20 @@ struct ApplyWebView: UIViewRepresentable {
             let js = "window.__scoutAttachResume && window.__scoutAttachResume("
                 + "\(jsString(base64)), \(jsString(fileName)), \"application/pdf\");"
             guard js != resumeJS else { return }
+
+            // S-5: the candidate switched resumes mid-application. The engine
+            // skips file inputs that already hold a file, so the previous
+            // attachment has to go first or the new one finds no target.
+            if let previous = attachedResumeFileName, previous != fileName, isActivated {
+                webView.evaluateJavaScript(
+                    "window.__scoutClearDocument && window.__scoutClearDocument("
+                        + "\(jsString(previous)));",
+                    completionHandler: nil
+                )
+            }
+
             resumeJS = js
+            attachedResumeFileName = fileName
             if isActivated { webView.evaluateJavaScript(js, completionHandler: nil) }
         }
 

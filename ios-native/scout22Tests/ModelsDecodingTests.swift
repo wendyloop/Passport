@@ -245,4 +245,43 @@ final class ModelsDecodingTests: XCTestCase {
         let application = try decoder.decode(JobApplicationRecord.self, from: applicationJSON(extraField: ""))
         XCTAssertNil(application.internalNotes)
     }
+
+    // MARK: - S-5 multiple resumes
+
+    func testResumeDecodesS5ColumnsAndDefaultsWithoutThem() throws {
+        let withColumns = """
+        {"id":"r1","profile_id":"p1","file_path":"p1/swe.pdf","parse_status":"parsed",
+         "parsed_employers":[],"created_at":"2026-09-01T00:00:00Z",
+         "is_default":true,"label":"SWE resume"}
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let a = try decoder.decode(ResumeUploadRecord.self, from: withColumns)
+        XCTAssertTrue(a.isDefault)
+        XCTAssertEqual(a.label, "SWE resume")
+        XCTAssertEqual(a.displayName, "SWE resume")
+
+        // A query that does not select the S-5 columns must still decode —
+        // several call sites ask for a narrower column list.
+        let without = """
+        {"id":"r2","profile_id":"p1","file_path":"p1/old.pdf","parse_status":"parsed",
+         "parsed_employers":[],"created_at":"2026-08-01T00:00:00Z"}
+        """.data(using: .utf8)!
+        let b = try decoder.decode(ResumeUploadRecord.self, from: without)
+        XCTAssertFalse(b.isDefault)
+        XCTAssertNil(b.label)
+        // Falls back to the file name so a picker row is never blank.
+        XCTAssertEqual(b.displayName, "old.pdf")
+    }
+
+    func testResumeDisplayNameIgnoresBlankLabels() throws {
+        let json = """
+        {"id":"r3","profile_id":"p1","file_path":"p1/a/b/cv.pdf","parse_status":"parsed",
+         "parsed_employers":[],"created_at":"2026-08-01T00:00:00Z","label":"   "}
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let r = try decoder.decode(ResumeUploadRecord.self, from: json)
+        XCTAssertEqual(r.displayName, "cv.pdf")
+    }
 }

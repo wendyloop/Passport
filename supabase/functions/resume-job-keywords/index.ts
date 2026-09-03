@@ -11,6 +11,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
+import { selectResume } from "../_shared/resume_select.ts";
 import { callStructured } from "../_shared/openai.ts";
 import { computeContentHash } from "../_shared/ats/compensation.ts";
 import {
@@ -107,14 +108,14 @@ Deno.serve(async (request) => {
       return jsonResponse({ available: false, reason: "extraction_failed" });
     }
 
-    const { data: resume } = await admin
-      .from("resume_uploads")
-      .select("parsed_json, parsed_text")
-      .eq("profile_id", user.id)
-      .not("parsed_json", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const resume = await selectResume<{
+      parsed_json: Record<string, unknown> | null;
+      parsed_text: string | null;
+    }>(
+      admin,
+      user.id,
+      { columns: "parsed_json, parsed_text", requireParsed: true },
+    );
 
     if (!resume) {
       return jsonResponse({ available: false, reason: "no_resume" });

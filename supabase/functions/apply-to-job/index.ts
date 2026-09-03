@@ -1,6 +1,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createAdminClient, createUserClient } from "../_shared/client.ts";
 import { sendPitchEmail } from "../_shared/pitch_email.ts";
+import { selectResume } from "../_shared/resume_select.ts";
 import {
   attachmentFilename,
   fetchUrlAttachment,
@@ -165,21 +166,15 @@ Deno.serve(async (request) => {
         .single(),
     ]);
 
-    const resumeQuery = adminClient
-      .from("resume_uploads")
-      .select("file_path, parsed_json")
-      .eq("profile_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    const { data: resumeRecord, error: resumeError } = requestedResumePath
-      ? await adminClient
-        .from("resume_uploads")
-        .select("file_path, parsed_json")
-        .eq("profile_id", user.id)
-        .eq("file_path", requestedResumePath)
-        .maybeSingle()
-      : await resumeQuery.maybeSingle();
+    // S-5: an explicit pick wins, then the candidate's default, then the
+    // newest. The explicit path is unchanged in behaviour — apply-to-job has
+    // always honoured requestedResumePath — it just shares one resolver now.
+    const resumeRecord = await selectResume<{ file_path: string; parsed_json: unknown }>(
+      adminClient,
+      user.id,
+      { columns: "file_path, parsed_json", requestedPath: requestedResumePath },
+    );
+    const resumeError = null;
 
     if (profileError || !profile) throw profileError ?? new Error("Profile not found.");
     if (candidateProfileError) throw candidateProfileError;
