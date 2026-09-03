@@ -56,6 +56,8 @@ struct JobSeekerHomeView: View {
     @State private var heartBurstCount = 0
     @State private var easyApplySuccess: String?
     @State private var brokenJobIDs: Set<String> = []
+    /// S-6: the application whose tracking is being edited.
+    @State private var trackingTarget: JobApplicationRecord?
     @State private var showingSettingsDrawer = false
     @State private var showingDeleteAccountAlert = false
     @State private var selectedAvatarItem: PhotosPickerItem?
@@ -258,6 +260,20 @@ struct JobSeekerHomeView: View {
                     get: { applyDrawerJob != nil },
                     set: { if !$0 { applyDrawerJob = nil } }
                 ))
+            }
+        }
+        .sheet(item: $trackingTarget) { application in
+            if let session {
+                ApplicationTrackingSheet(
+                    application: application,
+                    session: session,
+                    service: SupabaseService.shared.candidate,
+                    isPresented: Binding(
+                        get: { trackingTarget != nil },
+                        set: { if !$0 { trackingTarget = nil } }
+                    ),
+                    onSaved: onRefresh
+                )
             }
         }
         .sheet(item: $easyApplyConfirmation) { job in
@@ -680,6 +696,68 @@ struct JobSeekerHomeView: View {
         }
     }
 
+    /// Follow-ups that are due today or overdue. Deliberately not "upcoming":
+    /// a date in the future is not yet actionable and would crowd out the
+    /// things that are.
+    private var dueFollowUps: [JobApplicationRecord] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return applications.filter { application in
+            guard !application.candidateStage.isClosed,
+                  let raw = application.candidateTracking?.followUpOn,
+                  let due = Self.dateOnlyParser.date(from: raw) else { return false }
+            return due <= today
+        }
+    }
+
+    private var liveApplications: [JobApplicationRecord] {
+        let due = Set(dueFollowUps.map(\.id))
+        return applications.filter { !$0.candidateStage.isClosed && !due.contains($0.id) }
+    }
+
+    private var closedApplications: [JobApplicationRecord] {
+        applications.filter(\.candidateStage.isClosed)
+    }
+
+    static let dateOnlyParser: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private func applicationSection(
+        title: String,
+        subtitle: String?,
+        items: [JobApplicationRecord]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(PassportTheme.textPrimary)
+                Text("\(items.count)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(PassportTheme.textMuted)
+            }
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(PassportTheme.textMuted)
+            }
+            ForEach(items) { application in
+                ApplicationRow(
+                    application: application,
+                    job: resolvedJob(for: application),
+                    onOpen: { openApplicationJob(application) },
+                    onTrack: { trackingTarget = application }
+                )
+            }
+        }
+        .padding(.bottom, 6)
+    }
+
     private var applicationsView: some View {
         NavigationStack {
             ScrollView {
@@ -695,17 +773,30 @@ struct JobSeekerHomeView: View {
                             details: "Apply to a job from the feed and it will appear here."
                         )
                     } else {
-                        LazyVGrid(
-                            columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                            spacing: 10
-                        ) {
-                            ForEach(applications) { application in
-                                ApplicationTile(
-                                    application: application,
-                                    job: resolvedJob(for: application),
-                                    onOpen: { openApplicationJob(application) }
-                                )
-                            }
+                        // S-6: due follow-ups first. There are no push
+                        // notifications in this app, so a follow-up date is
+                        // only useful if the Inbox itself surfaces it — a
+                        // reminder nobody is shown is not a reminder.
+                        if !dueFollowUps.isEmpty {
+                            applicationSection(
+                                title: "Follow up",
+                                subtitle: "You said you'd check back on these.",
+                                items: dueFollowUps
+                            )
+                        }
+                        if !liveApplications.isEmpty {
+                            applicationSection(
+                                title: "In progress",
+                                subtitle: nil,
+                                items: liveApplications
+                            )
+                        }
+                        if !closedApplications.isEmpty {
+                            applicationSection(
+                                title: "Closed",
+                                subtitle: nil,
+                                items: closedApplications
+                            )
                         }
                     }
                 }
@@ -3338,6 +3429,99 @@ private struct CandidateProfileEditor: View {
 
 // TikTok-style applied-job tile: same visual family as SavedJobTile, with
 // the application status as the headline signal.
+/// S-6: one application in the Inbox list.
+///
+/// Replaces the grid tile for the applications screen specifically. A tile is
+/// the right shape for browsing saved jobs; a pipeline needs a row, because
+/// stage, interview date and follow-up are all text and none of them fit on a
+/// square. `ApplicationTile` stays for anywhere still showing a grid.
+private struct ApplicationRow: View {
+    let application: JobApplicationRecord
+    var job: JobPostingRecord? = nil
+    let onOpen: () -> Void
+    let onTrack: () -> Void
+
+    private var stage: CandidateApplicationStage { application.candidateStage }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Button(action: onOpen) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(application.jobTitle)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(PassportTheme.textPrimary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    Text(application.companyName)
+                        .font(.system(size: 12))
+                        .foregroundStyle(PassportTheme.textMuted)
+
+                    HStack(spacing: 8) {
+                        Label(stage.title, systemImage: stage.symbol)
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(PassportTheme.border.opacity(0.4)))
+                            .foregroundStyle(PassportTheme.textPrimary)
+
+                        // A founder pitch never entered an ATS pipeline, so
+                        // saying so keeps it from reading as a normal apply
+                        // that nobody has looked at.
+                        if application.isFounderPitch {
+                            Text("PITCHED")
+                                .font(.system(size: 9, weight: .black))
+                                .foregroundStyle(PassportTheme.accent)
+                        }
+
+                        if let detail = detailLine {
+                            Text(detail)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(PassportTheme.textMuted)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onTrack) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PassportTheme.textMuted)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Track this application")
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(PassportTheme.border.opacity(0.18))
+        )
+    }
+
+    /// The single most useful fact after the stage. An upcoming interview
+    /// outranks a follow-up date, which outranks how long ago they applied.
+    private var detailLine: String? {
+        if let interview = application.candidateTracking?.interviewAt {
+            return "Interview " + Self.shortDate.string(from: interview)
+        }
+        if let raw = application.candidateTracking?.followUpOn,
+           let due = JobSeekerHomeView.dateOnlyParser.date(from: raw) {
+            return "Follow up " + Self.shortDate.string(from: due)
+        }
+        return "Applied " + Self.shortDate.string(from: application.appliedAt)
+    }
+
+    private static let shortDate: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+}
+
 private struct ApplicationTile: View {
     let application: JobApplicationRecord
     var job: JobPostingRecord? = nil

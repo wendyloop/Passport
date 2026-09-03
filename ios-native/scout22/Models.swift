@@ -910,7 +910,22 @@ struct JobApplicationRecord: Codable, Identifiable {
     // that later became a full application, so the history survives the upgrade.
     let founderPitchedAt: Date?
 
+    // S-6: the candidate's own tracking, embedded on their own fetch only.
+    // Employer-side fetches get an empty embed by RLS — a candidate's private
+    // note about a recruiter must never travel to that recruiter.
+    let tracking: [CandidateApplicationTracking]?
+
     var internalNotes: String? { applicationNotes?.notes }
+
+    /// PostgREST returns a to-one embed as an array. Flattened here so call
+    /// sites do not repeat `.first`.
+    var candidateTracking: CandidateApplicationTracking? { tracking?.first }
+
+    /// What the candidate says is happening, falling back to "applied" —
+    /// which is true the moment the row exists.
+    var candidateStage: CandidateApplicationStage {
+        candidateTracking?.stageValue ?? .applied
+    }
 
     /// True when this row exists only because the candidate pitched the
     /// founder; a row upgraded by a later ATS apply reads as a normal apply.
@@ -950,6 +965,68 @@ struct JobApplicationRecord: Codable, Identifiable {
         case appliedAt = "applied_at"
         case applicationKind = "application_kind"
         case founderPitchedAt = "founder_pitched_at"
+        case tracking = "candidate_application_tracking"
+    }
+}
+
+/// S-6: where the CANDIDATE thinks this application stands.
+///
+/// Deliberately not `job_applications.status`, which is the employer's
+/// pipeline — written by the employer, and absent entirely on board jobs,
+/// reel jobs and founder pitches, which have no employer user at all.
+enum CandidateApplicationStage: String, Codable, CaseIterable, Identifiable {
+    case applied
+    case screening
+    case interview
+    case offer
+    case rejected
+    /// The most common real outcome. Leaving it indistinguishable from
+    /// `applied` is what makes a tracker useless after fifty applications.
+    case noResponse = "no_response"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .applied: return "Applied"
+        case .screening: return "Screening"
+        case .interview: return "Interview"
+        case .offer: return "Offer"
+        case .rejected: return "Rejected"
+        case .noResponse: return "No response"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .applied: return "paperplane"
+        case .screening: return "phone"
+        case .interview: return "person.2"
+        case .offer: return "checkmark.seal"
+        case .rejected: return "xmark.circle"
+        case .noResponse: return "clock.badge.questionmark"
+        }
+    }
+
+    /// Nothing more is expected to happen on these, so they sink in the Inbox.
+    var isClosed: Bool { self == .rejected || self == .noResponse }
+}
+
+struct CandidateApplicationTracking: Codable, Equatable {
+    let stage: String?
+    let interviewAt: Date?
+    let followUpOn: String?
+    let notes: String?
+
+    var stageValue: CandidateApplicationStage {
+        stage.flatMap(CandidateApplicationStage.init(rawValue:)) ?? .applied
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case stage
+        case interviewAt = "interview_at"
+        case followUpOn = "follow_up_on"
+        case notes
     }
 }
 

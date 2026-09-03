@@ -285,10 +285,14 @@ final class SupabaseService {
     }
 
     func fetchJobApplications(candidateID: String? = nil, employerID: String? = nil, session: AuthSession) async throws -> [JobApplicationRecord] {
-        // Employers also get their private notes (employer-only table, RLS
-        // keeps the embed empty for anyone else — AUDIT P1-9).
+        // Each side gets its own private embed, and only its own. Employers
+        // get application_notes (AUDIT P1-9); candidates get their S-6
+        // tracking. RLS keeps the other side's embed empty, so even if the
+        // select string were wrong the rows would not cross.
         var query: [(String, String)] = [
-            ("select", employerID != nil ? "*,application_notes(notes)" : "*"),
+            ("select", employerID != nil
+                ? "*,application_notes(notes)"
+                : "*,candidate_application_tracking(stage,interview_at,follow_up_on,notes)"),
             ("order", "applied_at.desc")
         ]
         if let candidateID {

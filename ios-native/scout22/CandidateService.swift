@@ -477,6 +477,65 @@ final class CandidateService {
         _ = try await transport.executeData(request)
     }
 
+    // MARK: - S-6 application tracking
+
+    /// Upsert the candidate's own view of one application. Separate table
+    /// from the employer's pipeline status and from their private notes —
+    /// see the migration for why RLS forces that.
+    ///
+    /// Dates are sent as `nil` to clear, so a candidate can un-set an
+    /// interview that got cancelled.
+    func updateApplicationTracking(
+        applicationID: String,
+        candidateID: String,
+        stage: CandidateApplicationStage,
+        interviewAt: Date?,
+        followUpOn: Date?,
+        notes: String?,
+        session: AuthSession
+    ) async throws {
+        var row: [String: AnyEncodable] = [
+            "application_id": AnyEncodable(applicationID),
+            "candidate_profile_id": AnyEncodable(candidateID),
+            "stage": AnyEncodable(stage.rawValue),
+            "interview_at": AnyEncodable(interviewAt.map(Self.isoFormatter.string(from:))),
+            "follow_up_on": AnyEncodable(followUpOn.map(Self.dateOnlyFormatter.string(from:))),
+            "updated_at": AnyEncodable(Self.isoFormatter.string(from: Date()))
+        ]
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        row["notes"] = AnyEncodable(trimmed?.isEmpty == false ? trimmed : nil)
+
+        let request = try transport.makeRestRequest(
+            path: "candidate_application_tracking",
+            query: [("on_conflict", "application_id")],
+            method: "POST",
+            accessToken: session.accessToken,
+            body: [row]
+        )
+        var upsert = request
+        // merge-duplicates turns the insert into an upsert; without it a
+        // second edit of the same application collides on the primary key.
+        upsert.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        _ = try await transport.executeData(upsert)
+    }
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    /// `follow_up_on` is a DATE column — sending a timestamp would be coerced
+    /// and could land a day off across timezones.
+    private static let dateOnlyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     /// Tailored versions this candidate holds, newest first.
     func fetchResumeVersions(
         userID: String,

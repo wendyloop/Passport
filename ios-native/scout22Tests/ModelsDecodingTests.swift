@@ -314,4 +314,66 @@ final class ModelsDecodingTests: XCTestCase {
         let c = try decoder.decode(ParsedResumeDetails.self, from: reencoded)
         XCTAssertEqual(c.employers.first?.bullets, ["Built the ledger", "Cut p99 by 40%"])
     }
+
+    // MARK: - S-6 candidate application tracking
+
+    private func decodeApplication(_ json: String) throws -> JobApplicationRecord {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(JobApplicationRecord.self, from: json.data(using: .utf8)!)
+    }
+
+    private var baseApplicationFields: String {
+        """
+        "id":"a1","job_id":"j1","candidate_profile_id":"c1","status":"submitted",
+        "job_title":"Engineer","company_name":"Acme","candidate_name":"Wendy",
+        "candidate_previous_employers":[],"email_delivery_status":"sent",
+        "applied_at":"2026-09-01T00:00:00Z"
+        """
+    }
+
+    func testApplicationDecodesEmbeddedTracking() throws {
+        let a = try decodeApplication("""
+        {\(baseApplicationFields),
+         "candidate_application_tracking":[{"stage":"interview",
+           "interview_at":"2026-09-10T17:00:00Z","follow_up_on":"2026-09-15",
+           "notes":"Recruiter was vague"}]}
+        """)
+        XCTAssertEqual(a.candidateStage, .interview)
+        XCTAssertEqual(a.candidateTracking?.followUpOn, "2026-09-15")
+        XCTAssertEqual(a.candidateTracking?.notes, "Recruiter was vague")
+        XCTAssertNotNil(a.candidateTracking?.interviewAt)
+    }
+
+    // The employer's fetch gets an EMPTY embed by RLS, and a candidate with no
+    // tracking row yet gets no embed at all. Both must read as "applied"
+    // rather than crashing or showing a blank stage.
+    func testApplicationWithoutTrackingReadsAsApplied() throws {
+        let absent = try decodeApplication("{\(baseApplicationFields)}")
+        XCTAssertEqual(absent.candidateStage, .applied)
+        XCTAssertNil(absent.candidateTracking)
+
+        let empty = try decodeApplication("""
+        {\(baseApplicationFields),"candidate_application_tracking":[]}
+        """)
+        XCTAssertEqual(empty.candidateStage, .applied)
+    }
+
+    func testUnknownStageFallsBackRatherThanFailing() throws {
+        // A stage added server-side before the app knows about it must not
+        // break the whole Inbox fetch.
+        let a = try decodeApplication("""
+        {\(baseApplicationFields),
+         "candidate_application_tracking":[{"stage":"withdrawn"}]}
+        """)
+        XCTAssertEqual(a.candidateStage, .applied)
+    }
+
+    func testClosedStagesAreTheOnesNothingMoreHappensOn() {
+        XCTAssertTrue(CandidateApplicationStage.rejected.isClosed)
+        XCTAssertTrue(CandidateApplicationStage.noResponse.isClosed)
+        for stage in [CandidateApplicationStage.applied, .screening, .interview, .offer] {
+            XCTAssertFalse(stage.isClosed, "\(stage.rawValue) should stay in progress")
+        }
+    }
 }

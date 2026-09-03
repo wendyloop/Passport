@@ -49,6 +49,7 @@
 		A10000010000000000000046 /* CoverLetterPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000046 /* CoverLetterPDF.swift */; };
 		A10000010000000000000047 /* ResumePDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000047 /* ResumePDF.swift */; };
 		A10000010000000000000048 /* TailoredResumeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000048 /* TailoredResumeSheet.swift */; };
+		A10000010000000000000049 /* ApplicationTrackingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000049 /* ApplicationTrackingSheet.swift */; };
 		A100000100000000000E0031 /* SharedConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* SharedConstants.swift */; };
 		A100000100000000000E0032 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* KeychainStore.swift */; };
 		A2D918232FD8BC580087EF97 /* scout22ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A2D918192FD8BC580087EF97 /* scout22ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -139,6 +140,7 @@
 		A20000010000000000000046 /* CoverLetterPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverLetterPDF.swift; sourceTree = "<group>"; };
 		A20000010000000000000047 /* ResumePDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumePDF.swift; sourceTree = "<group>"; };
 		A20000010000000000000048 /* TailoredResumeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailoredResumeSheet.swift; sourceTree = "<group>"; };
+		A20000010000000000000049 /* ApplicationTrackingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationTrackingSheet.swift; sourceTree = "<group>"; };
 		A2D918192FD8BC580087EF97 /* scout22ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = scout22ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC0000010000000000000001 /* ModelsDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsDecodingTests.swift; sourceTree = "<group>"; };
 		AC0000010000000000000002 /* SharedFormattersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedFormattersTests.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 				A20000010000000000000046 /* CoverLetterPDF.swift */,
 				A20000010000000000000047 /* ResumePDF.swift */,
 				A20000010000000000000048 /* TailoredResumeSheet.swift */,
+				A20000010000000000000049 /* ApplicationTrackingSheet.swift */,
 				A20000010000000000000016 /* SharedUI.swift */,
 				A20000010000000000000017 /* VideoComponents.swift */,
 				A20000010000000000000018 /* VideoStudio.swift */,
@@ -430,6 +433,7 @@
 				A10000010000000000000046 /* CoverLetterPDF.swift in Sources */,
 				A10000010000000000000047 /* ResumePDF.swift in Sources */,
 				A10000010000000000000048 /* TailoredResumeSheet.swift in Sources */,
+				A10000010000000000000049 /* ApplicationTrackingSheet.swift in Sources */,
 				A10000010000000000000016 /* SharedUI.swift in Sources */,
 				A10000010000000000000005 /* Theme.swift in Sources */,
 				A10000010000000000000017 /* VideoComponents.swift in Sources */,

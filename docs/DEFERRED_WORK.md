@@ -146,7 +146,7 @@ flags below are cost kill-switches, not paywalls.
 
 Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
 
-### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS (S-1 – S-5 shipped 2026-09-02; only S-6 + S-2b remain)
+### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS ✅ **COMPLETE 2026-09-02** (S-1 – S-6 shipped; only S-2b remains, and it is blocked on data not code)
 
 | ID | Item | Effort | Depends on |
 |---|---|---|---|
@@ -156,7 +156,7 @@ Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
 | ~~S-3~~ | ✅ **shipped 2026-09-02**. Cover letters: generate + attach. Attachment needs a **sibling** to `attachResumeHere` — that function deliberately refuses cover-letter uploaders (they threw async from their own bundle; see the comment at its head). Do NOT relax the resume regex. Textarea path routes on a shared `coverLetterPattern` (Swift + injected JS, tested on both sides); file path renders a text-only PDF on device via `CoverLetterPDF`. The kind-aware `findDocumentInput` also closed a latent bug — the resume's accept-based fallback could land it in a cover-letter slot. Voice samples prefer prior letters over essay answers | M | S-1 |
 | ~~S-4~~ | ✅ **shipped 2026-09-02**. Resume versions + per-job tailoring + on-device PDF render (`ImageRenderer`, same muscle as `CarouselCardTemplates`). Unlimited versions, base never mutated. Four parts: bullets in the parser (+ a re-parse path from `parsed_text`, and two fixes that were erasing them); `resume_versions` + `tailor-resume` with a `checkFabrication` pass that **refuses rather than repairs**; a deliberately plain single-column ATS-safe PDF; and `bullet_overrides` on the BASE resume so one correction carries into every later tailoring. `TailoredResumeSheet` shows each rewrite beside its original | L | S-2, S-5 |
 | ~~S-5~~ | ✅ **shipped 2026-09-02**. Multiple resumes: `resume_uploads` already stores one row per upload; only `fetchLatestResume`'s `limit=1` makes it singular. `is_default` (partial unique index) + `label` + a `set_default_resume` RPC that swaps atomically. Resolution — explicit pick → default → newest — now lives in `_shared/resume_select.ts` and **all five** edge functions use it; a default that the cover letter and keyword gap ignored would be worse than none. Picker in the apply drawer changes the resume for that application only, never the default | S | — |
-| S-6 | Candidate-side tracker depth: candidate-editable status, interview date, follow-up. **Must not** reuse `application_notes` — that table is employer-only by RLS design (AUDIT P1-9) | M | — |
+| ~~S-6~~ | ✅ **shipped 2026-09-02**. Candidate-side tracker depth: candidate-editable status, interview date, follow-up. New `candidate_application_tracking` table — the exact mirror of `application_notes` (AUDIT P1-9) and for the mirror-image reason: a candidate's private note must never reach the employer, and RLS distinguishes rows not columns. Stage vocabulary is the candidate's own (incl. `no_response`), NOT `job_applications.status`, which is employer-written and absent on board/reel/founder-pitch rows. Inbox is now sectioned Follow up / In progress / Closed — due follow-ups surface in-app because there is no push infrastructure, and the sheet says so | M | — |
 
 **Anti-slop invariant (S-1/S-3/S-4):** only `source IN ('human','edited')` rows
 are ever used as voice samples. Never feed model-generated text back in as a
