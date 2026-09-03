@@ -1564,3 +1564,41 @@ struct TailorResumeResponse: Codable {
     let needsReview: Bool?
 }
 
+/// S-4: one stored tailored version. The base resume it came from is never
+/// modified, so deleting every version is always safe.
+struct ResumeVersionRecord: Codable, Identifiable {
+    let id: String
+    let profileID: String
+    let baseResumeID: String
+    let jobID: String?
+    let label: String?
+    let content: TailoredResumeContent?
+    let filePath: String?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case profileID = "profile_id"
+        case baseResumeID = "base_resume_id"
+        case jobID = "job_id"
+        case label
+        case content
+        case filePath = "file_path"
+        case createdAt = "created_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        profileID = try c.decode(String.self, forKey: .profileID)
+        baseResumeID = try c.decode(String.self, forKey: .baseResumeID)
+        jobID = try c.decodeIfPresent(String.self, forKey: .jobID)
+        label = try c.decodeIfPresent(String.self, forKey: .label)
+        // Failable: a version written by a future schema must not break the
+        // whole list fetch.
+        content = try? c.decodeIfPresent(TailoredResumeContent.self, forKey: .content)
+        filePath = try c.decodeIfPresent(String.self, forKey: .filePath)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+    }
+}
+

@@ -455,6 +455,44 @@ final class CandidateService {
         return try await transport.execute(request, decode: TailorResumeResponse.self)
     }
 
+    /// S-4: the candidate's own rewrite of one bullet, filed against the BASE
+    /// resume so it carries into every future tailoring rather than living and
+    /// dying with one version. Passing empty text clears the override.
+    func setBulletOverride(
+        resumeID: String,
+        bulletKey: String,
+        text: String,
+        session: AuthSession
+    ) async throws {
+        let request = try transport.makeRestRequest(
+            path: "rpc/set_bullet_override",
+            method: "POST",
+            accessToken: session.accessToken,
+            body: [
+                "p_resume_id": AnyEncodable(resumeID),
+                "p_bullet_key": AnyEncodable(bulletKey),
+                "p_text": AnyEncodable(text)
+            ]
+        )
+        _ = try await transport.executeData(request)
+    }
+
+    /// Tailored versions this candidate holds, newest first.
+    func fetchResumeVersions(
+        userID: String,
+        session: AuthSession
+    ) async throws -> [ResumeVersionRecord] {
+        try await transport.selectArray(
+            path: "resume_versions",
+            query: [
+                ("profile_id", "eq.\(userID)"),
+                ("select", "*"),
+                ("order", "created_at.desc")
+            ],
+            session: session
+        )
+    }
+
     // Editor-driven corrections to the parsed resume (experience/education/
     // skills shown on the profile). Owner-scoped by RLS.
     func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {

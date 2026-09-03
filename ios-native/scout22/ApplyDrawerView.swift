@@ -244,6 +244,7 @@ struct ApplyDrawerView: View {
     /// should not silently re-point every future one.
     @State private var resumes: [ResumeUploadRecord] = []
     @State private var selectedResume: ResumeUploadRecord?
+    @State private var showingTailorSheet = false
 
     var body: some View {
         NavigationStack {
@@ -302,6 +303,27 @@ struct ApplyDrawerView: View {
             .overlay(alignment: .bottom) {
                 if let gap = keywordGap, gap.available, !gapCardDismissed, !submittedSuccessfully {
                     keywordGapCard(gap)
+                }
+            }
+            .sheet(isPresented: $showingTailorSheet) {
+                if let base = selectedResume {
+                    TailoredResumeSheet(
+                        job: job,
+                        session: session,
+                        service: service,
+                        baseResumeID: base.id,
+                        isPresented: $showingTailorSheet,
+                        onUse: { data, name in
+                            // Swapping resumeBase64 runs the same clear-then-
+                            // attach path the picker uses, so the tailored PDF
+                            // replaces whatever is already on the form.
+                            resumeBase64 = data.base64EncodedString()
+                            resumeFileName = name
+                        },
+                        candidateName: prefill?.profile.fullName ?? "",
+                        contactLine: tailoringContactLine,
+                        baseEducation: base.parsedDetails?.education ?? []
+                    )
                 }
             }
             // Detection can miss on an unusual portal. If the candidate typed
@@ -490,6 +512,17 @@ struct ApplyDrawerView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if !missing.isEmpty, selectedResume != nil {
+                Button {
+                    showingTailorSheet = true
+                } label: {
+                    Label("Tailor my resume for this role", systemImage: "wand.and.stars")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(PassportTheme.accent)
+                }
+                .buttonStyle(.plain)
+            }
+
             // A resume parsed before parsed_text was stored matches against
             // ~30 extracted skills only, so the gaps over-report. Say so
             // rather than let the number read as authoritative.
@@ -566,6 +599,15 @@ struct ApplyDrawerView: View {
         // fetchResume already attached the default; reflect that in the picker
         // rather than re-resolving and risking the two disagreeing.
         selectedResume = list.first { $0.isDefault } ?? list.first
+    }
+
+    /// Contact line for the rendered PDF header. Built from the prefill, which
+    /// is the same source the form itself is filled from.
+    private var tailoringContactLine: String {
+        guard let p = prefill?.profile else { return "" }
+        return [p.email, p.phone, p.city, p.linkedInUrl]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     private func fetchResumes() async -> [ResumeUploadRecord] {

@@ -1134,3 +1134,57 @@ Deno.test("checkFabrication allows dropping a role but reports it", () => {
   assertEquals(report.ok, true);
   assertEquals(report.droppedEmployers, ["oldco"]);
 });
+
+// The override loop is the reason S-4 is worth having: an edit made once must
+// survive every later tailoring. These pin the two halves of that contract.
+Deno.test("an override keyed off the original survives a rewrite", () => {
+  const original = "Built the ledger";
+  const key = bulletKey(original);
+
+  // First tailoring: the model rephrases, the candidate corrects it.
+  const first = applyOverrides({
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{ key, original, tailored: "Spearheaded ledger initiatives" }],
+    }],
+  }, { [key]: "Built the ledger, cutting settlement time in half" });
+  assertEquals(
+    first.employment[0].bullets[0].tailored,
+    "Built the ledger, cutting settlement time in half",
+  );
+
+  // A LATER tailoring for a different job phrases it differently again. The
+  // key comes from the same source sentence, so the correction still lands —
+  // this is what stops the candidate re-fixing the same line per application.
+  const second = applyOverrides({
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{ key, original, tailored: "Leveraged ledger systems" }],
+    }],
+  }, { [key]: "Built the ledger, cutting settlement time in half" });
+  assertEquals(
+    second.employment[0].bullets[0].tailored,
+    "Built the ledger, cutting settlement time in half",
+  );
+});
+
+Deno.test("an override does not smuggle a claim past the fabrication check", () => {
+  const original = "Built the ledger";
+  const source = [{ company: "Acme", title: "SWE", bullets: [original] }];
+  const tailored = {
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{ key: bulletKey(original), original, tailored: "Built the ledger in Go" }],
+    }],
+  };
+  // checkFabrication runs on the model's output, BEFORE overrides are applied,
+  // so a refusal cannot be dodged by having an override in place.
+  assertEquals(checkFabrication(tailored, source).ok, true);
+  const overridden = applyOverrides(tailored, { [bulletKey(original)]: "Ran the whole company" });
+  // The override is the candidate's own words about their own history, so it
+  // is not policed — but it is still traceable to a real source bullet.
+  assertEquals(overridden.employment[0].bullets[0].original, original);
+});
