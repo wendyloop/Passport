@@ -38,6 +38,11 @@ import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/worka
 import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
 import { harvestFromApplyURLs } from "./ats/harvest.ts";
+import {
+  boardNameMatches,
+  leverCaseVariants,
+  slugCandidates,
+} from "./ats/slug_candidates.ts";
 import { buildMatchIndex, groupPendingJobs } from "./ats/enrich_targets.ts";
 import type { NormalizedJob } from "./ats/models.ts";
 import { feedIsAuthoritative, selectVanishedJobIds } from "./ats/vanished.ts";
@@ -1278,4 +1283,90 @@ Deno.test("harvestFromApplyURLs resolves through unrecognised noise", () => {
   ]);
   assertEquals(verdict.kind, "resolved");
   if (verdict.kind === "resolved") assertEquals(verdict.resolution.ats_token, "acme");
+});
+
+// ---------------------------------------------------------------------------
+// C-2 — ATS slug probing
+// ---------------------------------------------------------------------------
+
+Deno.test("slugCandidates puts domain-derived guesses first", () => {
+  const out = slugCandidates("Stripe, Inc.", "stripe.com");
+  // Domain stem leads: a board at a company's own domain stem is almost
+  // certainly that company, and the prober trusts provenance "domain" alone.
+  assertEquals(out[0], { slug: "stripe", provenance: "domain" });
+  assertEquals(out.map((c) => c.slug).includes("stripe.com"), true);
+  assertEquals(out.every((c) => c.slug.length >= 2), true);
+});
+
+Deno.test("slugCandidates covers the shapes seen in production", () => {
+  // Ashby registers some boards under the FULL domain —
+  // jobs.ashbyhq.com/datasnipper.com/... — so the dot must survive.
+  const ds = slugCandidates("DataSnipper", "datasnipper.com").map((c) => c.slug);
+  assertEquals(ds.includes("datasnipper.com"), true);
+  assertEquals(ds.includes("datasnipper"), true);
+
+  // And 1stdibs' real Greenhouse token is the domain with the dot removed.
+  const dibs = slugCandidates("1stdibs", "1stdibs.com").map((c) => c.slug);
+  assertEquals(dibs.includes("1stdibscom"), true);
+
+  // Multi-word names give both joined and hyphenated forms.
+  const apfm = slugCandidates("A Place for Mom", null).map((c) => c.slug);
+  assertEquals(apfm.includes("aplaceformom"), true);
+  assertEquals(apfm.includes("a-place-for-mom"), true);
+});
+
+Deno.test("slugCandidates strips legal suffixes but keeps real trailing words", () => {
+  assertEquals(slugCandidates("Shift Technology, Inc.", null)[0].slug, "shifttechnology");
+  assertEquals(slugCandidates("Acme LLC", null)[0].slug, "acme");
+  // "Co" is a suffix, but a one-word name must never be stripped to nothing.
+  assertEquals(slugCandidates("Co", null).length, 0);
+  assertEquals(slugCandidates(null, null), []);
+});
+
+Deno.test("slugCandidates dedupes and tags provenance", () => {
+  const out = slugCandidates("Stripe", "stripe.com");
+  assertEquals(new Set(out.map((c) => c.slug)).size, out.length);
+  // "stripe" is reachable from both domain and name; the stronger provenance
+  // wins because it is generated first and dedup keeps the first.
+  assertEquals(out.find((c) => c.slug === "stripe")?.provenance, "domain");
+});
+
+// Lever is case-sensitive — verified live: api.lever.co/v0/postings/Kyverna
+// returns 200, /kyverna returns 404. Lowercasing everything, which is the
+// obvious thing to do, would miss every capitalised Lever board.
+Deno.test("leverCaseVariants adds the capitalised form for one-word names", () => {
+  const [candidate] = slugCandidates("Kyverna", null);
+  const variants = leverCaseVariants(candidate, "Kyverna");
+  assertEquals(variants.includes("kyverna"), true);
+  assertEquals(variants.includes("Kyverna"), true);
+});
+
+Deno.test("leverCaseVariants stays quiet for multi-word names", () => {
+  const [candidate] = slugCandidates("Shift Technology", null);
+  // "Shifttechnology" is not a shape Lever boards take; generating it would
+  // just double the request count for nothing.
+  assertEquals(leverCaseVariants(candidate, "Shift Technology"), ["shifttechnology"]);
+});
+
+// The safety check. Greenhouse is the only supported ATS that names the board
+// owner, so this is the strongest confirmation available that a 200 belongs to
+// the company we were actually probing for.
+Deno.test("boardNameMatches confirms a real hit", () => {
+  assertEquals(boardNameMatches("Stripe", "Stripe, Inc."), true);
+  assertEquals(boardNameMatches("Shift Technology", "Shift Technology"), true);
+  // A display name that is really a domain still matches its bare form.
+  assertEquals(boardNameMatches("1stDibs.com", "1stdibs"), true);
+});
+
+Deno.test("boardNameMatches rejects somebody else's board", () => {
+  assertEquals(boardNameMatches("Acme Robotics", "Acme Financial"), false);
+  assertEquals(boardNameMatches("Coalition Technologies", "Coalition"), false);
+  // Same shape, and probably the SAME company — but nothing in the strings
+  // says so, and the cost of being wrong is one-sided. Missing is the choice.
+  assertEquals(boardNameMatches("Stripe Payments", "Stripe"), false);
+  assertEquals(boardNameMatches(null, "Stripe"), false);
+  assertEquals(boardNameMatches("Stripe", ""), false);
+  // Short names must not prefix-match their way into another company: "Go"
+  // would otherwise match "Google", "GoCardless" and "GoodRx".
+  assertEquals(boardNameMatches("Go", "Google"), false);
 });
