@@ -134,6 +134,10 @@ enum ProfileStrength {
 /// job_match_scores RPC; no score (no resume, embedding pending) is
 /// neutral, so the feed is unchanged until a resume exists.
 enum MatchFit {
+    /// TODO(deferred): S-2b — these thresholds sit on top of the
+    /// app_config floor/ceiling in `_shared/matching.ts`, which are still
+    /// uncalibrated guesses. The buckets are what the feed actually sorts by,
+    /// so recheck these numbers once real pairs exist.
     static func bucket(for score: Int?) -> Int {
         guard let score else { return 2 }
         if score >= 70 { return 0 }

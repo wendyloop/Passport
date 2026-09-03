@@ -69,6 +69,20 @@ export function buildResumeEmbeddingText(parsed: ResumeEmbeddingSource): string 
 // Raw cosine similarity clusters ~0.3-0.7 for this model; map through a
 // tunable floor/ceiling (app_config) so "50" means a plausible fit. The SQL
 // RPC job_match_scores mirrors this formula exactly.
+//
+// TODO(deferred): S-2b — floor 0.20 / ceiling 0.75 are UNVALIDATED GUESSES,
+// and the scores they produce are already live: AppSessionStore reorders the
+// feed by MatchFit.bucket (70/50 on the mapped score), so a mis-set floor
+// silently promotes the wrong jobs. Nothing is broken and nothing is blocked
+// from shipping; the ranking is simply unverified, and
+// founder_email_require_match cannot be turned on until it is.
+//
+// Calibrate on ~50 real resume/job pairs — a data problem, not a code one.
+// Re-embed every resume FIRST: S-4 added bullets to buildResumeEmbeddingText
+// below, so any embedding written before 2026-09-02 came from a text builder
+// that no longer exists. parse-resume rewrites the embedding on every parse,
+// so reparseResume (which reads stored parsed_text, no re-upload) is the
+// whole migration.
 export function mapSimilarityToScore(similarity: number, floor: number, ceiling: number): number {
   if (!(ceiling > floor)) return 0;
   const normalized = (similarity - floor) / (ceiling - floor);
