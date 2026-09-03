@@ -153,6 +153,25 @@ enum ATSAutofillPolicy {
     /// already filled in, which a gateway's apply link never is.
     static let weakSubmitPattern = "\\b(apply)\\b"
 
+    /// S-3: labels that mean "cover letter", shared by both sides of the
+    /// bridge. Two call sites depend on it: routing a cover-letter textarea to
+    /// the letter generator instead of the essay prompt, and keeping the
+    /// resume OUT of a cover-letter file input.
+    ///
+    /// The separator class is permissive so one pattern serves a raw DOM label
+    /// ("Cover-Letter", "cover_letter", "coverLetter") and a norm()'d one
+    /// ("cover letter") identically. No `g` flag on the JS side — a global
+    /// regex is stateful across .test() calls.
+    static let coverLetterPattern = "cover[\\s_-]*letter"
+
+    static func isCoverLetterLabel(_ label: String?) -> Bool {
+        matches(label, coverLetterPattern)
+    }
+
+    static var coverLetterPatternJS: String {
+        "var COVER_LETTER_RE = /\(coverLetterPattern)/i;"
+    }
+
     static func isStrongSubmitLabel(_ label: String?) -> Bool {
         matches(label, strongSubmitPattern)
     }
@@ -235,6 +254,8 @@ struct ApplyDrawerView: View {
                             session: session,
                             service: service,
                             jobID: job.id,
+                            candidateName: prefill?.profile.fullName,
+                            companyName: job.companyName,
                             onBuffered: { buffer = $0 },
                             onSubmitted: { handleSubmission(payload: $0) },
                             onAIDraft: { question in
@@ -566,6 +587,8 @@ struct ApplyWebView: UIViewRepresentable {
     let session: AuthSession
     let service: CandidateService
     let jobID: String?
+    let candidateName: String?
+    let companyName: String?
     let onBuffered: (CapturedSubmission) -> Void
     let onSubmitted: (CapturedSubmission) -> Void
     let onAIDraft: (String) -> Void
@@ -576,6 +599,8 @@ struct ApplyWebView: UIViewRepresentable {
             session: session,
             service: service,
             jobID: jobID,
+            candidateName: candidateName,
+            companyName: companyName,
             onBuffered: onBuffered,
             onSubmitted: onSubmitted,
             onAIDraft: onAIDraft
@@ -584,7 +609,7 @@ struct ApplyWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        for name in ["scoutSubmitted", "scoutFields", "scoutEssayQuestions", "scoutLog"] {
+        for name in ["scoutSubmitted", "scoutFields", "scoutEssayQuestions", "scoutCoverLetterSlot", "scoutLog"] {
             config.userContentController.add(context.coordinator, name: name)
         }
 
@@ -672,6 +697,7 @@ struct ApplyWebView: UIViewRepresentable {
           var RAW_HISTORY = {};
           var RAW_INDEX   = {};
           var SENSITIVE   = \(ATSAutofillPolicy.sensitivePatternsJSArray);
+          \(ATSAutofillPolicy.coverLetterPatternJS)
           var ESSAY_MIN   = 200;
 
           // Canonical key -> normalized label fragments it answers to. Kept
@@ -1031,6 +1057,7 @@ struct ApplyWebView: UIViewRepresentable {
               }
             }
             reportEssayQuestions();
+            reportCoverLetterSlot();
             if (filled > 0) log('filled ' + filled + ' field(s) on ' + location.hostname);
             return filled;
           }
@@ -1046,7 +1073,13 @@ struct ApplyWebView: UIViewRepresentable {
                   // 0 so native can treat "no limit" and "not declared" alike.
                   var cap = (typeof ta.maxLength === 'number' && ta.maxLength > 0)
                     ? ta.maxLength : 0;
-                  questions.push({ question: label, selector: cssPath(ta), maxLength: cap });
+                  // A cover-letter textarea is not a screening question and
+                  // must not be answered like one — native routes it to the
+                  // letter generator instead.
+                  var kind = COVER_LETTER_RE.test(label) ? 'cover_letter' : 'essay';
+                  questions.push({
+                    question: label, selector: cssPath(ta), maxLength: cap, kind: kind
+                  });
                 }
               });
             } catch (e) { /* ignore */ }
@@ -1070,27 +1103,55 @@ struct ApplyWebView: UIViewRepresentable {
           // Attaches into THIS frame only. The public entry point below falls
           // back to child frames, because WKWebView's evaluateJavaScript runs
           // in the main frame and Greenhouse/Lever host the form in an iframe.
-          function attachResumeHere(b64, name, mime) {
+          function isCoverLetterInput(el) {
+            var accept = el.getAttribute('accept') || '';
+            var hay = norm([el.getAttribute('name'), el.id, ownLabel(el), accept].join(' '));
+            return COVER_LETTER_RE.test(hay);
+          }
+
+          // Picks the file input a document of `kind` belongs in, or null.
+          //
+          // The resume rules are unchanged from before cover letters existed,
+          // with ONE addition: a resume may never land in a cover-letter slot.
+          // The accept-based fallback matches any input that takes a PDF, and
+          // cover-letter uploaders take PDFs too, so on a form that lists the
+          // cover letter first the resume could still end up in the wrong box.
+          function findDocumentInput(kind) {
+            var inputs = document.querySelectorAll('input[type="file"]');
+            for (var i = 0; i < inputs.length; i++) {
+              var el = inputs[i];
+              if (el.disabled) continue;
+              if (el.files && el.files.length > 0) continue;   // already attached
+              var accept = (el.getAttribute('accept') || '').toLowerCase();
+              var hay = norm([el.getAttribute('name'), el.id, ownLabel(el), accept].join(' '));
+
+              if (kind === 'cover_letter') {
+                // Explicitly labelled inputs only, and deliberately no accept
+                // fallback. A cover letter is optional on nearly every form,
+                // so attaching one into an unlabelled input is a worse outcome
+                // than attaching nothing at all.
+                if (isCoverLetterInput(el)) return el;
+                continue;
+              }
+
+              if (isCoverLetterInput(el)) continue;
+              // Only inputs that actually ask for a document. The previous
+              // "fall back to the first free file input" rule is what drove
+              // the attach into avatar and cover-letter uploaders, whose own
+              // bundle then threw (undefined is not an object: le.uploadFile)
+              // — asynchronously, where the try/catch below cannot reach it.
+              if (/resume|cv|attach/.test(hay)) return el;
+              if (/pdf|msword|officedocument|\\.docx?/.test(accept)) return el;
+            }
+            return null;
+          }
+
+          function attachDocumentHere(b64, name, mime, kind) {
             var target = null;
             try {
-              var inputs = document.querySelectorAll('input[type="file"]');
-              for (var i = 0; i < inputs.length; i++) {
-                var el = inputs[i];
-                if (el.disabled) continue;
-                if (el.files && el.files.length > 0) continue;   // already attached
-                var accept = (el.getAttribute('accept') || '').toLowerCase();
-                var hay = norm([el.getAttribute('name'), el.id, ownLabel(el), accept].join(' '));
-                // Only inputs that actually ask for a document. The previous
-                // "fall back to the first free file input" rule is what drove
-                // the attach into avatar and cover-letter uploaders, whose own
-                // bundle then threw (undefined is not an object: le.uploadFile)
-                // — asynchronously, where the try/catch below cannot reach it.
-                if (/resume|cv|attach/.test(hay)) { target = el; break; }
-                if (/pdf|msword|officedocument|\\.docx?/.test(accept)) { target = el; break; }
-              }
+              target = findDocumentInput(kind);
               if (!target) {
-                log('no document input in frame ' + location.hostname
-                    + ' (file inputs seen: ' + inputs.length + ')');
+                log('no ' + kind + ' input in frame ' + location.hostname);
                 return false;
               }
               var bin = atob(b64), arr = new Uint8Array(bin.length);
@@ -1098,7 +1159,7 @@ struct ApplyWebView: UIViewRepresentable {
               var dt = new DataTransfer();
               dt.items.add(new File([arr], name, { type: mime || 'application/pdf' }));
               target.files = dt.files;
-            } catch (e) { log('resume attach failed: ' + e); return false; }
+            } catch (e) { log(kind + ' attach failed: ' + e); return false; }
 
             // The page's uploader runs on this event and may throw from its own
             // bundle. Muzzle that one error instead of letting it surface as a
@@ -1112,8 +1173,8 @@ struct ApplyWebView: UIViewRepresentable {
             setTimeout(function () { window.onerror = priorHandler; }, 1500);
 
             var ok = !!(target.files && target.files.length > 0);
-            log(ok ? 'resume attached in ' + location.hostname + ' (' + name + ')'
-                   : 'resume attach did not take in ' + location.hostname);
+            log(ok ? kind + ' attached in ' + location.hostname + ' (' + name + ')'
+                   : kind + ' attach did not take in ' + location.hostname);
             return ok;
           }
 
@@ -1121,7 +1182,7 @@ struct ApplyWebView: UIViewRepresentable {
           // private document, so it is posted ONLY to frames whose own origin
           // is an allowed ATS host, and with that exact origin as the target —
           // never '*', which would hand it to every analytics frame on the page.
-          function relayResumeToFrames(b64, name, mime) {
+          function relayDocumentToFrames(b64, name, mime, kind) {
             var frames = document.querySelectorAll('iframe');
             var sent = 0;
             for (var i = 0; i < frames.length; i++) {
@@ -1133,30 +1194,53 @@ struct ApplyWebView: UIViewRepresentable {
               } catch (e) { continue; }
               try {
                 frames[i].contentWindow.postMessage(
-                  { __scout: 'attachResume', b64: b64, name: name, mime: mime }, origin);
+                  { __scout: 'attachDocument', b64: b64, name: name, mime: mime, kind: kind },
+                  origin);
                 sent++;
               } catch (e) { /* cross-origin frame we cannot reach */ }
             }
-            if (sent) log('resume relayed to ' + sent + ' ATS frame(s)');
+            if (sent) log(kind + ' relayed to ' + sent + ' ATS frame(s)');
             return sent > 0;
           }
 
+          function attachDocument(b64, name, mime, kind) {
+            if (attachDocumentHere(b64, name, mime, kind)) return true;
+            return relayDocumentToFrames(b64, name, mime, kind);
+          }
+
           window.__scoutAttachResume = function (b64, name, mime) {
-            if (attachResumeHere(b64, name, mime)) return true;
-            return relayResumeToFrames(b64, name, mime);
+            return attachDocument(b64, name, mime, 'resume');
           };
 
-          // Receiving half of the relay, live in every ATS frame.
+          window.__scoutAttachCoverLetter = function (b64, name, mime) {
+            return attachDocument(b64, name, mime, 'cover_letter');
+          };
+
+          // Receiving half of the relay, live in every ATS frame. The name is
+          // kept as __scoutListenForResume because the native call site and
+          // the didFinish hook both reference it; it now listens for any
+          // document kind.
           window.__scoutListenForResume = function () {
             window.addEventListener('message', function (ev) {
               var d = ev && ev.data;
-              if (!d || d.__scout !== 'attachResume') return;
+              if (!d || d.__scout !== 'attachDocument') return;
               var host = '';
               try { host = new URL(ev.origin).hostname; } catch (e) { return; }
               if (!__scoutHostAllowed(host)) return;   // only trust ATS senders
-              attachResumeHere(d.b64, d.name, d.mime);
+              attachDocumentHere(d.b64, d.name, d.mime, d.kind || 'resume');
             });
           };
+
+          // Tells native whether this form wants the cover letter as a FILE.
+          // The textarea case needs no signal — it already arrives through
+          // reportEssayQuestions tagged kind 'cover_letter'.
+          function reportCoverLetterSlot() {
+            try {
+              if (findDocumentInput('cover_letter')) {
+                post('scoutCoverLetterSlot', { present: true });
+              }
+            } catch (e) { /* ignore */ }
+          }
 
           function cssPath(el) {
             if (!(el instanceof Element)) return '';
@@ -1510,6 +1594,9 @@ struct ApplyWebView: UIViewRepresentable {
         /// Context for the answer draft. Nil is tolerated — the draft is just
         /// less specific without the job description.
         let jobID: String?
+        /// Only used to title the generated cover-letter PDF.
+        let candidateName: String?
+        let companyName: String?
         let onBuffered: (CapturedSubmission) -> Void
         let onSubmitted: (CapturedSubmission) -> Void
         /// Fires once per question that a model drafted, so the drawer can say
@@ -1525,6 +1612,10 @@ struct ApplyWebView: UIViewRepresentable {
         private var resolvedHost: String?
         private var hasReportedSubmission = false
         private var essayLookupsInFlight = Set<String>()
+        /// One letter per form. Both entry points share it: a form asking for
+        /// the letter twice must not cost two drafts.
+        private var coverLetterFileHandled = false
+        private var coverLetterDraft: String?
         /// Held so every navigation can be re-seeded: a new document means a
         /// fresh JS context with an empty profile again.
         private var profileJS: String?
@@ -1551,6 +1642,8 @@ struct ApplyWebView: UIViewRepresentable {
             session: AuthSession,
             service: CandidateService,
             jobID: String?,
+            candidateName: String?,
+            companyName: String?,
             onBuffered: @escaping (CapturedSubmission) -> Void,
             onSubmitted: @escaping (CapturedSubmission) -> Void,
             onAIDraft: @escaping (String) -> Void
@@ -1559,6 +1652,8 @@ struct ApplyWebView: UIViewRepresentable {
             self.session = session
             self.service = service
             self.jobID = jobID
+            self.candidateName = candidateName
+            self.companyName = companyName
             self.onBuffered = onBuffered
             self.onSubmitted = onSubmitted
             self.onAIDraft = onAIDraft
@@ -1597,17 +1692,33 @@ struct ApplyWebView: UIViewRepresentable {
                     guard let question = q["question"] as? String,
                           let selector = q["selector"] as? String else { continue }
                     let charLimit = (q["maxLength"] as? NSNumber)?.intValue ?? 0
+                    let kind = q["kind"] as? String ?? "essay"
                     let key = "\(selector)|\(question)"
                     if essayLookupsInFlight.contains(key) { continue }
                     essayLookupsInFlight.insert(key)
                     Task { [weak self] in
-                        await self?.lookupEssay(
-                            question: question,
-                            selector: selector,
-                            charLimit: charLimit
-                        )
+                        // A "Cover letter" textarea is not a screening
+                        // question. Answering it with the generic essay prompt
+                        // produces a paragraph, not a letter.
+                        if kind == "cover_letter" {
+                            await self?.fillCoverLetterTextarea(selector: selector)
+                        } else {
+                            await self?.lookupEssay(
+                                question: question,
+                                selector: selector,
+                                charLimit: charLimit
+                            )
+                        }
                     }
                 }
+
+            case "scoutCoverLetterSlot":
+                // The form wants the letter as a FILE. Only fires when an
+                // explicitly labelled cover-letter input exists, so there is
+                // no risk of generating one nothing asked for.
+                guard !coverLetterFileHandled else { return }
+                coverLetterFileHandled = true
+                Task { [weak self] in await self?.attachCoverLetterFile() }
 
             case "scoutLog":
                 AppLog.autofill.debug("\(String(describing: message.body))")
@@ -1648,6 +1759,43 @@ struct ApplyWebView: UIViewRepresentable {
                 // typed, so a slow draft can never clobber the candidate.
                 self.webView?.evaluateJavaScript(js, completionHandler: nil)
                 if suggestion.isAIDrafted { self.onAIDraft(question) }
+            }
+        }
+
+        /// Cached across both cover-letter paths — a form with a textarea AND
+        /// a file input should send the same letter to both, and pay for one.
+        private func coverLetterBody() async -> String? {
+            if let coverLetterDraft { return coverLetterDraft }
+            guard let jobID else { return nil }
+            let draft = try? await service.generateCoverLetter(jobID: jobID, session: session)
+            guard let body = draft?.usableBody else { return nil }
+            coverLetterDraft = body
+            return body
+        }
+
+        private func fillCoverLetterTextarea(selector: String) async {
+            guard let body = await coverLetterBody() else { return }
+            let js = "window.__scoutFillEssay && window.__scoutFillEssay("
+                + "\(jsString(selector)), \(jsString(body)));"
+            await MainActor.run {
+                self.webView?.evaluateJavaScript(js, completionHandler: nil)
+                self.onAIDraft("Cover letter")
+            }
+        }
+
+        private func attachCoverLetterFile() async {
+            guard let body = await coverLetterBody() else { return }
+            guard let pdf = CoverLetterPDF.render(body: body, candidateName: candidateName)
+            else { return }
+            let name = CoverLetterPDF.fileName(
+                candidateName: candidateName,
+                companyName: companyName
+            )
+            let js = "window.__scoutAttachCoverLetter && window.__scoutAttachCoverLetter("
+                + "\(jsString(pdf.base64EncodedString())), \(jsString(name)), \"application/pdf\");"
+            await MainActor.run {
+                self.webView?.evaluateJavaScript(js, completionHandler: nil)
+                self.onAIDraft("Cover letter")
             }
         }
 

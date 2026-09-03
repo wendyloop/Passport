@@ -1422,3 +1422,30 @@ struct KeywordGapReport: Codable {
     var isStrong: Bool { (coverage ?? 0) >= 70 }
 }
 
+/// S-3: a drafted cover letter for one job.
+///
+/// Not cached and not reused: a letter names the company in its first
+/// sentence. What carries across applications is the voice, which is why an
+/// edited letter is stored — as a style exemplar for the next one, never as
+/// text to re-send.
+struct CoverLetterDraft: Codable {
+    /// False when there is nothing to offer: no resume on file, the feature
+    /// flag is off, or the draft failed the generic-letter check. `reason`
+    /// says which.
+    let available: Bool
+    let reason: String?
+    let id: String?
+    let body: String?
+    /// The specific hook the letter opens on — the fastest way for a
+    /// candidate to tell a real letter from a generic one without reading it.
+    let openingHook: String?
+    let factsUsed: [String]?
+    let needsReview: Bool?
+
+    var usableBody: String? {
+        guard let body else { return nil }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+

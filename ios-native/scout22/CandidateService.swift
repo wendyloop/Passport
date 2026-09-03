@@ -382,6 +382,18 @@ final class CandidateService {
         return try await transport.execute(request, decode: KeywordGapReport.self)
     }
 
+    /// S-3: draft a cover letter for one job. Never cached — a letter names
+    /// the company in its opening line, so there is nothing to reuse.
+    func generateCoverLetter(jobID: String, session: AuthSession) async throws -> CoverLetterDraft {
+        let body: [String: AnyEncodable] = ["jobId": AnyEncodable(jobID)]
+        let request = try transport.makeFunctionRequest(
+            name: "generate-cover-letter",
+            accessToken: session.accessToken,
+            body: body
+        )
+        return try await transport.execute(request, decode: CoverLetterDraft.self)
+    }
+
     // Editor-driven corrections to the parsed resume (experience/education/
     // skills shown on the profile). Owner-scoped by RLS.
     func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {

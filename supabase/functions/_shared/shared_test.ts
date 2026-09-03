@@ -19,6 +19,7 @@ import {
   normalizeText,
   rankMissing,
 } from "./keyword_match.ts";
+import { coverLetterLooksGeneric } from "./answer_prompts.ts";
 import {
   ADAPT_FLOOR,
   enforceCharLimit,
@@ -958,4 +959,47 @@ Deno.test("rankMissing puts required gaps before preferred ones", () => {
     { term: "Airflow", importance: "required", covered: false },
   ]);
   assertEquals(ranked.map((r) => r.term), ["Airflow", "Kafka", "Rust"]);
+});
+
+// ---------------------------------------------------------------------------
+// S-3 — cover letters
+// ---------------------------------------------------------------------------
+
+// The one failure this feature exists to avoid is a letter that could have
+// been sent to anybody. Both tells are cheap to check and worth refusing on.
+Deno.test("coverLetterLooksGeneric rejects the banned openers", () => {
+  assertEquals(
+    coverLetterLooksGeneric("I am writing to apply for the role at Ramp.", "Ramp"),
+    true,
+  );
+  assertEquals(
+    coverLetterLooksGeneric("To whom it may concern, Ramp is great.", "Ramp"),
+    true,
+  );
+  assertEquals(
+    coverLetterLooksGeneric("I am excited to apply to Ramp.", "Ramp"),
+    true,
+  );
+  assertEquals(coverLetterLooksGeneric("", "Ramp"), true);
+});
+
+Deno.test("coverLetterLooksGeneric requires the company to be named", () => {
+  // Three paragraphs that never say who they are addressed to.
+  assertEquals(
+    coverLetterLooksGeneric("Your payments platform caught my eye.", "Ramp"),
+    true,
+  );
+  assertEquals(
+    coverLetterLooksGeneric("Ramp's spend controls caught my eye.", "Ramp"),
+    false,
+  );
+  // Case-insensitive, so a letter writing "RAMP" still passes.
+  assertEquals(
+    coverLetterLooksGeneric("RAMP's spend controls caught my eye.", "Ramp"),
+    false,
+  );
+  // A very short or absent company name would match any text, so the check is
+  // skipped rather than allowed to pass everything silently.
+  assertEquals(coverLetterLooksGeneric("Some real opening line.", null), false);
+  assertEquals(coverLetterLooksGeneric("Some real opening line.", "X"), false);
 });

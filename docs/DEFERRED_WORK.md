@@ -146,14 +146,14 @@ flags below are cost kill-switches, not paywalls.
 
 Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
 
-### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS (S-1, S-2 shipped 2026-09-02)
+### Part 2 (S) — Simplify feature parity — ⏳ IN PROGRESS (S-1, S-2, S-3 shipped 2026-09-02)
 
 | ID | Item | Effort | Depends on |
 |---|---|---|---|
 | ~~S-1~~ | ✅ **shipped 2026-09-02** (`8035004`, `46df3ce`). AI-generated application answers. Three-mode resolution by cosine distance against `candidate_essay_answers`: **reuse** (≥0.85, exists today, $0) → **adapt** (0.60–0.85, rewrite closest prior answer) → **generate** (<0.60, cold, grounded in resume + voice samples). Retrieval path is kept intact and stays the default — it is the free tier if tiering ever returns | M | — |
 | ~~S-2~~ | ✅ **shipped 2026-09-02**. Resume↔JD keyword gap surfaced in the apply drawer. Requirement terms extracted per job and cached lazily in `job_keywords` (first candidate to open a job pays the model call; a description hash guards staleness). The diff is pure and free. **Also added `resume_uploads.parsed_text`** — raw resume text was being discarded, leaving matching to see only ~30 skills; that gap also blocked S-4, which cannot tailor bullets that were never stored. Old resumes fall back to `parsed_json` and the UI says so | S–M | — |
 | S-2b | **M-F calibration still pending, and not blocked by S-2.** `match_score_floor` 0.20 / `match_score_ceiling` 0.75 remain unvalidated guesses. Calibration needs ~50 real resume/job pairs, which do not exist yet — this is a data problem, not a code one. The S-2 keyword score is a separate, explainable metric and does not depend on it | S | real resumes |
-| S-3 | Cover letters: generate + attach. Attachment needs a **sibling** to `attachResumeHere` — that function deliberately refuses cover-letter uploaders (they threw async from their own bundle; see the comment at its head). Do NOT relax the resume regex. Also needs a textarea path, since many ATS ask for the letter as text | M | S-1 |
+| ~~S-3~~ | ✅ **shipped 2026-09-02**. Cover letters: generate + attach. Attachment needs a **sibling** to `attachResumeHere` — that function deliberately refuses cover-letter uploaders (they threw async from their own bundle; see the comment at its head). Do NOT relax the resume regex. Textarea path routes on a shared `coverLetterPattern` (Swift + injected JS, tested on both sides); file path renders a text-only PDF on device via `CoverLetterPDF`. The kind-aware `findDocumentInput` also closed a latent bug — the resume's accept-based fallback could land it in a cover-letter slot. Voice samples prefer prior letters over essay answers | M | S-1 |
 | S-4 | Resume versions + per-job tailoring + on-device PDF render (`ImageRenderer`, same muscle as `CarouselCardTemplates`). Unlimited versions, base never mutated | L | S-2, S-5 |
 | S-5 | Multiple resumes: `resume_uploads` already stores one row per upload; only `fetchLatestResume`'s `limit=1` makes it singular. Add default + picker | S | — |
 | S-6 | Candidate-side tracker depth: candidate-editable status, interview date, follow-up. **Must not** reuse `application_notes` — that table is employer-only by RLS design (AUDIT P1-9) | M | — |

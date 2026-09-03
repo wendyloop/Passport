@@ -70,6 +70,64 @@ final class ATSAutofillPolicyTests: XCTestCase {
         return context.evaluateScript(js)?.toBool() ?? false
     }
 
+    // S-3: the pattern is shared by Swift and the injected engine, and both
+    // sides must agree — one routes a textarea to the letter generator, the
+    // other keeps the resume out of a cover-letter file input.
+    private func injectedCoverLetterMatches(_ label: String) -> Bool {
+        let context = JSContext()!
+        let js = """
+        (function() {
+          \(ATSAutofillPolicy.coverLetterPatternJS)
+          return COVER_LETTER_RE.test('\(label)') === true;
+        })()
+        """
+        return context.evaluateScript(js)?.toBool() ?? false
+    }
+
+    func testCoverLetterLabelsAreRecognisedOnBothSides() {
+        // Every separator an ATS actually uses, plus the norm()'d form.
+        let hits = [
+            "Cover Letter", "cover letter", "Cover-Letter",
+            "cover_letter", "coverLetter", "coverletter",
+            "Upload your cover letter (optional)",
+        ]
+        for label in hits {
+            XCTAssertTrue(
+                ATSAutofillPolicy.isCoverLetterLabel(label),
+                "Swift policy should match \(label)"
+            )
+            XCTAssertTrue(
+                injectedCoverLetterMatches(label),
+                "injected regex should match \(label)"
+            )
+        }
+    }
+
+    func testResumeLabelsAreNotCoverLetters() {
+        // A false positive here sends the resume nowhere and drops a letter in
+        // the resume slot, so the negatives matter as much as the hits.
+        for label in ["Resume", "Resume / CV", "Upload CV", "Portfolio", "Letter of recommendation", ""] {
+            XCTAssertFalse(
+                ATSAutofillPolicy.isCoverLetterLabel(label),
+                "Swift policy should not match \(label)"
+            )
+        }
+        for label in ["Resume", "Resume / CV", "Upload CV", "Portfolio", "Letter of recommendation"] {
+            XCTAssertFalse(
+                injectedCoverLetterMatches(label),
+                "injected regex should not match \(label)"
+            )
+        }
+    }
+
+    // No `g` flag: a global regex carries lastIndex between .test() calls and
+    // would return alternating results for the same label.
+    func testInjectedCoverLetterRegexIsStateless() {
+        for _ in 0..<3 {
+            XCTAssertTrue(injectedCoverLetterMatches("Cover Letter"))
+        }
+    }
+
     func testInjectedJSGateMatchesPolicy() {
         let allowed = [
             "boards.greenhouse.io", "jobs.lever.co", "acme.wd5.myworkday.com",

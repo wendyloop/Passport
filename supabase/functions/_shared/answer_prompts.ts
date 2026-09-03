@@ -48,7 +48,7 @@ const VOICE_SOURCES = new Set(["human", "edited"]);
 // still leave room for the answer.
 const VOICE_MIN_CHARS = 120;
 const VOICE_MAX_CHARS = 1200;
-const VOICE_SAMPLE_COUNT = 3;
+export const VOICE_SAMPLE_COUNT = 3;
 
 export function selectVoiceSamples(
   rows: PriorAnswer[],
@@ -153,11 +153,16 @@ export type AnswerPromptInput = {
 // benefits, and EEO text.
 const JD_MAX_CHARS = 6000;
 
-export function buildUserPrompt(input: AnswerPromptInput): string {
-  const payload: Record<string, unknown> = {
-    QUESTION: input.question,
-    CHAR_LIMIT: input.charLimit ?? null,
-    TARGET_WORDS: targetWordCount(input.charLimit),
+// The job / resume / profile / voice bundle both answer and cover-letter
+// prompts are built from. Shared so the two can never drift apart on what
+// context the model actually sees.
+export function buildContextPayload(input: {
+  job: JobContext;
+  resume: unknown;
+  profile: unknown;
+  voiceSamples: PriorAnswer[];
+}): Record<string, unknown> {
+  return {
     JOB: {
       title: input.job.title ?? null,
       company: input.job.company ?? null,
@@ -170,6 +175,15 @@ export function buildUserPrompt(input: AnswerPromptInput): string {
       question: v.question_text,
       answer: v.answer,
     })),
+  };
+}
+
+export function buildUserPrompt(input: AnswerPromptInput): string {
+  const payload: Record<string, unknown> = {
+    QUESTION: input.question,
+    CHAR_LIMIT: input.charLimit ?? null,
+    TARGET_WORDS: targetWordCount(input.charLimit),
+    ...buildContextPayload(input),
   };
   if (input.prior) {
     payload.PRIOR_QUESTION = input.prior.question_text;
@@ -233,4 +247,71 @@ export function enforceCharLimit(answer: string, charLimit?: number | null): str
   );
   if (lastStop > charLimit * 0.5) return clipped.slice(0, lastStop + 1).trim();
   return clipped.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Cover letters (S-3)
+// ---------------------------------------------------------------------------
+
+// A letter is not a long essay answer. It has a fixed job — connect this
+// person to this posting — and a shape recruiters expect, so the structure is
+// prescribed rather than left to the model.
+export function coverLetterSystemPrompt(): string {
+  return `Write a cover letter for this application.
+
+STRUCTURE - three paragraphs, 250-350 words total:
+1. Why this company and this role specifically. Reference something real from
+   the job description. No generic praise of the company.
+2. The strongest evidence from the resume that maps to what the role asks for.
+   Concrete: what they built, what changed, what scale.
+3. A short close. What they are asking for, without groveling.
+
+${GROUNDING}
+
+${VOICE}
+
+${STYLE}
+
+- Never open with "I am writing to apply for" or "I am excited to apply".
+- Never repeat the company's own marketing language back at them.
+- No greeting line and no sign-off: forms and email templates add their own,
+  and a letter carrying a second "Dear Hiring Manager" reads as a paste error.`;
+}
+
+export const COVER_LETTER_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["body", "opening_hook", "facts_used"],
+  properties: {
+    body: { type: "string" },
+    // Surfaced so the candidate can see what specific hook was used without
+    // reading the whole draft — the fastest way to spot a generic letter.
+    opening_hook: { type: "string" },
+    facts_used: { type: "array", items: { type: "string" } },
+  },
+};
+
+export function buildCoverLetterPrompt(input: {
+  job: JobContext;
+  resume: unknown;
+  profile: unknown;
+  voiceSamples: PriorAnswer[];
+}): string {
+  return JSON.stringify(buildContextPayload(input), null, 2);
+}
+
+// A generated letter that leads with the banned opener, or that never names
+// the company, is generic — the exact failure this feature exists to avoid.
+// Cheap to check, and worth failing loudly rather than shipping slop.
+export function coverLetterLooksGeneric(body: string, company?: string | null): boolean {
+  const text = (body ?? "").trim().toLowerCase();
+  if (!text) return true;
+  if (/^(i am writing to apply|i am excited to apply|to whom it may concern)/.test(text)) {
+    return true;
+  }
+  const name = (company ?? "").trim().toLowerCase();
+  // Only a meaningful test for a real company name; two-letter names and empty
+  // strings would match anything.
+  if (name.length > 2 && !text.includes(name)) return true;
+  return false;
 }

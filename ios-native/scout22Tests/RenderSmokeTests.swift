@@ -123,4 +123,47 @@ final class RenderSmokeTests: XCTestCase {
         XCTAssertGreaterThan(unwrapped.size.width, 300)
     }
 
+
+    // MARK: - S-3 cover letter PDF
+
+    func testCoverLetterPDFRendersRealBytes() {
+        let data = CoverLetterPDF.render(
+            body: "Ramp's spend controls caught my eye.\n\nI built the ledger at Acme.",
+            candidateName: "Wendy Shi"
+        )
+        XCTAssertNotNil(data)
+        // %PDF- magic; anything else is not a file an ATS will accept.
+        let prefix = data.map { String(decoding: $0.prefix(5), as: UTF8.self) }
+        XCTAssertEqual(prefix, "%PDF-")
+    }
+
+    func testCoverLetterPDFRefusesEmptyBodies() {
+        XCTAssertNil(CoverLetterPDF.render(body: "", candidateName: "Wendy Shi"))
+        XCTAssertNil(CoverLetterPDF.render(body: "   \n  ", candidateName: nil))
+    }
+
+    // A long letter must paginate rather than silently clip at one page.
+    func testCoverLetterPDFPaginatesLongBodies() {
+        let long = String(repeating: "This is a sentence about the role. ", count: 400)
+        let data = CoverLetterPDF.render(body: long, candidateName: "Wendy Shi")
+        XCTAssertNotNil(data)
+        let short = CoverLetterPDF.render(body: "One line.", candidateName: "Wendy Shi")
+        XCTAssertGreaterThan(data?.count ?? 0, short?.count ?? 0)
+    }
+
+    func testCoverLetterFileNameIsUploaderSafe() {
+        XCTAssertEqual(
+            CoverLetterPDF.fileName(candidateName: "Wendy Shi", companyName: "Ramp"),
+            "Wendy_Shi_Ramp_Cover_Letter.pdf"
+        )
+        // Punctuation some uploaders reject outright.
+        XCTAssertEqual(
+            CoverLetterPDF.fileName(candidateName: "O'Brien-Smith", companyName: "A&B, Inc."),
+            "OBrienSmith_AB_Inc_Cover_Letter.pdf"
+        )
+        XCTAssertEqual(
+            CoverLetterPDF.fileName(candidateName: nil, companyName: nil),
+            "Cover_Letter.pdf"
+        )
+    }
 }
