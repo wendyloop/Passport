@@ -311,6 +311,10 @@ struct ParsedResumeDetails: Codable, Equatable {
         let startDate: String?
         let endDate: String?
         let isCurrent: Bool?
+        /// S-4: the accomplishment lines under this role — what tailoring
+        /// rewrites. Must be present here or a profile-editor save would
+        /// write the employer back without them.
+        let bullets: [String]
 
         enum CodingKeys: String, CodingKey {
             case company
@@ -318,6 +322,35 @@ struct ParsedResumeDetails: Codable, Equatable {
             case startDate = "start_date"
             case endDate = "end_date"
             case isCurrent = "is_current"
+            case bullets
+        }
+
+        init(
+            company: String? = nil,
+            title: String? = nil,
+            startDate: String? = nil,
+            endDate: String? = nil,
+            isCurrent: Bool? = nil,
+            bullets: [String] = []
+        ) {
+            self.company = company
+            self.title = title
+            self.startDate = startDate
+            self.endDate = endDate
+            self.isCurrent = isCurrent
+            self.bullets = bullets
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            company = try c.decodeIfPresent(String.self, forKey: .company)
+            title = try c.decodeIfPresent(String.self, forKey: .title)
+            startDate = try c.decodeIfPresent(String.self, forKey: .startDate)
+            endDate = try c.decodeIfPresent(String.self, forKey: .endDate)
+            isCurrent = try c.decodeIfPresent(Bool.self, forKey: .isCurrent)
+            // Absent on every resume parsed before S-4; those re-parse from
+            // parsed_text rather than needing a re-upload.
+            bullets = try c.decodeIfPresent([String].self, forKey: .bullets) ?? []
         }
     }
 

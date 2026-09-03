@@ -439,13 +439,26 @@ final class CandidateService {
     // Editor-driven corrections to the parsed resume (experience/education/
     // skills shown on the profile). Owner-scoped by RLS.
     func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {
-        let body: [String: AnyEncodable] = ["parsed_json": AnyEncodable(details)]
-        _ = try await transport.patchSingle(
-            path: "resume_uploads",
-            query: [("id", "eq.\(resumeID)")],
-            body: body,
-            session: session
-        ) as EmptyPayload
+        // Merges rather than replaces. A direct PATCH of parsed_json wrote the
+        // four keys ParsedResumeDetails models and dropped everything else the
+        // parser had extracted — including, after S-4, the bullets the
+        // candidate was about to tailor.
+        let request = try transport.makeRestRequest(
+            path: "rpc/update_resume_parsed_details",
+            method: "POST",
+            accessToken: session.accessToken,
+            body: [
+                "p_resume_id": AnyEncodable(resumeID),
+                "p_patch": AnyEncodable(details)
+            ]
+        )
+        _ = try await transport.executeData(request)
+    }
+
+    /// S-4: re-parse from the text already on file, no re-upload needed.
+    /// Resumes parsed before bullets existed in the schema come back with them.
+    func reparseResume(resumeID: String, session: AuthSession) async throws {
+        try await invokeParseResume(resumeID: resumeID, rawText: nil, session: session)
     }
 
     // MARK: - Matching (M-F)

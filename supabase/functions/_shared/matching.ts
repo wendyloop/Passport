@@ -36,7 +36,7 @@ export type ResumeEmbeddingSource = {
   current_company?: string;
   years_experience?: string;
   field_of_study?: string;
-  employers?: Array<{ company?: string; title?: string }>;
+  employers?: Array<{ company?: string; title?: string; bullets?: string[] }>;
   education?: Array<{ school?: string; degree?: string; field_of_study?: string }>;
   skills?: string[];
 };
@@ -49,6 +49,14 @@ export function buildResumeEmbeddingText(parsed: ResumeEmbeddingSource): string 
     .map((e) => [e.title?.trim(), e.company?.trim()].filter(Boolean).join(" at "))
     .filter(Boolean);
   if (employers.length) parts.push(`experience: ${employers.join("; ")}`);
+  // S-4: bullets say what the person actually DID, which is what a job
+  // description mostly describes. Titles and companies alone leave the resume
+  // embedding thin next to the JD it is compared against. Capped so one
+  // verbose role cannot crowd out the rest of the document.
+  const bullets = (parsed.employers ?? [])
+    .flatMap((e) => (e.bullets ?? []).map((b) => b?.trim()).filter(Boolean))
+    .slice(0, 40);
+  if (bullets.length) parts.push(`work: ${bullets.join(" ")}`);
   const education = (parsed.education ?? [])
     .map((e) => [e.degree?.trim(), e.field_of_study?.trim(), e.school?.trim()].filter(Boolean).join(" "))
     .filter(Boolean);

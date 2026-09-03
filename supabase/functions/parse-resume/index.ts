@@ -52,6 +52,10 @@ type ParsedResume = {
     start_date: string;
     end_date: string;
     is_current: boolean;
+    // S-4: the accomplishment lines under each role. Without these there is
+    // nothing to tailor — a rewrite pass needs the sentences themselves, and
+    // company/title/dates are exactly the fields it must never touch.
+    bullets: string[];
   }>;
   education: Array<{
     school: string;
@@ -106,10 +110,24 @@ Deno.serve(async (request) => {
 
     const body = await request.json().catch(() => ({}));
     const resumeId = body.resumeId as string | undefined;
-    const rawText = (body.rawText as string | undefined)?.trim() ?? "";
+    let rawText = (body.rawText as string | undefined)?.trim() ?? "";
 
     if (!resumeId) {
       return jsonResponse({ error: "resumeId is required" }, 400);
+    }
+
+    // S-4: re-parse without a re-upload. parsed_text has been stored since
+    // S-2, so a resume parsed by an older schema (no bullets) can be brought
+    // up to date from the text already on file — the client does not have to
+    // re-extract from the PDF, and the candidate does not have to do anything.
+    if (!rawText) {
+      const { data: stored } = await adminClient
+        .from("resume_uploads")
+        .select("parsed_text")
+        .eq("id", resumeId)
+        .eq("profile_id", user.id)
+        .maybeSingle();
+      rawText = (stored?.parsed_text ?? "").trim();
     }
 
     // No text → mark for manual review; don't burn an LLM call on nothing.
@@ -235,14 +253,22 @@ async function extractWithLLM(rawText: string): Promise<ParsedResume> {
     "return an empty string (or empty array). years_experience is an " +
     "integer-as-string ('5'), graduation_year is YYYY. Dates in employers/" +
     "education are YYYY-MM or YYYY when month is unknown. is_current is " +
-    "true only if the resume explicitly says Present/Current. Return JSON.";
+    "true only if the resume explicitly says Present/Current. " +
+    // S-4: bullets are what tailoring rewrites, so they must come back as the
+    // resume wrote them. A paraphrase here would be invisibly baked in before
+    // the tailoring pass ever runs, and the {original, tailored} diff the
+    // candidate reviews would be a diff against text they never wrote.
+    "For each employer, copy its accomplishment bullets VERBATIM into " +
+    "bullets - do not summarise, merge, reorder, or reword them, and drop " +
+    "the leading bullet character. An employer with no bullets gets []. " +
+    "Return JSON.";
 
   return await callStructured<ParsedResume>({
     systemPrompt,
     userPrompt: rawText.slice(0, 24_000),
     schemaName: "parsed_resume",
     schema: SCHEMA,
-    maxOutputTokens: 1500,
+    maxOutputTokens: 3000,
     timeoutMs: OPENAI_TIMEOUT_MS,
   });
 }
@@ -287,13 +313,14 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["company", "title", "start_date", "end_date", "is_current"],
+        required: ["company", "title", "start_date", "end_date", "is_current", "bullets"],
         properties: {
           company:    { type: "string" },
           title:      { type: "string" },
           start_date: { type: "string" },
           end_date:   { type: "string" },
           is_current: { type: "boolean" },
+          bullets:    { type: "array", maxItems: 12, items: { type: "string" } },
         },
       },
     },

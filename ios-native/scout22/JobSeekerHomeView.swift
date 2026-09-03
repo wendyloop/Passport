@@ -2628,7 +2628,8 @@ private struct CandidateProfileEditor: View {
                             company: $0.company ?? "",
                             start: $0.startDate ?? "",
                             end: $0.endDate ?? "",
-                            isCurrent: $0.isCurrent ?? false
+                            isCurrent: $0.isCurrent ?? false,
+                            bullets: $0.bullets
                         )
                     }
                     editableEducation = (parsed?.education ?? []).map {
@@ -2848,7 +2849,8 @@ private struct CandidateProfileEditor: View {
                 title: title.isEmpty ? nil : title,
                 startDate: start.isEmpty ? nil : start,
                 endDate: entry.isCurrent || end.isEmpty ? nil : end,
-                isCurrent: entry.isCurrent
+                isCurrent: entry.isCurrent,
+                bullets: entry.bullets
             )
         }
         let education = editableEducation.compactMap { entry -> ParsedResumeDetails.Education? in
@@ -3557,6 +3559,11 @@ private struct EditableExperienceEntry: Identifiable {
     var start = ""
     var end = ""
     var isCurrent = false
+    /// S-4: carried through the editor untouched. The form does not show
+    /// bullets, but it rebuilds the whole employers array on save — so
+    /// without holding them here, editing a job title would erase the
+    /// accomplishment lines tailoring depends on.
+    var bullets: [String] = []
 }
 
 private struct EditableEducationEntry: Identifiable {

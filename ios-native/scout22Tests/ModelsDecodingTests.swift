@@ -284,4 +284,34 @@ final class ModelsDecodingTests: XCTestCase {
         let r = try decoder.decode(ResumeUploadRecord.self, from: json)
         XCTAssertEqual(r.displayName, "cv.pdf")
     }
+
+    // MARK: - S-4 resume bullets
+
+    func testEmployerBulletsRoundTripAndDefaultWhenAbsent() throws {
+        let decoder = JSONDecoder()
+        let withBullets = """
+        {"current_title":"Engineer","skills":[],"education":[],
+         "employers":[{"company":"Acme","title":"SWE","start_date":"2024-01",
+         "end_date":"","is_current":true,
+         "bullets":["Built the ledger","Cut p99 by 40%"]}]}
+        """.data(using: .utf8)!
+        let a = try decoder.decode(ParsedResumeDetails.self, from: withBullets)
+        XCTAssertEqual(a.employers.first?.bullets, ["Built the ledger", "Cut p99 by 40%"])
+
+        // Every resume parsed before S-4 has no bullets key at all; those must
+        // decode rather than throwing, and re-parse from stored text later.
+        let legacy = """
+        {"current_title":"Engineer","skills":[],"education":[],
+         "employers":[{"company":"Acme","title":"SWE","start_date":"2024-01",
+         "end_date":"","is_current":true}]}
+        """.data(using: .utf8)!
+        let b = try decoder.decode(ParsedResumeDetails.self, from: legacy)
+        XCTAssertEqual(b.employers.first?.bullets, [])
+
+        // Round trip: encoding must carry bullets back out, or the profile
+        // editor's save erases them.
+        let reencoded = try JSONEncoder().encode(a)
+        let c = try decoder.decode(ParsedResumeDetails.self, from: reencoded)
+        XCTAssertEqual(c.employers.first?.bullets, ["Built the ledger", "Cut p99 by 40%"])
+    }
 }
