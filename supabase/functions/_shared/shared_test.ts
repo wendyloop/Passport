@@ -37,6 +37,7 @@ import {
 import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
 import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
+import { harvestFromApplyURLs } from "./ats/harvest.ts";
 import { buildMatchIndex, groupPendingJobs } from "./ats/enrich_targets.ts";
 import type { NormalizedJob } from "./ats/models.ts";
 import { feedIsAuthoritative, selectVanishedJobIds } from "./ats/vanished.ts";
@@ -1187,4 +1188,94 @@ Deno.test("an override does not smuggle a claim past the fabrication check", () 
   // The override is the candidate's own words about their own history, so it
   // is not policed — but it is still traceable to a real source bullet.
   assertEquals(overridden.employment[0].bullets[0].original, original);
+});
+
+// ---------------------------------------------------------------------------
+// C-1 — harvesting ATS coordinates from a company's own job URLs
+// ---------------------------------------------------------------------------
+
+Deno.test("harvestFromApplyURLs resolves a company posting on one board", () => {
+  // Real stragglers found in production: companies that came through a VC
+  // board with no ATS hint, whose jobs carried the answer all along.
+  const verdict = harvestFromApplyURLs([
+    "https://boards.greenhouse.io/coalition/jobs/4665925005",
+    "https://boards.greenhouse.io/coalition/jobs/4665925006",
+  ]);
+  assertEquals(verdict.kind, "resolved");
+  if (verdict.kind === "resolved") {
+    assertEquals(verdict.resolution.ats_type, "greenhouse");
+    assertEquals(verdict.resolution.ats_token, "coalition");
+  }
+});
+
+Deno.test("harvestFromApplyURLs handles the EU shards and dotted tokens", () => {
+  const lever = harvestFromApplyURLs([
+    "https://jobs.eu.lever.co/silverfin/2a14dba0-4da4-40d7-bcf4-59b88db565c9",
+  ]);
+  assertEquals(lever.kind, "resolved");
+  if (lever.kind === "resolved") assertEquals(lever.resolution.ats_token, "silverfin");
+
+  // Ashby tokens are sometimes a full domain. Stripping the dot would query a
+  // board that does not exist.
+  const ashby = harvestFromApplyURLs([
+    "https://jobs.ashbyhq.com/datasnipper.com/02a36783-68f6-4499-b7bb-a79ff41f05e6",
+  ]);
+  assertEquals(ashby.kind, "resolved");
+  if (ashby.kind === "resolved") assertEquals(ashby.resolution.ats_token, "datasnipper.com");
+});
+
+Deno.test("harvestFromApplyURLs ignores tracking params on the same board", () => {
+  // Observed in production: a Lever URL decorated with a Sequoia source param.
+  const verdict = harvestFromApplyURLs([
+    "https://jobs.eu.lever.co/xentral/464c91df?lever-source%5B%5D=jobs.sequoiacap.com",
+    "https://jobs.eu.lever.co/xentral/aaaaaaaa",
+  ]);
+  assertEquals(verdict.kind, "resolved");
+  if (verdict.kind === "resolved") assertEquals(verdict.resolution.ats_token, "xentral");
+});
+
+// THE failure that matters. Writing a token a company does not own points the
+// per-company crawler at someone else's board, and every posting it returns is
+// attributed to the wrong employer.
+Deno.test("harvestFromApplyURLs refuses to guess when boards disagree", () => {
+  assertEquals(
+    harvestFromApplyURLs([
+      "https://boards.greenhouse.io/acme/jobs/1",
+      "https://jobs.lever.co/othercorp/abc",
+    ]).kind,
+    "ambiguous",
+  );
+  // Same provider, different token, is just as wrong.
+  assertEquals(
+    harvestFromApplyURLs([
+      "https://boards.greenhouse.io/acme/jobs/1",
+      "https://boards.greenhouse.io/acquired-sub/jobs/2",
+    ]).kind,
+    "ambiguous",
+  );
+});
+
+Deno.test("harvestFromApplyURLs reports unresolved rather than resolving to nothing", () => {
+  assertEquals(harvestFromApplyURLs([]).kind, "unresolved");
+  assertEquals(harvestFromApplyURLs([null, undefined, ""]).kind, "unresolved");
+  // Bespoke careers sites and adapter-less ATS are unresolved, NOT ambiguous —
+  // the caller counts those separately and they are not a data problem.
+  assertEquals(
+    harvestFromApplyURLs([
+      "https://careers.acme.com/jobs/123",
+      "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/123",
+    ]).kind,
+    "unresolved",
+  );
+});
+
+// An unrecognised URL alongside a recognised one must not block the harvest:
+// plenty of companies have one bespoke listing among their ATS postings.
+Deno.test("harvestFromApplyURLs resolves through unrecognised noise", () => {
+  const verdict = harvestFromApplyURLs([
+    "https://careers.acme.com/apply",
+    "https://boards.greenhouse.io/acme/jobs/1",
+  ]);
+  assertEquals(verdict.kind, "resolved");
+  if (verdict.kind === "resolved") assertEquals(verdict.resolution.ats_token, "acme");
 });
