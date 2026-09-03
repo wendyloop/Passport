@@ -153,6 +153,12 @@ Deno.serve(async (request) => {
         parsed_school_name: legacySchool,
         parsed_employers: legacyEmployers,
         parsed_json: parsed,
+        // S-2: keep the document text. parsed_json holds at most 30 skills
+        // plus titles and education — no accomplishment bullets — so it is a
+        // thin surface for keyword matching and no surface at all for the
+        // bullet tailoring in S-4. The PDF is already in the `resumes`
+        // bucket, so this is the same data under the same owner-only RLS.
+        parsed_text: rawText,
       })
       .eq("id", resumeId)
       .eq("profile_id", user.id)

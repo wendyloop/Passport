@@ -13,6 +13,13 @@ import { founderProfileGateReason } from "./founder_eligibility.ts";
 import { buildJobEmbeddingText, buildResumeEmbeddingText, mapSimilarityToScore } from "./matching.ts";
 import { isSensitiveLabel, matchCanonical, normalizeCanonicalValue } from "./profile_fields.ts";
 import {
+  buildResumeHaystack,
+  diffKeywords,
+  haystackContains,
+  normalizeText,
+  rankMissing,
+} from "./keyword_match.ts";
+import {
   ADAPT_FLOOR,
   enforceCharLimit,
   pickMode,
@@ -849,4 +856,106 @@ Deno.test("truncate marks the cut so the model knows the JD is partial", () => {
   assertEquals(truncate(null, 10), null);
   assertEquals(truncate("short", 10), "short");
   assertEquals(truncate("abcdefghijkl", 5), "abcde\n[truncated]");
+});
+
+// ---------------------------------------------------------------------------
+// S-2 — resume <-> JD keyword gap
+// ---------------------------------------------------------------------------
+
+Deno.test("normalizeText survives the symbols that matter in skill names", () => {
+  // Naive punctuation stripping collapses C++ and C# to "c", which then
+  // matches any resume containing the letter c as a word.
+  assertEquals(normalizeText("C++"), "cplusplus");
+  assertEquals(normalizeText("C#"), "csharp");
+  assertEquals(normalizeText(".NET"), "dotnet");
+  assertEquals(normalizeText("Node.js"), "nodejs");
+  assertEquals(normalizeText("React.js"), "reactjs");
+  // ".NET" must not fuse into the word before it, or ASP.NET matches nothing.
+  assertEquals(normalizeText("ASP.NET"), "asp dotnet");
+  assertEquals(normalizeText(".NET"), "dotnet");
+  assertEquals(normalizeText("CI/CD"), "ci cd");
+  assertEquals(normalizeText("  Machine   Learning  "), "machine learning");
+  assertEquals(normalizeText(null), "");
+});
+
+// THE false positive that makes these tools untrustworthy: counting "Java" as
+// covered because the resume says "JavaScript".
+Deno.test("haystackContains matches whole tokens, never substrings", () => {
+  const haystack = buildResumeHaystack({ parsedText: "Built services in JavaScript and Go" });
+  assertEquals(haystackContains(haystack, "JavaScript"), true);
+  assertEquals(haystackContains(haystack, "Java"), false);
+  assertEquals(haystackContains(haystack, "Go"), true);
+  assertEquals(haystackContains(haystack, "Golang"), false);
+});
+
+Deno.test("haystackContains resolves aliases and simple plurals", () => {
+  const haystack = buildResumeHaystack({ parsedText: "Postgres, k8s, AWS, and React" });
+  assertEquals(haystackContains(haystack, "PostgreSQL"), true);
+  assertEquals(haystackContains(haystack, "Kubernetes"), true);
+  assertEquals(haystackContains(haystack, "Amazon Web Services"), true);
+  assertEquals(haystackContains(haystack, "React.js"), true);
+  assertEquals(haystackContains(haystack, "Kafka"), false);
+});
+
+Deno.test("buildResumeHaystack falls back to parsed_json when text is absent", () => {
+  // Resumes parsed before parsed_text existed. Thin, but not nothing.
+  const haystack = buildResumeHaystack({
+    parsedText: null,
+    parsedJson: {
+      current_title: "Data Engineer",
+      skills: ["Airflow", "Python"],
+      employers: [{ title: "Analyst", company: "Stripe" }],
+      education: [{ degree: "BS", field_of_study: "Statistics", school: "UCLA" }],
+    },
+  });
+  assertEquals(haystackContains(haystack, "Airflow"), true);
+  assertEquals(haystackContains(haystack, "Data Engineer"), true);
+  assertEquals(haystackContains(haystack, "Statistics"), true);
+  assertEquals(haystackContains(haystack, "Kubernetes"), false);
+});
+
+Deno.test("diffKeywords weights required above preferred", () => {
+  const resume = { parsedText: "Python and SQL" };
+  const gap = diffKeywords([
+    { term: "Python", importance: "required" },
+    { term: "SQL", importance: "required" },
+    { term: "Rust", importance: "preferred" },
+  ], resume);
+  // 2+2 earned of 2+2+1 total.
+  assertEquals(gap.coverage, 80);
+  assertEquals(gap.requiredTotal, 2);
+  assertEquals(gap.requiredCovered, 2);
+  assertEquals(gap.missing.map((m) => m.term), ["Rust"]);
+
+  // Missing a required term costs far more than missing a preferred one.
+  const worse = diffKeywords([
+    { term: "Python", importance: "required" },
+    { term: "Rust", importance: "required" },
+  ], resume);
+  assertEquals(worse.coverage, 50);
+});
+
+Deno.test("diffKeywords dedupes terms that differ only in casing", () => {
+  const gap = diffKeywords([
+    { term: "Python", importance: "required" },
+    { term: "python", importance: "required" },
+  ], { parsedText: "Python" });
+  assertEquals(gap.covered.length, 1);
+  assertEquals(gap.coverage, 100);
+});
+
+Deno.test("diffKeywords reports 0 rather than dividing by zero", () => {
+  const gap = diffKeywords([], { parsedText: "anything" });
+  assertEquals(gap.coverage, 0);
+  assertEquals(gap.covered.length, 0);
+  assertEquals(gap.missing.length, 0);
+});
+
+Deno.test("rankMissing puts required gaps before preferred ones", () => {
+  const ranked = rankMissing([
+    { term: "Rust", importance: "preferred", covered: false },
+    { term: "Kafka", importance: "required", covered: false },
+    { term: "Airflow", importance: "required", covered: false },
+  ]);
+  assertEquals(ranked.map((r) => r.term), ["Airflow", "Kafka", "Rust"]);
 });

@@ -1385,3 +1385,40 @@ struct AnswerSuggestion: Codable {
     }
 }
 
+/// S-2: how a job's stated requirements line up with this candidate's resume.
+///
+/// Deliberately explainable. `job_match_scores` gives a better similarity
+/// number but nothing actionable; this one names the terms, so "72%" comes
+/// with the three things to fix.
+struct KeywordGapReport: Codable {
+    struct MissingTerm: Codable, Identifiable, Hashable {
+        let term: String
+        /// "required" | "preferred". Required gaps are what screen people out.
+        let importance: String
+
+        var id: String { term }
+        var isRequired: Bool { importance != "preferred" }
+    }
+
+    /// False when there is nothing worth showing — no resume on file, a job
+    /// with no real description (roughly 16k of them), or a failed extraction.
+    /// `reason` says which.
+    let available: Bool
+    let reason: String?
+    let coverage: Int?
+    let requiredTotal: Int?
+    let requiredCovered: Int?
+    let covered: [String]?
+    let missing: [MissingTerm]?
+    /// False for resumes parsed before parsed_text was stored. Those match
+    /// against ~30 extracted skills only, so the gaps over-report and the UI
+    /// says so instead of presenting the number as authoritative.
+    let resumeTextAvailable: Bool?
+
+    var requiredGaps: [MissingTerm] { (missing ?? []).filter(\.isRequired) }
+
+    /// Simplify tells people to aim for 70% before applying. Same threshold,
+    /// same reasoning: below it the ATS keyword filter is a real risk.
+    var isStrong: Bool { (coverage ?? 0) >= 70 }
+}
+

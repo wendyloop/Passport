@@ -369,6 +369,19 @@ final class CandidateService {
         return try await transport.execute(request, decode: AnswerSuggestion.self)
     }
 
+    /// S-2: the keyword gap for one job. The job half is cached server-side
+    /// after the first candidate opens it, so this is usually one cheap
+    /// round trip with no model call at all.
+    func fetchKeywordGap(jobID: String, session: AuthSession) async throws -> KeywordGapReport {
+        let body: [String: AnyEncodable] = ["jobId": AnyEncodable(jobID)]
+        let request = try transport.makeFunctionRequest(
+            name: "resume-job-keywords",
+            accessToken: session.accessToken,
+            body: body
+        )
+        return try await transport.execute(request, decode: KeywordGapReport.self)
+    }
+
     // Editor-driven corrections to the parsed resume (experience/education/
     // skills shown on the profile). Owner-scoped by RLS.
     func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {

@@ -215,6 +215,10 @@ struct ApplyDrawerView: View {
     /// Drives the review banner; reused prior answers never land here.
     @State private var aiDraftedQuestions: [String] = []
     @State private var aiBannerDismissed = false
+    /// S-2 keyword gap. Loaded once alongside the prefill; nil until it lands
+    /// or when the backend has nothing worth showing.
+    @State private var keywordGap: KeywordGapReport?
+    @State private var gapCardDismissed = false
 
     var body: some View {
         NavigationStack {
@@ -260,6 +264,11 @@ struct ApplyDrawerView: View {
             .overlay(alignment: .top) {
                 if !aiDraftedQuestions.isEmpty, !aiBannerDismissed, !submittedSuccessfully {
                     aiDraftBanner
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let gap = keywordGap, gap.available, !gapCardDismissed, !submittedSuccessfully {
+                    keywordGapCard(gap)
                 }
             }
             // Detection can miss on an unusual portal. If the candidate typed
@@ -366,6 +375,77 @@ struct ApplyDrawerView: View {
         return "We drafted \(aiDraftedQuestions.count) answers, including: \(trimmed)"
     }
 
+    /// What this posting asks for that the resume does not show. Shown before
+    /// the application is sent, because that is the only point where the
+    /// information can still change what the candidate does.
+    private func keywordGapCard(_ gap: KeywordGapReport) -> some View {
+        let missing = gap.missing ?? []
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("\(gap.coverage ?? 0)% keyword match")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(PassportTheme.textPrimary)
+
+                if let total = gap.requiredTotal, total > 0 {
+                    Text("· \(gap.requiredCovered ?? 0)/\(total) must-haves")
+                        .font(.system(size: 12))
+                        .foregroundStyle(PassportTheme.textMuted)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    gapCardDismissed = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(PassportTheme.textMuted)
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+
+            if missing.isEmpty {
+                Text("Your resume covers everything this posting asks for.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(PassportTheme.textMuted)
+            } else {
+                // Required gaps first — those are what screen people out.
+                Text("Not on your resume: " + missing.prefix(6).map(\.term).joined(separator: ", "))
+                    .font(.system(size: 12))
+                    .foregroundStyle(PassportTheme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // A resume parsed before parsed_text was stored matches against
+            // ~30 extracted skills only, so the gaps over-report. Say so
+            // rather than let the number read as authoritative.
+            if gap.resumeTextAvailable == false {
+                Text("Re-upload your resume for a more accurate read.")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(PassportTheme.accent)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    gap.isStrong ? Color.green.opacity(0.4) : PassportTheme.accent.opacity(0.45),
+                    lineWidth: 1
+                )
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
     private var submittedBanner: some View {
         VStack {
             Spacer()
@@ -398,11 +478,21 @@ struct ApplyDrawerView: View {
         async let prefillTask = fetchPrefill()
         async let eventTask = logEvent(type: "opened", applicationId: nil)
         async let resumeTask = fetchResume()
-        let (p, eid, r) = await (prefillTask, eventTask, resumeTask)
+        // Runs alongside the rest rather than after: on a cache miss this one
+        // costs a model call, and the prefill must not wait behind it.
+        async let gapTask = fetchKeywordGap()
+        let (p, eid, r, gap) = await (prefillTask, eventTask, resumeTask, gapTask)
         prefill = p
         eventId = eid
         resumeBase64 = r?.base64
         resumeFileName = r?.fileName
+        keywordGap = gap
+    }
+
+    /// Nil on any failure. The gap card is a nice-to-have next to the form
+    /// itself; nothing about applying should hinge on it.
+    private func fetchKeywordGap() async -> KeywordGapReport? {
+        try? await service.fetchKeywordGap(jobID: job.id, session: session)
     }
 
     /// Resume bytes for auto-attach. Capped: a resume larger than this is not a
