@@ -21,6 +21,11 @@ import {
 } from "./keyword_match.ts";
 import { coverLetterLooksGeneric } from "./answer_prompts.ts";
 import {
+  applyOverrides,
+  bulletKey,
+  checkFabrication,
+} from "./resume_tailor.ts";
+import {
   ADAPT_FLOOR,
   enforceCharLimit,
   pickMode,
@@ -1002,4 +1007,130 @@ Deno.test("coverLetterLooksGeneric requires the company to be named", () => {
   // skipped rather than allowed to pass everything silently.
   assertEquals(coverLetterLooksGeneric("Some real opening line.", null), false);
   assertEquals(coverLetterLooksGeneric("Some real opening line.", "X"), false);
+});
+
+// ---------------------------------------------------------------------------
+// S-4 — resume tailoring
+// ---------------------------------------------------------------------------
+
+Deno.test("bulletKey is stable across whitespace and casing", () => {
+  const a = bulletKey("Built the ledger service");
+  assertEquals(bulletKey("built  the   ledger service"), a);
+  assertEquals(bulletKey("  Built the ledger service  "), a);
+  assertEquals(bulletKey("BUILT THE LEDGER SERVICE"), a);
+  // Different sentences must not collide into one override.
+  assertEquals(bulletKey("Built the billing service") === a, false);
+});
+
+Deno.test("applyOverrides lets the candidate's own words win", () => {
+  const resume = {
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [
+        { key: "k1", original: "Built X", tailored: "Spearheaded X" },
+        { key: "k2", original: "Built Y", tailored: "Leveraged Y" },
+      ],
+    }],
+  };
+  const out = applyOverrides(resume, { k1: "Built X, which cut latency 40%" });
+  assertEquals(out.employment[0].bullets[0].tailored, "Built X, which cut latency 40%");
+  // Untouched bullets keep the model's rewrite.
+  assertEquals(out.employment[0].bullets[1].tailored, "Leveraged Y");
+  // A blank override is not an override.
+  assertEquals(applyOverrides(resume, { k1: "   " }).employment[0].bullets[0].tailored, "Spearheaded X");
+  assertEquals(applyOverrides(resume, null).employment[0].bullets[0].tailored, "Spearheaded X");
+});
+
+// This is the check that stands between the model and a document someone
+// sends to an employer under their own name.
+Deno.test("checkFabrication passes an honest rewrite", () => {
+  const source = [{ company: "Acme", title: "SWE", bullets: ["Built the ledger"] }];
+  const report = checkFabrication({
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{
+        key: bulletKey("Built the ledger"),
+        original: "Built the ledger",
+        tailored: "Built the ledger service in Go",
+      }],
+    }],
+  }, source);
+  assertEquals(report.ok, true);
+  assertEquals(report.inventedBullets.length, 0);
+});
+
+Deno.test("checkFabrication catches an invented employer", () => {
+  const source = [{ company: "Acme", title: "SWE", bullets: ["Built the ledger"] }];
+  const report = checkFabrication({
+    employment: [{ company: "Google", title: "SWE", bullets: [] }],
+  }, source);
+  assertEquals(report.ok, false);
+  assertEquals(report.addedEmployers, ["Google"]);
+});
+
+Deno.test("checkFabrication catches an inflated title", () => {
+  const source = [{ company: "Acme", title: "Engineer", bullets: ["Built the ledger"] }];
+  const report = checkFabrication({
+    employment: [{ company: "Acme", title: "Senior Staff Engineer", bullets: [] }],
+  }, source);
+  assertEquals(report.ok, false);
+  assertEquals(report.changedTitles.length, 1);
+});
+
+Deno.test("checkFabrication catches an invented bullet, even with a stolen key", () => {
+  const source = [{ company: "Acme", title: "SWE", bullets: ["Built the ledger"] }];
+  const realKey = bulletKey("Built the ledger");
+
+  // A bullet whose `original` was never in the resume.
+  const invented = checkFabrication({
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{
+        key: bulletKey("Led a team of 12"),
+        original: "Led a team of 12",
+        tailored: "Led a team of 12 engineers",
+      }],
+    }],
+  }, source);
+  assertEquals(invented.ok, false);
+  assertEquals(invented.inventedBullets.length, 1);
+
+  // And one that copies a REAL key onto fabricated text: the key must match
+  // the original it claims to hash, or it proves nothing.
+  const stolen = checkFabrication({
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{
+        key: realKey,
+        original: "Led a team of 12",
+        tailored: "Led a team of 12 engineers",
+      }],
+    }],
+  }, source);
+  assertEquals(stolen.ok, false);
+});
+
+Deno.test("checkFabrication allows dropping a role but reports it", () => {
+  const source = [
+    { company: "Acme", title: "SWE", bullets: ["Built the ledger"] },
+    { company: "Oldco", title: "Intern", bullets: ["Made coffee"] },
+  ];
+  const report = checkFabrication({
+    employment: [{
+      company: "Acme",
+      title: "SWE",
+      bullets: [{
+        key: bulletKey("Built the ledger"),
+        original: "Built the ledger",
+        tailored: "Built the ledger",
+      }],
+    }],
+  }, source);
+  // Omitting an irrelevant job is a legitimate tailoring move, not fabrication.
+  assertEquals(report.ok, true);
+  assertEquals(report.droppedEmployers, ["oldco"]);
 });
