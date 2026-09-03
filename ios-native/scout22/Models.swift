@@ -1500,3 +1500,67 @@ struct CoverLetterDraft: Codable {
     }
 }
 
+/// S-4: a resume rewritten for one posting.
+///
+/// `original` travels next to `tailored` on every bullet so the candidate can
+/// see exactly what changed, and so a fabricated line cannot hide behind a
+/// plausible rewrite. `key` is derived server-side from the original text and
+/// is what a candidate's own edit is filed under.
+struct TailoredResumeContent: Codable, Equatable {
+    struct Bullet: Codable, Equatable {
+        let key: String
+        let original: String
+        let tailored: String
+        let keywordsAdded: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case key, original, tailored
+            case keywordsAdded = "keywords_added"
+        }
+
+        var wasChanged: Bool {
+            original.trimmingCharacters(in: .whitespacesAndNewlines)
+                != tailored.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    struct Role: Codable, Equatable {
+        let company: String
+        let title: String
+        let dates: String?
+        let bullets: [Bullet]
+    }
+
+    let summary: String?
+    let skillsOrdered: [String]?
+    let employment: [Role]
+    let keywordsCovered: [String]?
+    let keywordsStillMissing: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case summary
+        case skillsOrdered = "skills_ordered"
+        case employment
+        case keywordsCovered = "keywords_covered"
+        case keywordsStillMissing = "keywords_still_missing"
+    }
+
+    /// Every bullet the model actually rewrote, for the review screen.
+    var changedBullets: [Bullet] {
+        employment.flatMap(\.bullets).filter(\.wasChanged)
+    }
+}
+
+/// Envelope from `tailor-resume`. `available: false` carries a `reason` —
+/// including "fabrication_detected", which is a refusal, not an error.
+struct TailorResumeResponse: Codable {
+    let available: Bool
+    let reason: String?
+    let versionId: String?
+    let content: TailoredResumeContent?
+    let keywordsCovered: [String]?
+    let keywordsStillMissing: [String]?
+    let droppedEmployers: [String]?
+    let needsReview: Bool?
+}
+

@@ -166,4 +166,97 @@ final class RenderSmokeTests: XCTestCase {
             "Cover_Letter.pdf"
         )
     }
+
+    // MARK: - S-4 resume PDF
+
+    private func sampleResumeContent(bullets: Int = 3) -> ResumePDF.Content {
+        ResumePDF.Content(
+            fullName: "Wendy Shi",
+            contactLine: "wendy@example.com · San Francisco, CA",
+            summary: "Engineer who ships payments infrastructure.",
+            roles: [
+                ResumePDF.Content.Role(
+                    company: "Acme",
+                    title: "Software Engineer",
+                    dates: "2024-01 – Present",
+                    bullets: (0..<bullets).map { "Built the ledger service, cutting p99 by \($0)0%" }
+                )
+            ],
+            education: [
+                ResumePDF.Content.School(school: "UCLA", degree: "BS", year: "2023")
+            ],
+            skills: ["Go", "PostgreSQL", "Kubernetes"]
+        )
+    }
+
+    func testResumePDFRendersRealBytes() {
+        let data = ResumePDF.render(sampleResumeContent())
+        XCTAssertNotNil(data)
+        let prefix = data.map { String(decoding: $0.prefix(5), as: UTF8.self) }
+        XCTAssertEqual(prefix, "%PDF-")
+    }
+
+    func testResumePDFRefusesAnEmptyResume() {
+        let empty = ResumePDF.Content(
+            fullName: "  ", contactLine: "", summary: nil,
+            roles: [], education: [], skills: []
+        )
+        XCTAssertNil(ResumePDF.render(empty))
+    }
+
+    // A resume with a long history must paginate, not clip. Silently dropping
+    // someone's earlier roles is the worst possible failure here.
+    func testResumePDFPaginatesLongHistories() {
+        let short = ResumePDF.render(sampleResumeContent(bullets: 2))
+        let long = ResumePDF.render(sampleResumeContent(bullets: 120))
+        XCTAssertNotNil(long)
+        XCTAssertGreaterThan(long?.count ?? 0, short?.count ?? 0)
+    }
+
+    func testResumePDFRendersFromATailoredVersion() throws {
+        let json = """
+        {"summary":"Payments engineer.","skills_ordered":["Go","Kafka"],
+         "employment":[{"company":"Acme","title":"SWE","dates":"2024 – Present",
+           "bullets":[{"key":"a1","original":"Built the ledger",
+                       "tailored":"Built the ledger service in Go",
+                       "keywords_added":["Go"]}]}],
+         "keywords_covered":["Go"],"keywords_still_missing":["Kafka"]}
+        """.data(using: .utf8)!
+        let tailored = try JSONDecoder().decode(TailoredResumeContent.self, from: json)
+        XCTAssertEqual(tailored.changedBullets.count, 1)
+
+        let content = ResumePDF.Content(
+            tailored: tailored,
+            fullName: "Wendy Shi",
+            contactLine: "wendy@example.com",
+            education: [ParsedResumeDetails.Education(
+                school: "UCLA", degree: "BS", fieldOfStudy: "CS", graduationYear: "2023"
+            )]
+        )
+        // The PDF must carry the TAILORED wording, not the original.
+        XCTAssertEqual(content.roles.first?.bullets.first, "Built the ledger service in Go")
+        XCTAssertEqual(content.education.first?.school, "UCLA")
+        XCTAssertNotNil(ResumePDF.render(content))
+    }
+
+    func testTailoredBulletChangeDetectionIgnoresWhitespace() throws {
+        let json = """
+        {"key":"a1","original":"  Built the ledger  ","tailored":"Built the ledger",
+         "keywords_added":[]}
+        """.data(using: .utf8)!
+        let bullet = try JSONDecoder().decode(TailoredResumeContent.Bullet.self, from: json)
+        // Same sentence, different padding: not a change worth showing.
+        XCTAssertFalse(bullet.wasChanged)
+    }
+
+    func testResumeFileNameIsUploaderSafe() {
+        XCTAssertEqual(
+            ResumePDF.fileName(candidateName: "Wendy Shi", companyName: "Ramp"),
+            "Wendy_Shi_Ramp_Resume.pdf"
+        )
+        XCTAssertEqual(
+            ResumePDF.fileName(candidateName: nil, companyName: nil),
+            "Resume.pdf"
+        )
+    }
 }

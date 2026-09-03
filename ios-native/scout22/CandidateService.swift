@@ -436,6 +436,25 @@ final class CandidateService {
         return try await transport.execute(request, decode: CoverLetterDraft.self)
     }
 
+    /// S-4: rewrite the resume for one posting. The base resume is untouched;
+    /// the result is a `resume_versions` row. A refusal for fabrication comes
+    /// back as `available: false, reason: "fabrication_detected"` — not an
+    /// error, a deliberate decision not to ship that document.
+    func tailorResume(
+        jobID: String,
+        resumeID: String? = nil,
+        session: AuthSession
+    ) async throws -> TailorResumeResponse {
+        var body: [String: AnyEncodable] = ["jobId": AnyEncodable(jobID)]
+        if let resumeID { body["resumeId"] = AnyEncodable(resumeID) }
+        let request = try transport.makeFunctionRequest(
+            name: "tailor-resume",
+            accessToken: session.accessToken,
+            body: body
+        )
+        return try await transport.execute(request, decode: TailorResumeResponse.self)
+    }
+
     // Editor-driven corrections to the parsed resume (experience/education/
     // skills shown on the profile). Owner-scoped by RLS.
     func updateResumeParsedDetails(resumeID: String, details: ParsedResumeDetails, session: AuthSession) async throws {
