@@ -4099,7 +4099,14 @@ struct HeartBurstView: View {
 
 enum ExperienceFilter: String, CaseIterable, Identifiable {
     case all
+    // C-5: internships and new-grad roles are DIFFERENT searches — a junior
+    // hunting a summer internship and a graduating senior hunting a first
+    // full-time job want disjoint sets — so they get their own options rather
+    // than being merged under one "Early career" chip. `earlyCareer` stays as
+    // the union for anyone who wants both.
     case earlyCareer
+    case internship
+    case newGrad
     case mid
     case senior
     case leadership
@@ -4110,6 +4117,8 @@ enum ExperienceFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all: return "Experience"
         case .earlyCareer: return "Early career"
+        case .internship: return "Internships"
+        case .newGrad: return "New grad"
         case .mid: return "Mid-level"
         case .senior: return "Senior"
         case .leadership: return "Leadership"
@@ -4120,6 +4129,8 @@ enum ExperienceFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all: return true
         case .earlyCareer: return job.experienceLevel == "intern" || job.experienceLevel == "entry"
+        case .internship: return job.experienceLevel == "intern"
+        case .newGrad: return job.experienceLevel == "entry"
         case .mid: return job.experienceLevel == "mid"
         case .senior: return job.experienceLevel == "senior" || job.experienceLevel == "staff"
         case .leadership: return job.experienceLevel == "exec"
@@ -4286,6 +4297,8 @@ struct FeedFilters: Equatable {
         switch experience {
         case .all: break
         case .earlyCareer: params.append(("experience_level", "in.(intern,entry)"))
+        case .internship: params.append(("experience_level", "eq.intern"))
+        case .newGrad: params.append(("experience_level", "eq.entry"))
         case .mid: params.append(("experience_level", "eq.mid"))
         case .senior: params.append(("experience_level", "in.(senior,staff)"))
         case .leadership: params.append(("experience_level", "eq.exec"))

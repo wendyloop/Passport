@@ -162,6 +162,38 @@ Build order: **Part 2 (S) → Part 3 (C) → Part 1 (D)**.
 are ever used as voice samples. Never feed model-generated text back in as a
 style exemplar — the corpus collapses to one voice within months.
 
+### ⚠ 2026-09-05 PIVOT — early career, not startups-only
+
+The audience that will actually record pitch videos is younger, so the content
+has to be too. **Startups stay a focus but stop being the focus**; interns,
+new grads and early career become the target.
+
+What the data says (measured 2026-09-05):
+
+- **Early career is 11.4% of the live feed** — 2,029 `entry` + **180 `intern`**
+  out of 19,379 active. Simplify carries ~2,722 active internships: ~15x.
+- Only **679 of 3,111 companies** have EVER posted an intern/entry role.
+- **19,346 of 19,379 active jobs have a generated carousel (99.8%)** — so every
+  surfaced job costs an LLM carousel plus an embedding. **Job volume is not
+  free**, and that rules out crawl-everything.
+
+Two consequences that reshape Part 3:
+
+1. **You cannot ship an early-career feed on the current corpus.** 180
+   internships is a list, not a feed. This needs a different COMPANY SET, not
+   a filter.
+2. **The crawler must filter at WRITE time.** Crawling one enterprise Workday
+   board for 40 internships would ingest ~3,000 jobs and generate ~3,000
+   carousels. `classifyExperience` is title-only and free, so it runs before
+   insert. Workday's API takes server-side facets, so there the filter can
+   move upstream and the other 2,960 are never downloaded at all.
+
+Also true, and load-bearing: the three token sources are NOT equivalent.
+`ingest-jobs` (VC boards) is the only one that adds new COMPANIES; C-1 harvest
+and C-2 probe only add coordinates to companies already held. So the company
+set stays bounded by the VC boards until an external seed lands — which is why
+C-9 is promoted below.
+
 ### Part 3 (C) — job coverage beyond VC boards — after Part 2
 
 Measured 2026-09-02 across Simplify's two public lists (34,901 postings /
@@ -180,11 +212,13 @@ read that named only the token list was wrong.
 | ~~C-0~~ | ✅ **measured 2026-09-03.** 3,104 companies: **1,246 with ATS coordinates** (ashby 591, greenhouse 484, lever 154, smartrecruiters 12, recruitee 5) and **1,857 with none** — of which 1,803 have a domain and 866 have no jobs at all. 38,514 jobs, 19,610 active | S | — |
 | ~~C-1~~ | ✅ **shipped 2026-09-03**, and **much smaller than assumed** — every job already carries a `company_id`, so there were no missing companies, only **15 companies** whose own jobs revealed coordinates their board entry lacked. Root cause is structural, not a backlog: `upsertCompanyAndLink` resolves ATS coords from the COMPANY's board entry, so a Getro listing with no ATS hint stores `ats_type: null` while its jobs carry `boards.greenhouse.io/{token}`. `harvest-ats-tokens` (hourly cron) closes that from data already held; `_shared/ats/harvest.ts` refuses to guess when a company's URLs disagree | S | C-0 |
 | ~~C-2~~ | ✅ **shipped 2026-09-03.** Pool was 1,803 companies with a domain and no coordinates. **A 25-company dry run against production measured ~12% resolving at ~18 requests each — so expect ~200 new crawlable companies, NOT the ~900 an earlier estimate suggested.** That estimate came from hand-picked famous companies, which skew heavily to Greenhouse; the long tail here is mostly on bespoke career sites or Workable/Rippling (no adapter — C-4), so the misses are largely correct. Token probing: for companies with a name/domain but no token, guess slug variants against all 5 ATS APIs, keep the 200s. Verified live — `greenhouse/stripe` → 592 jobs, `greenhouse/anthropic` → 1,166; 2 of 4 naive guesses hit. `probe-ats-tokens`, every 30 min, ~2 days to drain, 45-day re-probe window and a 4-attempt cap so it becomes a queue rather than a treadmill. **Acceptance never trusts a bare 200**: either the board names itself and matches (Greenhouse only), or the slug came from the company's own domain and the board has jobs — a name-derived guess against an ATS that does not name its owner is rejected, because `greenhouse.io/acme` is probably somebody else's Acme. Two live findings baked in: **Lever is case-sensitive** (`/Kyverna` 200, `/kyverna` 404) and **shard-split** (`api.eu.lever.co`); probing one host in one casing misses both populations | M | C-1 |
+| **C-8** | **Per-company board crawler — THE MISSING PRIMITIVE.** `ingest-jobs` is the only thing that inserts board jobs and it walks FUNDS only; the per-ATS adapters are imported by `enrich-descriptions` alone, which fills descriptions and closes vanished rows but never discovers a posting. So a resolved `(ats_type, ats_token)` currently buys description coverage and liveness — NOT new jobs. Until this exists, C-1, C-2 and C-3 are all latent. Reuses `upsert_board_jobs` (write-once) and the `EXPIRY_GRACE_MS` vanished-sweep pattern, scoped per company. **Write-filtered to early career** per the pivot above. Prioritise the 679 companies already known to post early-career roles | M | C-2 |
+| **C-9** | **External early-career seed — PROMOTED, now the highest-value item.** VC boards produce startups, and startups barely hire interns; the pivot needs a company set that does. Simplify's two lists are literally that set — ~5,076 companies — and every record carries a raw ATS `url`, so `classifyApplyURL` yields `(ats_type, ats_token)` directly and dedupe lands on `companies_ats_unique` rather than weak name matching (their records have no domain field). Names + tokens only; postings still come from each company's own public ATS API. Licence: none on their repos, hence seed-only | M | C-8 |
 | C-3 | **Workday adapter.** Note after C-0: only **55 companies / 2,091 jobs** in the CURRENT corpus are on Workday, because that corpus is VC/startup-skewed. So C-3's value is **prospective** — it unlocks the enterprise-heavy intern/new-grad market scout22 is not in yet — not a repair of existing data. Still ~half of that target market. Known pattern: `POST {tenant}.{host}/wday/cxs/{tenant}/{site}/jobs` with facet/pagination body. Multi-tenant, so the "token" is a (tenant, site) pair — `companies.ats_token` is a single column and will need widening | M–L | C-0 |
 | C-4 | Oracle Cloud adapter (`*.oraclecloud.com`, ~5–13%) and iCIMS (~4%). Lower priority than C-3, same shape of work | M | C-3 |
 | C-5 | Split the intern/new-grad feed filter. Backend is done — `classifyExperience` already emits `intern` and `entry` separately — but `ExperienceFilter.earlyCareer` merges them. One-line change, outsized impact if interns are the target market | S | — |
 | C-6 | More funds (Getro/Consider power hundreds of VC networks; adapters exist, adding fund rows is config) | S | — |
-| C-7 | Schema widening this implies: `funds.platform` CHECK is `('getro','consider','bespoke')` — a probe or an external list is not a fund, so this wants a `job_sources` concept. `companies.ats_type` CHECK is the 5 supported and must widen per new adapter | S | C-2/C-3 |
+| **C-7** | **Seasonality — now urgent, was a footnote.** Internship hiring runs on terms: Summer 2027 roles post Aug 2026 to Feb 2027. Simplify's own data is 8,843 `Summer 2026` against 1,491 `Summer 2027`. With no season column the feed shows expired summer roles all spring — the difference between an intern feed that works and one that quietly rots. Plus the schema widening below: `funds.platform` CHECK is `('getro','consider','bespoke')` — a probe or an external list is not a fund, so this wants a `job_sources` concept. `companies.ats_type` CHECK is the 5 supported and must widen per new adapter | S | C-2/C-3 |
 
 **Built In — assessed and mostly rejected as a jobs source.** `robots.txt`
 carries `Disallow: /job/sitemap.xml`; `job-board-sitemap.xml` holds only facet

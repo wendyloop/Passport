@@ -394,4 +394,56 @@ final class SharedFormattersTests: XCTestCase {
         let url = try XCTUnwrap(ShareConfig.shareURL(forJobID: "job-42"))
         XCTAssertEqual(ShareConfig.jobID(fromDeepLink: url), "job-42")
     }
+
+    // MARK: - C-5 intern / new-grad split
+
+    private func job(level: String?) -> JobPostingRecord {
+        // Decoded rather than constructed: JobPostingRecord has no memberwise
+        // init and the decoder is what production actually exercises.
+        let json = """
+        {"id":"j1","title":"Role","company_name":"Acme","description":"d",
+         "application_email":"a@b.com","video_url":"v","is_published":true,
+         "created_at":"2026-09-01T00:00:00Z"\(level.map { ",\"experience_level\":\"\($0)\"" } ?? "")}
+        """
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return try! d.decode(JobPostingRecord.self, from: json.data(using: .utf8)!)
+    }
+
+    func testExperienceFilterSeparatesInternshipsFromNewGrad() {
+        let intern = job(level: "intern")
+        let entry = job(level: "entry")
+        let mid = job(level: "mid")
+
+        // The whole point of the split: a junior hunting a summer internship
+        // and a graduating senior hunting a first full-time job want disjoint
+        // sets, and merging them was hiding one behind the other.
+        XCTAssertTrue(ExperienceFilter.internship.matches(intern))
+        XCTAssertFalse(ExperienceFilter.internship.matches(entry))
+
+        XCTAssertTrue(ExperienceFilter.newGrad.matches(entry))
+        XCTAssertFalse(ExperienceFilter.newGrad.matches(intern))
+
+        // The union stays available for anyone who wants both.
+        XCTAssertTrue(ExperienceFilter.earlyCareer.matches(intern))
+        XCTAssertTrue(ExperienceFilter.earlyCareer.matches(entry))
+        XCTAssertFalse(ExperienceFilter.earlyCareer.matches(mid))
+    }
+
+    // The feed window is 200+200 of a ~38k catalog, so an experience filter
+    // that only ran client-side would starve: 180 active internships would
+    // essentially never appear in a fetched window.
+    func testExperienceFilterNarrowsTheServerQuery() {
+        func params(_ f: ExperienceFilter) -> [String] {
+            var filters = FeedFilters()
+            filters.experience = f
+            return filters.postgrestParams
+                .filter { $0.0 == "experience_level" }
+                .map { $0.1 }
+        }
+        XCTAssertEqual(params(.internship), ["eq.intern"])
+        XCTAssertEqual(params(.newGrad), ["eq.entry"])
+        XCTAssertEqual(params(.earlyCareer), ["in.(intern,entry)"])
+        XCTAssertEqual(params(.all), [])
+    }
 }
