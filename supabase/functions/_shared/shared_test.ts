@@ -38,6 +38,7 @@ import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/worka
 import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
 import { harvestFromApplyURLs } from "./ats/harvest.ts";
+import { keepForEarlyCareerFeed } from "./ats/crawl_filter.ts";
 import {
   boardNameMatches,
   leverCaseVariants,
@@ -1369,4 +1370,108 @@ Deno.test("boardNameMatches rejects somebody else's board", () => {
   // Short names must not prefix-match their way into another company: "Go"
   // would otherwise match "Google", "GoCardless" and "GoodRx".
   assertEquals(boardNameMatches("Go", "Google"), false);
+});
+
+// ---------------------------------------------------------------------------
+// C-8 — the early-career write filter
+// ---------------------------------------------------------------------------
+
+function crawledJob(title: string) {
+  // Only `title` is read; the rest satisfies NormalizedJob.
+  return {
+    source_ats: "greenhouse" as const,
+    external_id: "1",
+    title,
+    listing_url: null,
+    apply_url: null,
+    apply_flow: "ats_form" as const,
+    compensation_text: null,
+    compensation: { min_annual: null, max_annual: null, min_hourly: null, max_hourly: null },
+    location: null,
+    category: null,
+    employment_type: null,
+    posted_at: null,
+    description: null,
+    description_raw: null,
+    contact_email_on_posting: null,
+    content_hash: "h",
+  };
+}
+
+Deno.test("keepForEarlyCareerFeed keeps what classifyExperience can bucket", () => {
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Software Engineering Intern")), true);
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Junior Data Analyst")), true);
+  assertEquals(keepForEarlyCareerFeed(crawledJob("New Grad Software Engineer")), true);
+  // Ordering inside classifyExperience puts intern markers ahead of seniority
+  // words, so this is an internship, not a senior role.
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Senior Software Engineering Intern")), true);
+});
+
+// This is what keeps the crawl affordable. Every kept job costs an LLM
+// carousel and an embedding, so a filter that leaks mid/senior defeats the
+// purpose of filtering at write time at all.
+Deno.test("keepForEarlyCareerFeed drops everything above early career", () => {
+  for (const title of [
+    "Staff Software Engineer",
+    "Senior Product Manager",
+    "VP of Engineering",
+    "Director, Data Science",
+    "Software Engineer II",
+  ]) {
+    assertEquals(keepForEarlyCareerFeed(crawledJob(title)), false, title);
+  }
+});
+
+// Enterprise early-career programmes rarely say "intern" or "junior" — they
+// say "2027 Summer Analyst Program". classifyExperience returns null for
+// those, and without the hint list the whole enterprise population would be
+// filtered away, which is exactly the population the pivot needs.
+Deno.test("keepForEarlyCareerFeed catches enterprise programme phrasing", () => {
+  for (const title of [
+    "2027 Summer Analyst Program",
+    "Campus Recruiting — Technology",
+    "Rotational Development Program",
+    "Graduate Scheme, Engineering",
+    "Co-op Student, Hardware",
+  ]) {
+    assertEquals(keepForEarlyCareerFeed(crawledJob(title)), true, title);
+  }
+});
+
+// The hint list only runs when classifyExperience is UNSURE. A confident
+// non-early classification is a rejection, or "Senior Engineer, Student
+// Products" would be kept on the word "student".
+Deno.test("keepForEarlyCareerFeed does not let hints override a confident level", () => {
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Senior Engineer, Student Products")), false);
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Director of Campus Recruiting")), false);
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Senior Analyst, Risk")), false);
+  // Kept, but by classifyExperience rather than by a hint: its intern marker
+  // deliberately beats seniority words so "Senior SWE Intern" reads right.
+  // The cost is that a genuinely senior role ABOUT interns slips through.
+  // Pre-existing behaviour, rare, and not worth loosening that rule over.
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Principal Engineer, Intern Tooling")), true);
+});
+
+// Found by dry-running against Stripe's and Anthropic's live boards: a plain
+// substring hint list returned 24 "early-career" jobs and all 24 were
+// Internal/International false positives. Word boundaries are the fix, and
+// this test is what stops them being lost again.
+Deno.test("keepForEarlyCareerFeed does not read Internal as intern", () => {
+  for (const title of [
+    "Internal Auditor - APAC Regulatory",
+    "Internal Audit - Treasury",
+    "International Indirect Tax, VAT/GST",
+    "Internal Communications Manager, Tech",
+    "Internal Product Engineer, Developer Productivity",
+  ]) {
+    assertEquals(keepForEarlyCareerFeed(crawledJob(title)), false, title);
+  }
+  // The real word still matches, with or without the plural.
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Product Intern")), true);
+  assertEquals(keepForEarlyCareerFeed(crawledJob("Engineering Interns, Summer")), true);
+});
+
+Deno.test("keepForEarlyCareerFeed refuses untitled postings", () => {
+  assertEquals(keepForEarlyCareerFeed(crawledJob("")), false);
+  assertEquals(keepForEarlyCareerFeed(crawledJob("   ")), false);
 });

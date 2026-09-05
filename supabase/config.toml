@@ -415,6 +415,9 @@ verify_jwt = false
 [functions.probe-ats-tokens]
 verify_jwt = false
 
+[functions.crawl-companies]
+verify_jwt = false
+
 [functions.trigger-apify-scrape]
 verify_jwt = false
 
