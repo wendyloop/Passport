@@ -39,6 +39,7 @@ import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
 import { harvestFromApplyURLs } from "./ats/harvest.ts";
 import { keepForEarlyCareerFeed } from "./ats/crawl_filter.ts";
+import { extractSeedCompanies } from "./ats/seed_listings.ts";
 import {
   boardNameMatches,
   leverCaseVariants,
@@ -1474,4 +1475,110 @@ Deno.test("keepForEarlyCareerFeed does not read Internal as intern", () => {
 Deno.test("keepForEarlyCareerFeed refuses untitled postings", () => {
   assertEquals(keepForEarlyCareerFeed(crawledJob("")), false);
   assertEquals(keepForEarlyCareerFeed(crawledJob("   ")), false);
+});
+
+// ---------------------------------------------------------------------------
+// C-9 — early-career company seed
+// ---------------------------------------------------------------------------
+
+Deno.test("extractSeedCompanies takes identity only, keyed by board", () => {
+  // Shapes lifted from a real public listings file.
+  const out = extractSeedCompanies([
+    { company_name: "Lucid Motors", url: "https://job-boards.greenhouse.io/lucidmotors/jobs/4964060007" },
+    { company_name: "Mechanize", url: "https://jobs.ashbyhq.com/mechanize/1ef28bb2/application" },
+  ]);
+  assertEquals(out.companies.length, 2);
+  assertEquals(out.companies[0], {
+    name: "Lucid Motors",
+    ats_type: "greenhouse",
+    ats_token: "lucidmotors",
+  });
+  // Nothing but name and coordinates crosses over — no title, no location,
+  // no id. The postings themselves come from the company's own ATS later.
+  assertEquals(Object.keys(out.companies[0]).sort(), ["ats_token", "ats_type", "name"]);
+});
+
+// Two records can spell one company differently while pointing at the same
+// board. Keying on the board — which is also what companies_ats_unique
+// dedupes on — means the insert cannot collide with itself.
+Deno.test("extractSeedCompanies dedupes on the board, not the name", () => {
+  const out = extractSeedCompanies([
+    { company_name: "1stdibs", url: "https://boards.greenhouse.io/1stdibscom/jobs/1" },
+    { company_name: "1stDibs.com", url: "https://boards.greenhouse.io/1stdibscom/jobs/2" },
+    { company_name: "1stdibs", url: "https://boards.greenhouse.io/1stdibscom/jobs/3" },
+  ]);
+  assertEquals(out.companies.length, 1);
+  assertEquals(out.companies[0].name, "1stdibs");   // first spelling wins
+  assertEquals(out.stats.distinctCompanyNames, 2);
+});
+
+// Unsupported hosts are TALLIED, not silently dropped: that count is the size
+// of the prize for the Workday and Oracle adapters, measured on the exact
+// market the pivot targets.
+Deno.test("extractSeedCompanies tallies what no adapter can reach yet", () => {
+  const out = extractSeedCompanies([
+    { company_name: "RBC", url: "https://rbc.wd3.myworkdayjobs.com/en-US/careers/job/1" },
+    { company_name: "Boeing", url: "https://boeing.wd1.myworkdayjobs.com/job/2" },
+    { company_name: "Kaiser", url: "https://kp.taleo.net/careersection/external/jobdetail.ftl?job=1" },
+    { company_name: "TikTok", url: "https://lifeattiktok.com/search/123" },
+    { company_name: "Stripe", url: "https://boards.greenhouse.io/stripe/jobs/9" },
+  ]);
+  assertEquals(out.companies.length, 1);
+  assertEquals(out.stats.unsupportedByHost["workday"], 2);
+  assertEquals(out.stats.unsupportedByHost["oracle/taleo"], 1);
+  assertEquals(out.stats.unsupportedByHost["other"], 1);
+});
+
+Deno.test("extractSeedCompanies skips records it cannot identify", () => {
+  const out = extractSeedCompanies([
+    { company_name: "", url: "https://boards.greenhouse.io/acme/jobs/1" },
+    { company_name: "Acme", url: "" },
+    { company_name: "Acme", url: null },
+    {},
+  ]);
+  assertEquals(out.companies.length, 0);
+  assertEquals(out.stats.records, 4);
+});
+
+// Greenhouse's application widget lives at boards.greenhouse.io/embed/job_app
+// ?token=<job id>. The first path segment is Greenhouse's own route, not a
+// customer board, and no board token is recoverable from it. Read naively it
+// became a company token: a public early-career list had 14 distinct
+// employers — Cerebras, Coinbase, Databricks, Dropbox among them — collapsing
+// onto "embed", and boards-api 404s for it, so the crawler would have chased
+// a board that does not exist.
+Deno.test("classifyApplyURL refuses Greenhouse's own reserved routes", () => {
+  assertEquals(classifyApplyURL("https://boards.greenhouse.io/embed/job_app?token=6099883"), null);
+  assertEquals(classifyApplyURL("https://job-boards.greenhouse.io/embed/job_app?token=1"), null);
+  assertEquals(classifyApplyURL("https://boards.greenhouse.io/api/whatever"), null);
+  // A real board is untouched.
+  const real = classifyApplyURL("https://boards.greenhouse.io/stripe/jobs/123");
+  assertEquals(real?.ats_token, "stripe");
+});
+
+Deno.test("extractSeedCompanies drops aggregator boards, keeps spelling variants", () => {
+  const board = (token: string, name: string) => ({
+    company_name: name,
+    url: `https://boards.greenhouse.io/${token}/jobs/1`,
+  });
+
+  // Two spellings of one employer is normal and must survive — real examples
+  // from the lists: Match Group / Tinder, PlayStation / Sony Interactive.
+  const variants = extractSeedCompanies([
+    board("matchgroup", "Match Group"),
+    board("matchgroup", "Tinder"),
+  ]);
+  assertEquals(variants.companies.length, 1);
+  assertEquals(variants.aggregatorsDropped, []);
+
+  // Three or more distinct employers on one board is an aggregator. Keeping
+  // it would file other companies' postings under whichever name arrived
+  // first.
+  const aggregator = extractSeedCompanies([
+    board("sharedlist", "Cerebras"),
+    board("sharedlist", "Coinbase"),
+    board("sharedlist", "Databricks"),
+  ]);
+  assertEquals(aggregator.companies.length, 0);
+  assertEquals(aggregator.aggregatorsDropped, ["greenhouse:sharedlist"]);
 });

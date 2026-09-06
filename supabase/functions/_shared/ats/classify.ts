@@ -32,6 +32,10 @@ const GREENHOUSE_PATH_HOSTS = new Set([
   "job-boards.eu.greenhouse.io",
 ]);
 
+// Path segments on the boards host that are Greenhouse's own routes rather
+// than a customer's board token.
+const GREENHOUSE_RESERVED_SEGMENTS = new Set(["embed", "api", "assets"]);
+
 // Lever splits its API by data residency; the board host tells us which shard.
 const LEVER_HOSTS = new Set(["jobs.lever.co", "jobs.eu.lever.co"]);
 
@@ -48,6 +52,15 @@ const matchers: Matcher[] = [
       const parts = pathSegments(url);
       const token = decodeSegment(parts[0]);
       if (!token) return null;
+      // boards.greenhouse.io/embed/job_app?token=6099883 is the application
+      // WIDGET, not a board: the first path segment is the literal word
+      // "embed" and the real identifier is a job id in the query string,
+      // from which no board token can be recovered. Read naively it made
+      // "embed" a company token — a public early-career list had 14 different
+      // employers (Cerebras, Coinbase, Databricks, Dropbox…) collapsing onto
+      // it, and boards-api 404s for it, so the crawler would have chased a
+      // board that does not exist.
+      if (GREENHOUSE_RESERVED_SEGMENTS.has(token.toLowerCase())) return null;
       // parts[1] === "jobs", parts[2] === id (when present)
       const id = parts[1] === "jobs" ? (parts[2] ?? null) : null;
       return { ats_type: "greenhouse", ats_token: token, ats_external_id: id };
