@@ -80,7 +80,13 @@ function sqlString(value: string): string {
 
 // ---------------------------------------------------------------------------
 
-const seen = new Map<string, { name: string; ats_type: string; ats_token: string }>();
+const seen = new Map<string, {
+  name: string;
+  ats_type: string;
+  ats_token: string;
+  ats_host?: string;
+  ats_site?: string;
+}>();
 const unsupported: Record<string, number> = {};
 const aggregators = new Set<string>();
 let totalRecords = 0;
@@ -135,8 +141,11 @@ const additions = candidates.filter((c) => !held.has(`${c.ats_type}:${c.ats_toke
 console.log(`\n${held.size} boards already held · ${candidates.length - additions.length} overlap · ${additions.length} NEW`);
 console.log("sample of what would be added:");
 for (const company of additions.slice(0, 15)) {
-  console.log(`  ${company.name} -> ${company.ats_type}/${company.ats_token}`);
+  const site = company.ats_site ? ` [${company.ats_host} / ${company.ats_site}]` : "";
+  console.log(`  ${company.name} -> ${company.ats_type}/${company.ats_token}${site}`);
 }
+const workday = additions.filter((c) => c.ats_type === "workday").length;
+if (workday) console.log(`  …of which ${workday} are Workday tenants`);
 
 if (!write) {
   console.log(`\nDRY RUN. Re-run with --write to insert ${additions.length} companies.`);
@@ -153,11 +162,13 @@ let inserted = 0;
 for (let i = 0; i < additions.length; i += CHUNK) {
   const values = additions.slice(i, i + CHUNK)
     .map((c) =>
-      `(${sqlString(c.name)}, ${sqlString(c.ats_type)}, ${sqlString(c.ats_token)}, 'early-career-seed')`
+      `(${sqlString(c.name)}, ${sqlString(c.ats_type)}, ${sqlString(c.ats_token)}, ` +
+      `${c.ats_host ? sqlString(c.ats_host) : "null"}, ${c.ats_site ? sqlString(c.ats_site) : "null"}, ` +
+      `'early-career-seed')`
     )
     .join(",\n    ");
   const rows = await query<{ id: string }>(
-    `insert into companies (name, ats_type, ats_token, source_board)
+    `insert into companies (name, ats_type, ats_token, ats_host, ats_site, source_board)
      values ${values}
      on conflict (ats_type, ats_token) where ats_type is not null and ats_token is not null
      do nothing

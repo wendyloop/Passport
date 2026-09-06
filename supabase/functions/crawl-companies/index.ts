@@ -45,6 +45,11 @@ const SOURCE_BOARD = "ats-direct";
 // Same reasoning as ingest-jobs' EXPIRY_GRACE_MS: covers cron skips and
 // transient board misses.
 const EXPIRY_GRACE_MS = 48 * 60 * 60 * 1000;
+// Deliberately short and generic. Each term is a separate paged sweep, so the
+// list is a direct multiplier on request count, and keepForEarlyCareerFeed
+// still filters whatever comes back — a term only has to be broad enough to
+// surface the postings, not precise enough to be the filter.
+const WORKDAY_SEARCH_TERMS = ["intern", "graduate", "entry level"];
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -74,7 +79,7 @@ Deno.serve(async (request) => {
     // only breaks ties.
     const { data: companies, error } = await admin
       .from("companies")
-      .select("id, name, ats_type, ats_token, last_crawled_at")
+      .select("id, name, ats_type, ats_token, ats_host, ats_site, last_crawled_at")
       .not("ats_type", "is", null)
       .not("ats_token", "is", null)
       .or(`last_crawled_at.is.null,last_crawled_at.lt.${cutoff}`)
@@ -101,6 +106,19 @@ Deno.serve(async (request) => {
         result = await adapter({
           ats_token: atsToken,
           company_name: company.name,
+          ats_host: company.ats_host,
+          ats_site: company.ats_site,
+          // Workday is the only supported ATS that searches server-side, and
+          // it is the one that needs to: an enterprise board runs to thousands
+          // of postings and its list endpoint caps at 20 per page. Pushing the
+          // early-career filter into the request is the difference between
+          // ~10 calls and ~150. Everything else ignores these.
+          search: atsType === "workday" ? WORKDAY_SEARCH_TERMS : undefined,
+          // The Workday list response carries no description and one detail
+          // call PER JOB would spend the whole crawl budget on one company.
+          // enrich-descriptions fills them in afterwards — the job it already
+          // does for every board-ingested row.
+          includeDetails: atsType !== "workday",
         });
       } catch (fetchError) {
         // A board that 404s or times out is stamped anyway: retrying a dead

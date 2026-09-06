@@ -1265,12 +1265,13 @@ Deno.test("harvestFromApplyURLs refuses to guess when boards disagree", () => {
 Deno.test("harvestFromApplyURLs reports unresolved rather than resolving to nothing", () => {
   assertEquals(harvestFromApplyURLs([]).kind, "unresolved");
   assertEquals(harvestFromApplyURLs([null, undefined, ""]).kind, "unresolved");
-  // Bespoke careers sites and adapter-less ATS are unresolved, NOT ambiguous —
-  // the caller counts those separately and they are not a data problem.
+  // Bespoke careers sites stay unresolved, NOT ambiguous — the caller counts
+  // those separately and they are not a data problem. (Workday used to sit in
+  // this list; C-3 gave it an adapter, so it resolves now.)
   assertEquals(
     harvestFromApplyURLs([
       "https://careers.acme.com/jobs/123",
-      "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/123",
+      "https://acme.example.org/openings/456",
     ]).kind,
     "unresolved",
   );
@@ -1517,16 +1518,17 @@ Deno.test("extractSeedCompanies dedupes on the board, not the name", () => {
 // market the pivot targets.
 Deno.test("extractSeedCompanies tallies what no adapter can reach yet", () => {
   const out = extractSeedCompanies([
+    // Workday resolves since C-3 — it is a seeded company now, not a tally.
     { company_name: "RBC", url: "https://rbc.wd3.myworkdayjobs.com/en-US/careers/job/1" },
-    { company_name: "Boeing", url: "https://boeing.wd1.myworkdayjobs.com/job/2" },
     { company_name: "Kaiser", url: "https://kp.taleo.net/careersection/external/jobdetail.ftl?job=1" },
     { company_name: "TikTok", url: "https://lifeattiktok.com/search/123" },
     { company_name: "Stripe", url: "https://boards.greenhouse.io/stripe/jobs/9" },
   ]);
-  assertEquals(out.companies.length, 1);
-  assertEquals(out.stats.unsupportedByHost["workday"], 2);
+  assertEquals(out.companies.map((c) => c.ats_type).sort(), ["greenhouse", "workday"]);
+  // Still no adapter for these two.
   assertEquals(out.stats.unsupportedByHost["oracle/taleo"], 1);
   assertEquals(out.stats.unsupportedByHost["other"], 1);
+  assertEquals(out.stats.unsupportedByHost["workday"], undefined);
 });
 
 Deno.test("extractSeedCompanies skips records it cannot identify", () => {
@@ -1581,4 +1583,71 @@ Deno.test("extractSeedCompanies drops aggregator boards, keeps spelling variants
   ]);
   assertEquals(aggregator.companies.length, 0);
   assertEquals(aggregator.aggregatorsDropped, ["greenhouse:sharedlist"]);
+});
+
+// ---------------------------------------------------------------------------
+// C-3 — Workday
+// ---------------------------------------------------------------------------
+
+Deno.test("classifyApplyURL resolves a Workday tenant and requisition id", () => {
+  const hit = classifyApplyURL(
+    "https://boeing.wd1.myworkdayjobs.com/EXTERNAL_CAREERS/job/ESP---Madrid-Spain/Intern---Software-Engineering_JR2026522576-1",
+  );
+  assertEquals(hit?.ats_type, "workday");
+  // Tenant only. Site and datacenter live on the company row, because one
+  // tenant can publish several sites and companies_ats_unique has to stay
+  // one row per tenant.
+  assertEquals(hit?.ats_token, "boeing");
+  // The requisition id survives title edits; the slugified path does not.
+  assertEquals(hit?.ats_external_id, "JR2026522576-1");
+});
+
+Deno.test("classifyApplyURL handles Workday's shard and language variants", () => {
+  // The wd1/wd3/wd5 shard is part of the host, never the tenant.
+  assertEquals(
+    classifyApplyURL("https://rbc.wd3.myworkdayjobs.com/en-US/RBC/job/Toronto/Analyst_R-1")?.ats_token,
+    "rbc",
+  );
+  assertEquals(
+    classifyApplyURL("https://globalhr.wd5.myworkdayjobs.com/rec_rtx_ext_gateway/job/x/Intern_01")?.ats_token,
+    "globalhr",
+  );
+  // myworkdaysite.com is the same product on a different domain.
+  assertEquals(
+    classifyApplyURL("https://acme.wd1.myworkdaysite.com/careers/job/x/Y_2")?.ats_type,
+    "workday",
+  );
+  // A posting URL with no requisition suffix still resolves the tenant.
+  assertEquals(
+    classifyApplyURL("https://boeing.wd1.myworkdayjobs.com/EXTERNAL_CAREERS")?.ats_external_id,
+    null,
+  );
+});
+
+Deno.test("extractSeedCompanies recovers Workday's host and site, busiest wins", () => {
+  const wd = (site: string, name: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      company_name: name,
+      url: `https://globalhr.wd5.myworkdayjobs.com/en-US/${site}/job/Loc/Role_JR${i}`,
+    }));
+
+  // RTX genuinely publishes two career sites under one tenant. The schema
+  // stores one, so the busier public site has to win.
+  const out = extractSeedCompanies([
+    ...wd("rec_rtx_ext_gateway", "RTX", 5),
+    ...wd("Private_Posting_No_TMP", "RTX", 2),
+  ]);
+  assertEquals(out.companies.length, 1);
+  assertEquals(out.companies[0].ats_token, "globalhr");   // tenant, not site
+  assertEquals(out.companies[0].ats_host, "globalhr.wd5.myworkdayjobs.com");
+  assertEquals(out.companies[0].ats_site, "rec_rtx_ext_gateway");
+});
+
+Deno.test("extractSeedCompanies reads Workday URLs with no language segment", () => {
+  const out = extractSeedCompanies([{
+    company_name: "Boeing",
+    url: "https://boeing.wd1.myworkdayjobs.com/EXTERNAL_CAREERS/job/ESP/Intern_JR1",
+  }]);
+  assertEquals(out.companies[0].ats_site, "EXTERNAL_CAREERS");
+  assertEquals(out.companies[0].ats_host, "boeing.wd1.myworkdayjobs.com");
 });

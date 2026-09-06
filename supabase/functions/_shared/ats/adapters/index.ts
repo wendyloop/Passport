@@ -6,6 +6,7 @@ import { fetchLever } from "./lever.ts";
 import { fetchAshby } from "./ashby.ts";
 import { fetchSmartRecruiters } from "./smartrecruiters.ts";
 import { fetchRecruitee } from "./recruitee.ts";
+import { fetchWorkday } from "./workday.ts";
 
 export const ADAPTERS: Record<ATSType, ATSAdapter> = {
   greenhouse: fetchGreenhouse,
@@ -13,6 +14,7 @@ export const ADAPTERS: Record<ATSType, ATSAdapter> = {
   ashby: fetchAshby,
   smartrecruiters: fetchSmartRecruiters,
   recruitee: fetchRecruitee,
+  workday: fetchWorkday,
 };
 
 export function getAdapter(ats_type: ATSType): ATSAdapter {

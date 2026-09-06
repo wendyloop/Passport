@@ -29,6 +29,11 @@ export type SeedCompany = {
   name: string;
   ats_type: ATSType;
   ats_token: string;
+  /// Workday only: the datacenter host and career-site path, neither of which
+  /// is derivable from the tenant. This is the whole reason the lists are
+  /// worth reading for Workday — a slug probe cannot discover them.
+  ats_host?: string;
+  ats_site?: string;
 };
 
 export type SeedExtraction = {
@@ -49,6 +54,13 @@ export type SeedExtraction = {
   };
 };
 
+/// Workday posting URLs, from which the address triple is recovered:
+///   https://{tenant}.{dc}.myworkdayjobs.com/{lang}?/{site}/job/...
+/// The optional language segment is 2-5 characters ("en-US", "fr"); the site
+/// is whatever follows it.
+const WORKDAY_URL =
+  /^https?:\/\/([a-z0-9-]+\.wd\d+\.myworkday(?:jobs|site)\.com)\/(?:([a-z]{2}(?:-[A-Za-z]{2})?)\/)?([^/?#]+)/i;
+
 /// Hosts worth naming in the unsupported tally. Anything else lands under
 /// "other" — mostly bespoke careers sites, which no adapter will ever cover.
 const UNSUPPORTED_HOSTS: Array<[RegExp, string]> = [
@@ -68,6 +80,8 @@ export function extractSeedCompanies(records: SeedRecord[]): SeedExtraction {
   // the feed.
   const AGGREGATOR_NAME_THRESHOLD = 3;
   const namesByToken = new Map<string, Set<string>>();
+  // tenant key -> "host|site" -> posting count
+  const siteCounts = new Map<string, Map<string, number>>();
 
   // Keyed by ATS coordinates, not by name. Two records can spell a company
   // differently ("1stdibs" / "1stDibs.com") while pointing at one board, and
@@ -95,6 +109,21 @@ export function extractSeedCompanies(records: SeedRecord[]): SeedExtraction {
     }
 
     const key = `${resolution.ats_type}:${resolution.ats_token}`;
+
+    // Workday needs host and site alongside the tenant, and only the posting
+    // URL has them. One tenant can publish several sites — RTX runs both
+    // rec_rtx_ext_gateway and Private_Posting_No_TMP — so the busiest site
+    // wins, which in every sample checked is the public external one.
+    if (resolution.ats_type === "workday") {
+      const match = WORKDAY_URL.exec(url);
+      if (!match) continue;
+      const [, host, , site] = match;
+      const counter = siteCounts.get(key) ?? new Map<string, number>();
+      const siteKey = `${host}|${site}`;
+      counter.set(siteKey, (counter.get(siteKey) ?? 0) + 1);
+      siteCounts.set(key, counter);
+    }
+
     const nameSet = namesByToken.get(key) ?? new Set<string>();
     nameSet.add(name.toLowerCase());
     namesByToken.set(key, nameSet);
@@ -108,6 +137,19 @@ export function extractSeedCompanies(records: SeedRecord[]): SeedExtraction {
         ats_token: resolution.ats_token,
       });
     }
+  }
+
+  // Attach the winning Workday site now that every record has been counted.
+  for (const [key, counter] of siteCounts) {
+    const company = byToken.get(key);
+    if (!company) continue;
+    let best = ""; let bestCount = -1;
+    for (const [siteKey, count] of counter) {
+      if (count > bestCount) { best = siteKey; bestCount = count; }
+    }
+    const [host, site] = best.split("|");
+    company.ats_host = host;
+    company.ats_site = site;
   }
 
   const aggregators: string[] = [];

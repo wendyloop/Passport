@@ -76,6 +76,40 @@ const matchers: Matcher[] = [
     return null;
   },
 
+  // Workday:
+  //   https://{tenant}.{dc}.myworkdayjobs.com/{site}/job/{loc}/{title}_{reqid}
+  //   https://{tenant}.{dc}.myworkdayjobs.com/{lang}/{site}/job/...
+  //
+  // The token is the TENANT only. Site and datacenter live on companies
+  // (ats_site / ats_host) because one tenant can publish several sites and
+  // companies_ats_unique must stay one row per tenant.
+  (url) => {
+    const host = url.hostname.toLowerCase();
+    if (!/\.myworkdayjobs\.com$|\.myworkdaysite\.com$/.test(host)) return null;
+    const tenant = host.split(".")[0];
+    if (!tenant) return null;
+
+    // The requisition id is the stable identity — it survives title edits,
+    // which the slugified path does not. It trails the final underscore of
+    // the last segment: …/Intern---Software-Engineering_JR2026522576-1
+    //
+    // Gated on an actual /job/ segment. Career-site names are themselves full
+    // of underscores — EXTERNAL_CAREERS, PSU_Staff, rec_rtx_ext_gateway — so
+    // a board-root URL would otherwise mine its own site name and report a
+    // requisition id of "CAREERS".
+    const parts = pathSegments(url);
+    const isPosting = parts.includes("job");
+    const last = parts[parts.length - 1] ?? "";
+    const underscore = isPosting ? last.lastIndexOf("_") : -1;
+    const reqId = underscore >= 0 ? last.slice(underscore + 1) : null;
+
+    return {
+      ats_type: "workday",
+      ats_token: tenant,
+      ats_external_id: reqId || null,
+    };
+  },
+
   // Lever:
   //   https://jobs.lever.co/{token}
   //   https://jobs.lever.co/{token}/{posting-uuid}

@@ -58,6 +58,9 @@ type CompanyRow = {
   name: string | null;
   ats_type: string | null;
   ats_token: string | null;
+  /// Workday only — its address is a triple. Null for every other ATS.
+  ats_host?: string | null;
+  ats_site?: string | null;
   last_crawled_at: string | null;
 };
 

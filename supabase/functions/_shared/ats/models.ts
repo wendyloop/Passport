@@ -9,7 +9,8 @@ export type ATSType =
   | "lever"
   | "ashby"
   | "smartrecruiters"
-  | "recruitee";
+  | "recruitee"
+  | "workday";
 
 export type ApplyFlow = "ats_form" | "external_link" | "message";
 
@@ -42,6 +43,22 @@ export type NormalizedJob = {
 export type AdapterFetchInput = {
   ats_token: string;
   company_name?: string | null;
+  /// Workday only. Its address is a triple rather than a token: ats_token is
+  /// the tenant, ats_host the datacenter host (the wd1/wd3/wd5 shard is not
+  /// derivable from the tenant), ats_site the career-site path (not derivable
+  /// from anything — guessing returns 404). Ignored by every other adapter.
+  ats_host?: string | null;
+  ats_site?: string | null;
+  /// Server-side search terms, where the ATS supports them. Workday does, so
+  /// the early-career filter can move upstream and the rest of a 3,000-job
+  /// enterprise board is never downloaded. Ignored where unsupported.
+  search?: string[];
+  /// Fetch each posting's detail page for its description. Default true.
+  /// crawl-companies passes false for Workday: the list response is sparse
+  /// and one detail call PER JOB would blow the crawl budget on a single
+  /// company. enrich-descriptions fills those in later — which is the exact
+  /// job it already does for board-ingested rows.
+  includeDetails?: boolean;
 };
 
 export type AdapterFetchResult = {
