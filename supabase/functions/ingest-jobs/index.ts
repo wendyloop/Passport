@@ -31,7 +31,7 @@ import {
   computeDedupKey,
   deriveApplyFlow,
 } from "../_shared/ats/classify.ts";
-import { sanitizeCompensation } from "../_shared/ats/compensation.ts";
+import { normalizeEmploymentType, sanitizeCompensation } from "../_shared/ats/compensation.ts";
 import type { FundRow } from "../_shared/ats/models.ts";
 import type { BoardCompany, BoardJob } from "../_shared/boards/types.ts";
 import { jsonError } from "../_shared/http.ts";
@@ -408,17 +408,6 @@ async function sweepExpired(
     return 0;
   }
   return count ?? 0;
-}
-
-function normalizeEmploymentType(raw: string | null): string | null {
-  if (!raw) return null;
-  const normalized = raw.toLowerCase().replace(/[\s\-_]+/g, "");
-  if (normalized.startsWith("full")) return "full_time";
-  if (normalized.startsWith("part")) return "part_time";
-  if (normalized.startsWith("contract") || normalized === "contractor" || normalized === "temp") {
-    return "contract";
-  }
-  return null;
 }
 
 function toInt(value: number | null): number | null {

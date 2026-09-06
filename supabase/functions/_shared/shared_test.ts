@@ -35,7 +35,11 @@ import {
   truncate,
 } from "./answer_prompts.ts";
 import { decodeHtmlEntities, extractPageProps, htmlToText } from "./boards/workatastartup.ts";
-import { parseCompensation, sanitizeCompensation } from "./ats/compensation.ts";
+import {
+  normalizeEmploymentType,
+  parseCompensation,
+  sanitizeCompensation,
+} from "./ats/compensation.ts";
 import { classifyApplyURL, computeDedupKey } from "./ats/classify.ts";
 import { harvestFromApplyURLs } from "./ats/harvest.ts";
 import { keepForEarlyCareerFeed } from "./ats/crawl_filter.ts";
@@ -1650,4 +1654,28 @@ Deno.test("extractSeedCompanies reads Workday URLs with no language segment", ()
   }]);
   assertEquals(out.companies[0].ats_site, "EXTERNAL_CAREERS");
   assertEquals(out.companies[0].ats_host, "boeing.wd1.myworkdayjobs.com");
+});
+
+// jobs.employment_type is CHECK-constrained to three values, and a raw ATS
+// string fails the whole INSERT rather than its own row. crawl-companies
+// reproduced ingest-jobs' row shape without its private normalizer, and
+// production logged 16 rejected batches an hour — every one a chunk of up to
+// 500 good jobs lost to one "Full time".
+Deno.test("normalizeEmploymentType maps ATS strings onto the CHECK values", () => {
+  for (const raw of ["Full time", "FullTime", "full-time", "FULL_TIME", "Fulltime"]) {
+    assertEquals(normalizeEmploymentType(raw), "full_time", raw);
+  }
+  for (const raw of ["Part time", "part-time", "PartTime"]) {
+    assertEquals(normalizeEmploymentType(raw), "part_time", raw);
+  }
+  for (const raw of ["Contract", "Contractor", "temp"]) {
+    assertEquals(normalizeEmploymentType(raw), "contract", raw);
+  }
+});
+
+Deno.test("normalizeEmploymentType returns null rather than passing anything through", () => {
+  // Real values seen from adapters. Null is safe; the raw string is not.
+  for (const raw of ["Intern", "Internship", "Volunteer", "Seasonal", "", null, undefined]) {
+    assertEquals(normalizeEmploymentType(raw), null, String(raw));
+  }
 });

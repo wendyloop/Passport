@@ -26,7 +26,7 @@ import { jsonResponse } from "../_shared/http.ts";
 import { recordPipelineRun } from "../_shared/pipeline_runs.ts";
 import { getAdapter } from "../_shared/ats/adapters/index.ts";
 import { classifyApplyURL, computeDedupKey, deriveApplyFlow } from "../_shared/ats/classify.ts";
-import { sanitizeCompensation } from "../_shared/ats/compensation.ts";
+import { normalizeEmploymentType, sanitizeCompensation } from "../_shared/ats/compensation.ts";
 import { classifyExperience, classifyTitle, classifyWorkMode } from "../_shared/title_classify.ts";
 import type { ATSType, NormalizedJob } from "../_shared/ats/models.ts";
 import { crawlPriority, keepForEarlyCareerFeed } from "../_shared/ats/crawl_filter.ts";
@@ -140,8 +140,11 @@ Deno.serve(async (request) => {
           p_jobs: rows.slice(i, i + CHUNK),
         });
         if (upsertError) {
+          // continue, not break: a chunk is up to 500 rows and one bad row
+          // rejects the whole statement, so bailing here threw away every
+          // later chunk for this company as well.
           errors.push(`${company.name}: upsert ${upsertError.message}`);
-          break;
+          continue;
         }
         for (const row of (data ?? []) as Array<{ inserted: boolean }>) {
           if (row.inserted) jobsInserted++;
@@ -222,7 +225,7 @@ function buildRows(
       apply_flow: deriveApplyFlow(applyURL),
       title: job.title,
       location: job.location,
-      employment_type: job.employment_type,
+      employment_type: normalizeEmploymentType(job.employment_type),
       job_function: classifyTitle(job.title),
       experience_level: classifyExperience(job.title),
       work_mode: classifyWorkMode(job.location),

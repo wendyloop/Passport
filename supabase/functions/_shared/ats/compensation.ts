@@ -178,3 +178,22 @@ export function sanitizeISODate(value: string | null | undefined): string | null
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString().replace(/\.\d+Z$/, "Z");
 }
+
+/// ATS employment-type strings -> the three values jobs_employment_type_check
+/// accepts. Anything unrecognised becomes null rather than being passed
+/// through: the column is CHECK-constrained, and a raw "Full time" or
+/// "FullTime" fails the whole INSERT, not just its own row.
+///
+/// Shared because it has to be. It lived privately inside ingest-jobs, and
+/// crawl-companies reproduced that function's row shape without it — every
+/// Workday and Ashby posting carrying "Full time" then broke its batch.
+export function normalizeEmploymentType(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const normalized = raw.toLowerCase().replace(/[\s\-_]+/g, "");
+  if (normalized.startsWith("full")) return "full_time";
+  if (normalized.startsWith("part")) return "part_time";
+  if (normalized.startsWith("contract") || normalized === "contractor" || normalized === "temp") {
+    return "contract";
+  }
+  return null;
+}
